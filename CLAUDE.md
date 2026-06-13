@@ -98,6 +98,10 @@ set of ~2–6 tests) per cycle, each phase run by an **isolated subagent** so te
 can't be retrofitted to the code. The RED slice is presented for approval via
 Conductor's plan UI before any code is written.
 
+- **Every test follows Arrange–Act–Assert (AAA).** No exceptions, backend or
+  frontend: three blocks in order — set up state, perform **one** action, assert
+  the outcome — separated by a blank line. One Act per test; need a second action,
+  write a second test. Keep Arrange minimal (factories/props only).
 - **Test behavior through public interfaces, not implementation** — tests must
   survive refactoring. A slice = one coherent behavior plus its obvious variants.
 - **Backend:** Pest 4 — `php artisan test --compact` (filter `--filter=name`).

@@ -26,8 +26,12 @@ or modify implementation code to make them pass — that is the implementer's jo
    behavior**, not implementation details — assert what comes out of a public
    interface (HTTP response, Inertia props, rendered DOM, return value). Do not
    expand scope beyond the approved slice.
-3. **Run the slice** (filter to the file/cases under work).
-4. **Confirm they fail for the right reason** — assertions fail, not syntax/setup
+3. **Structure every test as Arrange–Act–Assert** — three blocks separated by a
+   blank line, in order: arrange state (factories/props), perform **one** action,
+   assert the outcome. One Act per test; a second action means a second test. This
+   is mandatory for every test in the codebase.
+4. **Run the slice** (filter to the file/cases under work).
+5. **Confirm they fail for the right reason** — assertions fail, not syntax/setup
    errors and not unrelated crashes. If a test fails for the wrong reason, fix the
    test setup (minimal route stub, mock, factory) until the failing assertion is the
    point.

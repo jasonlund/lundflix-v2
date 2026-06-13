@@ -9,7 +9,10 @@ vi.mock('@inertiajs/react', () => ({
 
 describe('Welcome page', () => {
     it('renders the lundflix heading', () => {
+        // Act
         render(<Welcome />);
+
+        // Assert
         expect(
             screen.getByRole('heading', { name: /lundflix/i }),
         ).toBeInTheDocument();

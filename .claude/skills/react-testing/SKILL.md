@@ -36,13 +36,22 @@ description: >-
 - Render the page/component **with props** (the same shape the Laravel Inertia
   response provides) and assert what the user sees:
 
+**Arrange–Act–Assert (mandatory):** three blank-line-separated blocks, one Act per
+test. For pure-render tests the render is the Act:
+
 ```tsx
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Index from './Index'
 
 test('shows the movies returned by the server', () => {
-  render(<Index movies={[{ id: 1, title: 'Heat' }]} />)
+  // Arrange
+  const movies = [{ id: 1, title: 'Heat' }]
+
+  // Act
+  render(<Index movies={movies} />)
+
+  // Assert
   expect(screen.getByRole('heading', { name: /heat/i })).toBeInTheDocument()
 })
 ```

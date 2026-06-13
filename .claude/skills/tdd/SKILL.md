@@ -38,6 +38,8 @@ next slice → new RED plan card
 - **One behavior slice per cycle.** Write a small, cohesive SET of failing tests
   (typically 2–6) covering one feature surface — e.g. "store movie" with its happy
   path + key validation cases. Not one assertion; not the whole feature.
+- **Every test is Arrange–Act–Assert.** Three separated blocks; exactly one Act
+  per test. Applies to every test in the codebase, backend and frontend.
 - **Test behavior, not implementation.** Assert what the user/caller observes
   through public interfaces. Tests must survive refactoring.
 - **Minimal green.** Implement only what the slice's tests require.

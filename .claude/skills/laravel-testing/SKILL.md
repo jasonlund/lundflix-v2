@@ -60,7 +60,22 @@ frontend `react-testing` cycle for full-stack features.
 
 - A small cohesive set (2–6) of failing tests for one behavior slice; each describes
   one user-observable behavior.
-- Arrange with factories, act via route/HTTP, assert the observable result.
+- **Arrange–Act–Assert (mandatory):** three blank-line-separated blocks, one Act
+  per test.
+
+```php
+it('stores a movie', function () {
+    // Arrange
+    $user = User::factory()->create();
+
+    // Act
+    $response = $this->actingAs($user)->post(route('movies.store'), ['title' => 'Heat']);
+
+    // Assert
+    $response->assertRedirect();
+    expect(Movie::where('title', 'Heat')->exists())->toBeTrue();
+});
+```
 - Run it; it must fail on the **assertion** (red for the right reason), not on a
   missing route/class crash that hides the real expectation. A "404/500 because not
   built yet" is acceptable red only when that status IS the behavior under test;
