@@ -9,12 +9,13 @@ description: >-
 
 # Laravel testing conventions
 
-> Confirm the actual runner and scripts from `composer.json` before assuming. The
-> defaults below are standard Laravel 11/12.
+> Confirmed against the scaffold: **Pest 4** + `pest-plugin-laravel`,
+> `inertiajs/inertia-laravel` ^3. Tests in `tests/Feature` and `tests/Unit`.
 
 ## Runner & commands
 
-- Preferred: **Pest** (`./vendor/bin/pest`). Fallback: PHPUnit.
+- **Pest** (`./vendor/bin/pest`) or `php artisan test` (the `composer test` script
+  clears config then runs `php artisan test`).
 - Run one test file: `php artisan test tests/Feature/Foo/BarTest.php`
 - Run by name filter: `php artisan test --filter='renders the movie list'`
 - Always run the **single** test under work during a TDD cycle — not the whole suite —
@@ -46,7 +47,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 $this->get(route('movies.index'))
     ->assertInertia(fn (Assert $page) => $page
-        ->component('Movies/Index')
+        ->component('movies/Index')   // lowercase: resolves resources/js/pages/movies/Index.tsx
         ->has('movies', 3)
         ->where('movies.0.title', 'Heat')
     );

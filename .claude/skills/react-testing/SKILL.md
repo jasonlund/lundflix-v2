@@ -9,22 +9,42 @@ description: >-
 
 # React + Inertia testing conventions
 
-> Confirm the actual runner and scripts from `package.json` before assuming. The
-> defaults below are standard Vite + Vitest + Inertia React.
+> Stack: React 19 + `@inertiajs/react` ^3, Vite 8, npm. Confirm the actual runner
+> and scripts from `package.json` before assuming.
+>
+> ⚠️ As of the scaffold, the frontend test toolchain is **not yet installed**
+> (no `vitest`, no `@testing-library/*`, no `jsdom`, no `test` script, no vitest
+> config). Until it is, frontend RED cannot run. See "Setup (one-time)" below.
+
+## Setup (one-time, if not already present)
+
+Install dev deps and add a `test` script:
+
+```bash
+npm i -D vitest jsdom @testing-library/react @testing-library/jest-dom \
+  @testing-library/user-event @testing-library/dom
+```
+
+`package.json` script: `"test": "vitest run"` (and `"test:watch": "vitest"`).
+Add a `vitest` block to `vite.config.ts` with `environment: 'jsdom'`,
+`globals: true`, and `setupFiles` importing `@testing-library/jest-dom`. A setup
+file at `resources/js/test/setup.ts` is the convention.
 
 ## Runner & commands
 
 - **Vitest** + **React Testing Library** + `@testing-library/jest-dom` +
   `@testing-library/user-event`.
-- Run one test file: `npx vitest run resources/js/Pages/Movies/Index.test.tsx`
+- Run one test file: `npx vitest run resources/js/pages/movies/Index.test.tsx`
 - Watch a single file while iterating: `npx vitest resources/js/.../X.test.tsx`
-- Run the single test under work during a TDD cycle; run the broader suite before
+- Whole suite (once `test` script exists): `npm run test`.
+- Run the slice under work during a TDD cycle; run the broader suite before
   finishing GREEN.
 
 ## Where tests live
 
-- Colocate next to source: `resources/js/Pages/...`, `resources/js/Components/...`
-  with a `*.test.tsx` sibling. Pages and components are the unit under test.
+- Pages live in `resources/js/pages/` (**lowercase**; Inertia resolves
+  `./pages/${name}.tsx`), components in `resources/js/components/`.
+- Colocate a `*.test.tsx` sibling next to the page/component under test.
 
 ## Patterns
 
