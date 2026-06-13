@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import react from '@vitejs/plugin-react';
@@ -27,5 +27,11 @@ export default defineConfig({
         alias: {
             '@': '/resources/js',
         },
+    },
+    test: {
+        environment: 'jsdom',
+        globals: true,
+        setupFiles: ['resources/js/test/setup.ts'],
+        include: ['resources/js/**/*.{test,spec}.{ts,tsx}'],
     },
 });

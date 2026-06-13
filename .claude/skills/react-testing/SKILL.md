@@ -9,26 +9,11 @@ description: >-
 
 # React + Inertia testing conventions
 
-> Stack: React 19 + `@inertiajs/react` ^3, Vite 8, npm. Confirm the actual runner
-> and scripts from `package.json` before assuming.
->
-> ⚠️ As of the scaffold, the frontend test toolchain is **not yet installed**
-> (no `vitest`, no `@testing-library/*`, no `jsdom`, no `test` script, no vitest
-> config). Until it is, frontend RED cannot run. See "Setup (one-time)" below.
-
-## Setup (one-time, if not already present)
-
-Install dev deps and add a `test` script:
-
-```bash
-npm i -D vitest jsdom @testing-library/react @testing-library/jest-dom \
-  @testing-library/user-event @testing-library/dom
-```
-
-`package.json` script: `"test": "vitest run"` (and `"test:watch": "vitest"`).
-Add a `vitest` block to `vite.config.ts` with `environment: 'jsdom'`,
-`globals: true`, and `setupFiles` importing `@testing-library/jest-dom`. A setup
-file at `resources/js/test/setup.ts` is the convention.
+> Stack: React 19 + `@inertiajs/react` ^3, Vite 8, npm. Toolchain is **installed
+> and wired**: Vitest 4 + React Testing Library + jest-dom + user-event + jsdom,
+> `test` block in `vite.config.ts` (`environment: 'jsdom'`, `globals: true`,
+> `setupFiles: ['resources/js/test/setup.ts']`), and `npm test` / `npm run
+> test:watch` scripts. `globals` + jest-dom types are registered in `tsconfig.json`.
 
 ## Runner & commands
 
