@@ -92,9 +92,30 @@ resources/js/
 
 ### Testing (DDD + TDD)
 
-Domain boundaries enforced by **Pest architecture tests**, not code review (a
+**Test-first by default.** Build features via the `tdd` skill
+(`.claude/skills/tdd`): RED → GREEN → REFACTOR, one behavior **slice** (a cohesive
+set of ~2–6 tests) per cycle, each phase run by an **isolated subagent** so tests
+can't be retrofitted to the code. The RED slice is presented for approval via
+Conductor's plan UI before any code is written.
+
+- **Test behavior through public interfaces, not implementation** — tests must
+  survive refactoring. A slice = one coherent behavior plus its obvious variants.
+- **Backend:** Pest 4 — `php artisan test --compact` (filter `--filter=name`).
+  Feature tests are the default (`tests/Feature`); unit tests only for isolated
+  logic (`tests/Unit`). Use factories + `RefreshDatabase`; assert Inertia props
+  with `AssertableInertia`. Create tests via `php artisan make:test --pest`.
+- **Frontend:** Vitest + React Testing Library — `npm test`. Colocate a
+  `*.test.tsx` sibling; query by role/text; mock `@inertiajs/react`; jsdom env,
+  setup at `resources/js/test/setup.ts`.
+- **Full-stack Inertia feature** → two cycles, **backend first** (Feature test
+  asserts the Inertia component + props), then frontend (RTL renders the page with
+  those props).
+- Detailed conventions live in the `.claude/skills/laravel-testing` and
+  `.claude/skills/react-testing` skills (referenced, not duplicated here).
+
+Domain boundaries are enforced by **Pest architecture tests**, not code review (a
 domain's `Models` used only within that domain; `Common` depends on no concrete
-domain). Full TDD conventions + arch-test suite land in a separate PR.
+domain). The arch-test suite itself lands in a separate PR.
 
 ### File creation
 
