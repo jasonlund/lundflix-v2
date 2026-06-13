@@ -9,8 +9,8 @@ description: >-
 
 # Laravel testing conventions
 
-> Confirmed against the scaffold: **Pest 4** + `pest-plugin-laravel`,
-> `inertiajs/inertia-laravel` ^3. Tests in `tests/Feature` and `tests/Unit`.
+> Stack: **Pest 4** + `pest-plugin-laravel`, `inertiajs/inertia-laravel` ^3.
+> Tests in `tests/Feature` and `tests/Unit`.
 
 ## Runner & commands
 
