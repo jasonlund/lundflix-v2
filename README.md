@@ -58,10 +58,15 @@ resources/js/
 
 Built **test-first (TDD)**, and the architecture defends itself:
 
+- **A RED → GREEN → REFACTOR workflow** drives feature work — one behavior slice
+  at a time, each phase handled by an isolated agent so tests are written before
+  the code (see the `tdd` skill in `.claude/skills/tdd`).
+- **Backend:** feature and unit tests via **Pest v4**, run with `php artisan test`.
+- **Frontend:** component/page tests via **Vitest + React Testing Library**, run
+  with `npm test`.
 - **Pest architecture tests enforce domain boundaries** — a domain's models may
   only be used within that domain, and `Common` may not depend on any concrete
   domain. The rules aren't documentation, they're a failing test if violated.
-- Feature and unit tests via **Pest v4**, run with `php artisan test`.
 
 ## Getting Started
 
@@ -96,7 +101,8 @@ together. Visit the app at the URL printed by `php artisan serve`.
 ### Running tests
 
 ```bash
-php artisan test
+php artisan test   # backend (Pest)
+npm test           # frontend (Vitest)
 ```
 
 ## License
