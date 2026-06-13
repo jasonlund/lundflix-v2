@@ -21,7 +21,7 @@ description: >-
   `@testing-library/user-event`.
 - Run one test file: `npx vitest run resources/js/pages/movies/Index.test.tsx`
 - Watch a single file while iterating: `npx vitest resources/js/.../X.test.tsx`
-- Whole suite (once `test` script exists): `npm run test`.
+- Whole suite: `npm test`.
 - Run the slice under work during a TDD cycle; run the broader suite before
   finishing GREEN.
 
