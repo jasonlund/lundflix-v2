@@ -9,6 +9,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![Tailwind v4](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow)
+[![CI](https://github.com/jasonlund/lundflix-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/jasonlund/lundflix-v2/actions/workflows/ci.yml)
 
 ## Overview
 
@@ -110,6 +111,31 @@ together. Visit the app at the URL printed by `php artisan serve`.
 php artisan test   # backend (Pest)
 npm test           # frontend (Vitest)
 ```
+
+## Continuous Integration
+
+Every push to `main` and every pull request runs `.github/workflows/ci.yml`,
+which gates merges on three parallel jobs:
+
+- **Backend tests** — builds frontend assets (for the Vite manifest), then runs
+  Pest (`php artisan test`).
+- **PHP code quality** — Pint style check (`vendor/bin/pint --test`) and a
+  Composer security audit.
+- **Frontend** — ESLint, Prettier format check, TypeScript type check, Vitest,
+  a production build, and an npm audit of production dependencies.
+
+Run the same checks locally:
+
+```bash
+composer test:lint   # Pint (style, check-only)
+composer test:refactor  # Rector (dry run; not yet a CI gate)
+npm run lint:check   # ESLint (check-only)
+npm run format:check # Prettier
+npm run types        # tsc --noEmit
+```
+
+Dependency updates are proposed weekly by Dependabot (`.github/dependabot.yml`)
+for Composer, npm, and GitHub Actions.
 
 ## License
 
