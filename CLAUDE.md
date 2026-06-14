@@ -138,6 +138,11 @@ to satisfy a generator's default location.
   documents (setup, commands, env vars, architecture, dependencies, structure),
   prompt the user to update it and name the stale section. Never silently edit
   the README; never let it drift.
+- **Grow the Overview and Screenshots as features ship.** The README `Overview`
+  and `Screenshots` sections start as TODO placeholders. When a user-facing
+  feature lands, prompt the user to extend the Overview to describe it and to add
+  a screenshot/demo of it. Remove the TODO marker once the section has real
+  content.
 
 ## Linear (Issue Tracking)
 

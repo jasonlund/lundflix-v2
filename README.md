@@ -1,16 +1,22 @@
 # lundflix
 
-> One-line tagline — what this app does.
+> Plex library management for friends & family
 
-<!-- badges: CI · PHP 8.4 · Laravel 13 · License -->
+![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)
+![Laravel 13](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Inertia v3](https://img.shields.io/badge/Inertia-v3-9553E9?logo=inertia&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Tailwind v4](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow)
 
 ## Overview
 
-<!-- 2–3 sentences: the problem, and what you built. -->
+<!-- TODO: write the overview — the problem and what lundflix does. Expand as features ship. -->
 
 ## Screenshots
 
-<!-- demo link / screenshots -->
+<!-- TODO: add screenshots / demo link as features ship. -->
 
 ## Tech Stack
 
@@ -107,4 +113,4 @@ npm test           # frontend (Vitest)
 
 ## License
 
-<!-- license -->
+Released under the [MIT License](LICENSE).
