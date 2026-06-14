@@ -115,14 +115,15 @@ npm test           # frontend (Vitest)
 ## Continuous Integration
 
 Every push to `main` and every pull request runs `.github/workflows/ci.yml`,
-which gates merges on three parallel jobs:
+which gates merges on four parallel jobs:
 
 - **Backend tests** — builds frontend assets (for the Vite manifest), then runs
   Pest (`php artisan test`).
 - **PHP code quality** — Pint style check (`vendor/bin/pint --test`) and a
   Composer security audit.
-- **Frontend** — ESLint, Prettier format check, TypeScript type check, Vitest,
-  a production build, and an npm audit of production dependencies.
+- **Frontend code quality** — ESLint, Prettier format check, TypeScript type
+  check, and an npm audit of production dependencies.
+- **Frontend tests** — Vitest and a production build.
 
 Run the same checks locally:
 

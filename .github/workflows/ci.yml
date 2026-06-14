@@ -71,8 +71,8 @@ jobs:
       - name: Composer security audit
         run: composer audit --locked
 
-  frontend:
-    name: Frontend (lint, format, types, tests, build)
+  frontend-quality:
+    name: Frontend code quality (ESLint, Prettier, types, audit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -95,11 +95,26 @@ jobs:
       - name: TypeScript (type check)
         run: npm run types
 
+      - name: npm security audit (production deps)
+        run: npm audit --omit=dev
+
+  frontend-tests:
+    name: Frontend tests (Vitest, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
       - name: Vitest
         run: npm test
 
       - name: Build assets
         run: npm run build
-
-      - name: npm security audit (production deps)
-        run: npm audit --omit=dev
