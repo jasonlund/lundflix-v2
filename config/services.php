@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'imdb' => [
+        'base_url' => 'https://datasets.imdbws.com',
+    ],
+
 ];

@@ -63,6 +63,19 @@ Single-purpose actions live in `App\Domains\{Domain}\Actions`.
 - Example: Fortify auth/profile actions live in `App\Domains\Identity\Actions`,
   wired in `App\Providers\FortifyServiceProvider` (app root, infra).
 
+### Exceptions
+
+Always use **explicitly named exception classes** — one class per distinct
+failure, named for the failure it represents. Never funnel multiple unrelated
+failures through a single catch-all exception (with static factory methods or a
+type/code discriminator) — split it into named classes so callers can `catch`
+each case by type.
+
+- Name for the condition, PascalCase, in `App\Domains\{Domain}\Exceptions` —
+  e.g. `CorruptImdbDatasetArchive`, `CannotOpenImdbDatasetArchive`.
+- A static named constructor (`::at($path)`) for message construction is fine;
+  one-failure-per-class is the rule, not the factory style.
+
 ### Cross-domain rules
 
 - A domain never imports another domain's `Models` or internals — only its
@@ -104,6 +117,23 @@ Conductor's plan UI before any code is written.
   write a second test. Keep Arrange minimal (factories/props only).
 - **Test behavior through public interfaces, not implementation** — tests must
   survive refactoring. A slice = one coherent behavior plus its obvious variants.
+- **Tests mirror the domain tree.** Backend tests live under
+  `tests/Feature/{Domain}/` (and `tests/Unit/{Domain}/`), mirroring
+  `app/Domains/{Domain}/` — the same way the frontend mirrors domains via
+  `resources/js/modules/{domain}/`.
+- **API / external-HTTP tests use real-data fixtures in the API's native wire
+  format.** Capture a small real response slice, commit it under
+  `tests/Fixtures/{Domain}/{source}/` (domained, sub-keyed by external source) in
+  the exact format + extension the API returns (`.tsv.gz`, `.json`, …) — the
+  fixture is a **byte-exact copy** of the source response, no transform. Load it
+  into `Http::fake()` via `fixtureBytes('Catalog/imdb/title.basics.tsv.gz')`
+  (reads the bytes; Pest's built-in `fixture()` resolves the path). Never
+  fabricate response bodies by hand. `Http::preventStrayRequests()` is on
+  globally for Feature tests (`tests/Pest.php`), so every external call must be
+  faked or the test fails. (DB *state* still uses factories, never fixtures —
+  response-body fixtures are a different thing. Synthetic bodies are allowed only
+  for inputs that can't exist in real data: malformed/corrupt payloads, blank
+  lines, HTTP error responses.)
 - **Backend:** Pest 4 — `php artisan test --compact` (filter `--filter=name`).
   Feature tests are the default (`tests/Feature`); unit tests only for isolated
   logic (`tests/Unit`). Use factories + `RefreshDatabase`; assert Inertia props
@@ -244,7 +274,7 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - Always use curly braces for control structures, even for single-line bodies.
 - Use PHP 8 constructor property promotion: `public function __construct(public GitHub $github) { }`. Do not leave empty zero-parameter `__construct()` methods unless the constructor is private.
 - Use explicit return type declarations and type hints for all method parameters: `function isAccessible(User $user, ?string $path = null): bool`
-- Use TitleCase for Enum keys: `FavoritePerson`, `BestLake`, `Monthly`.
+- Follow existing application Enum naming conventions.
 - Prefer PHPDoc blocks over inline comments. Only add inline comments for exceptionally complex logic.
 - Use array shape type definitions in PHPDoc blocks.
 
@@ -253,6 +283,13 @@ This application is a Laravel application and its main Laravel ecosystems packag
 # Deployment
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
+
+=== tests rules ===
+
+# Test Enforcement
+
+- Every change must be programmatically tested. Write a new test or update an existing test, then run the affected tests to make sure they pass.
+- Run the minimum number of tests needed to ensure code quality and speed. Use `php artisan test --compact` with a specific filename or filter.
 
 === inertia-laravel/core rules ===
 
