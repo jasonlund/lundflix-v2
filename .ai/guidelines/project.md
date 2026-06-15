@@ -149,6 +149,15 @@ name, e.g. `php artisan make:model Domains/Catalog/Models/Product` →
 generate then move the file and fix its namespace. Never break the DDD layout
 to satisfy a generator's default location.
 
+## Configuration
+
+- **Base URLs for third-party data sources are service constants, not env or
+  config.** A public, fixed endpoint (e.g. the IMDb datasets host
+  `https://datasets.imdbws.com`) is not a secret and does not vary by
+  environment — commit it as a `private const` on the service that calls it, so
+  the value sits next to the code that uses it. Reserve `config`/`env` for
+  secrets, credentials, and values that genuinely differ per environment.
+
 ## Documentation
 
 - **Keep the README in sync.** When a change touches anything `README.md`
