@@ -27,6 +27,8 @@ description: >-
   Hit routes, assert responses, DB state, and Inertia props.
 - `tests/Unit/` — pure units (a service, a value object) with no framework boot.
   Use only when there's genuine isolated logic.
+- **Mirror the domain tree:** `tests/Feature/{Domain}/` and `tests/Unit/{Domain}/`
+  map to `app/Domains/{Domain}/` (e.g. `tests/Feature/Catalog/`).
 
 ## Patterns
 
@@ -37,6 +39,32 @@ description: >-
   `->assertOk()`, `->assertRedirect()`, `->assertForbidden()`.
 - Test **behavior, not implementation**: assert response/DB/side-effects the caller
   observes, not internal method calls.
+
+## External HTTP / API fixtures
+
+When a test fakes an external API, the faked response body must be a **byte-exact
+slice of a real response** in the API's native wire format — never a hand-fabricated
+shape (fabricated fixtures drift from what the API actually emits and still pass).
+
+- Commit the slice under `tests/Fixtures/{Domain}/{source}/` in the exact format +
+  extension the API returns (`.tsv.gz`, `.json`, …). Domained, sub-keyed by source.
+  Curate a handful of real records covering the cases under test; document them in a
+  comment at the top of the test file (compressed/opaque fixtures don't diff).
+- Load bytes with the global `fixtureBytes($path)` helper (in `tests/Pest.php`),
+  which wraps Pest's built-in `fixture()` (the latter returns the resolved path under
+  `tests/Fixtures/` and asserts existence):
+
+  ```php
+  Http::fake(['*datasets.imdbws.com*' => Http::response(
+      fixtureBytes('Catalog/imdb/title.basics.tsv.gz')
+  )]);
+  ```
+- `Http::preventStrayRequests()` runs in a global `beforeEach` for Feature tests, so
+  any un-faked external request fails the test. Fake every external call.
+- Synthetic bodies are allowed **only** for inputs that can't exist in real data:
+  malformed/corrupt payloads, blank lines, HTTP error statuses.
+- NB: the "never raw inserts or fixtures" rule below is about **DB state** (use
+  factories) — it does not apply to these external-response fixtures.
 
 ## Inertia assertions
 
