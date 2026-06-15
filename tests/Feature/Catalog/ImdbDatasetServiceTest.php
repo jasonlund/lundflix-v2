@@ -222,3 +222,27 @@ it('throws an imdb dataset exception when the body is not valid gzip', function 
 
     expect($act)->toThrow(CorruptImdbDatasetArchive::class);
 });
+
+it('removes the temp file when the download fails', function () {
+    $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');
+    Http::fake(['*datasets.imdbws.com*' => Http::response('', 500)]);
+    $before = $tempFiles();
+
+    try {
+        app(ImdbDatasetService::class)->rows(ImdbDataset::TitleBasics)->all();
+    } catch (RequestException) {
+        // the leak, not the throw, is under test
+    }
+
+    expect($tempFiles())->toBe($before);
+});
+
+it('leaves no temp file when the collection is never iterated', function () {
+    $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
+    $before = $tempFiles();
+
+    $rows = app(ImdbDatasetService::class)->rows(ImdbDataset::TitleBasics);
+
+    expect($tempFiles())->toBe($before);
+});

@@ -12,9 +12,11 @@ final class ImdbDatasetService
 {
     public function rows(ImdbDataset $dataset): LazyCollection
     {
-        $path = $this->download($dataset);
+        return LazyCollection::make(function () use ($dataset) {
+            $path = $this->download($dataset);
 
-        return LazyCollection::make(fn () => yield from $this->parse($dataset, $path));
+            yield from $this->parse($dataset, $path);
+        });
     }
 
     /**
@@ -83,11 +85,17 @@ final class ImdbDatasetService
     {
         $path = tempnam(sys_get_temp_dir(), 'imdb_');
 
-        Http::sink($path)
-            ->timeout(600)
-            ->retry(3, 1000)
-            ->get(config('services.imdb.base_url').'/'.$dataset->filename())
-            ->throw();
+        try {
+            Http::sink($path)
+                ->timeout(600)
+                ->retry(3, 1000)
+                ->get(config('services.imdb.base_url').'/'.$dataset->filename())
+                ->throw();
+        } catch (\Throwable $e) {
+            @unlink($path);
+
+            throw $e;
+        }
 
         return $path;
     }
