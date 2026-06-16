@@ -170,6 +170,12 @@ to satisfy a generator's default location.
   environment — commit it as a `private const` on the service that calls it, so
   the value sits next to the code that uses it. Reserve `config`/`env` for
   secrets, credentials, and values that genuinely differ per environment.
+- **Only *required* env vars belong in `.env.example`.** An env var the app
+  needs to run (a secret/credential with no safe default — e.g. an API token)
+  goes in `.env.example`. An *optional* tunable that reads through `env()` with a
+  sensible default in `config/` (e.g. a concurrency cap or retry delay) stays out
+  of `.env.example` — its default IS the documentation. Don't pad the example
+  file with every knob; a fresh clone should see only the keys it must fill in.
 
 ## Documentation
 

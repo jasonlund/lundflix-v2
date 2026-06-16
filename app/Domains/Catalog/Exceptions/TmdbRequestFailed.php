@@ -11,8 +11,11 @@ class TmdbRequestFailed extends Exception
         return new self("TMDB request to [{$url}] failed after retries.");
     }
 
-    public static function authFailed(): self
+    /**
+     * @param  array<int, int|string>  $ids
+     */
+    public static function forIds(array $ids): self
     {
-        return new self('TMDB authentication failed (401). Check services.tmdb.token.');
+        return new self('TMDB batch request failed for ids ['.implode(', ', $ids).'] after retries.');
     }
 }

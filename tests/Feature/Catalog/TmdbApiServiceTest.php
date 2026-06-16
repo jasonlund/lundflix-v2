@@ -1,7 +1,9 @@
 <?php
 
+use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Services\TmdbApiService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 /*
@@ -113,6 +115,46 @@ it('fires one request per id', function () {
 
 /*
 |--------------------------------------------------------------------------
+| movies(array $ids): a transport failure inside the pool halts loud
+|--------------------------------------------------------------------------
+| When one id's request fails at the connection/transport level and exhausts
+| retries, Http::pool() places a ConnectionException object at that slot
+| (it does not throw). The batch must surface that as a domain
+| TmdbRequestFailed — not a raw TypeError from passing the exception to a
+| Response-typed decoder — and must evaluate every id before throwing, so a
+| multi-id failure reports ALL failed ids. retry_delay=0 exhausts retries
+| instantly (shouldRetry() retries a non-RequestException), and the fake
+| throws a ConnectionException for the failing id's url.
+*/
+
+it('throws TmdbRequestFailed when one id in the batch fails at the transport level', function () {
+    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    Http::fake([
+        '*/movie/603*' => fn () => throw new ConnectionException('Connection timed out'),
+        '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
+    ]);
+
+    $call = fn () => app(TmdbApiService::class)->movies([603, 604]);
+
+    expect($call)->toThrow(TmdbRequestFailed::class);
+});
+
+it('reports every failed id when multiple ids in the batch fail at the transport level', function () {
+    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    Http::fake([
+        '*/movie/603*' => fn () => throw new ConnectionException('Connection timed out'),
+        '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
+        '*/movie/605*' => fn () => throw new ConnectionException('Connection timed out'),
+    ]);
+
+    $call = fn () => app(TmdbApiService::class)->movies([603, 604, 605]);
+
+    expect($call)->toThrow(TmdbRequestFailed::class, '603')
+        ->and($call)->toThrow(TmdbRequestFailed::class, '605');
+});
+
+/*
+|--------------------------------------------------------------------------
 | Fixture: tests/Fixtures/Catalog/tmdb/tv.json
 |--------------------------------------------------------------------------
 | Byte-exact live capture of the TMDB TV detail endpoint for id 1399
@@ -177,11 +219,11 @@ it('throws TmdbRequestFailed when a 500 persists past retries', function () {
     expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
 });
 
-it('throws TmdbRequestFailed on a 401 response', function () {
+it('throws TmdbAuthenticationFailed on a 401 response', function () {
     config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
     Http::fake(['*api.themoviedb.org*' => Http::response('', 401)]);
 
-    expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
+    expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbAuthenticationFailed::class);
 });
 
 it('retries a 429 honoring Retry-After and returns the payload from the retry', function () {

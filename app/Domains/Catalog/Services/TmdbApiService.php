@@ -2,6 +2,7 @@
 
 namespace App\Domains\Catalog\Services;
 
+use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
@@ -116,11 +117,16 @@ final class TmdbApiService
     }
 
     /**
-     * Batch-fetch one request per id via a single connection pool, then re-key
-     * the responses by input id and decode each. Each id is dispatched through
-     * {@see configure} (shared auth/retry) and named after its id, so the loop
-     * can pair every input id with its response in input order; a single id's
-     * 404 decodes to null without sinking the others.
+     * Batch-fetch one request per id, fanning out one {@see Http::pool} per
+     * chunk from {@see chunkIds} so at most `concurrency` requests are in flight
+     * at once; responses accumulate across chunks (each named after its id via
+     * {@see configure}'s shared auth/retry), then decode in input order. A
+     * single id's 404 decodes to null without sinking its siblings.
+     *
+     * Transport failures don't short-circuit the batch: a pool entry that comes
+     * back as a {@see Throwable} instead of a {@see Response} is collected, the
+     * rest are still decoded, and once the loop completes any failed ids are
+     * surfaced together as a single aggregate {@see TmdbRequestFailed::forIds}.
      *
      * @template TKey of int|string
      *
@@ -130,18 +136,53 @@ final class TmdbApiService
      */
     private function pooled(array $ids, callable $build): array
     {
-        $responses = Http::pool(fn (Pool $pool) => array_map(
-            fn (int|string $id) => $build($this->configure($pool->as((string) $id)), $id),
-            $ids,
-        ));
+        $responses = [];
+
+        foreach ($this->chunkIds($ids) as $chunk) {
+            $responses += Http::pool(fn (Pool $pool) => array_map(
+                fn (int|string $id) => $build($this->configure($pool->as((string) $id)), $id),
+                $chunk,
+            ));
+        }
 
         $results = [];
+        $failedIds = [];
 
         foreach ($ids as $id) {
-            $results[$id] = $this->decode($responses[(string) $id]);
+            $response = $responses[(string) $id];
+
+            if (! $response instanceof Response) {
+                $failedIds[] = $id;
+
+                continue;
+            }
+
+            $results[$id] = $this->decode($response);
+        }
+
+        if ($failedIds !== []) {
+            throw TmdbRequestFailed::forIds($failedIds);
         }
 
         return $results;
+    }
+
+    /**
+     * Split the input ids into ordered chunks sized by the configured
+     * concurrency, so each {@see pooled} fan-out dispatches at most one
+     * chunk's worth of concurrent requests. Order is preserved and the final
+     * chunk holds the remainder.
+     *
+     * @template TKey of int|string
+     *
+     * @param  array<int, TKey>  $ids
+     * @return array<int, array<int, TKey>>
+     */
+    public function chunkIds(array $ids): array
+    {
+        $size = (int) config('services.tmdb.concurrency');
+
+        return array_chunk($ids, max(1, $size));
     }
 
     /**
@@ -215,7 +256,7 @@ final class TmdbApiService
         }
 
         if ($response->status() === 401) {
-            throw TmdbRequestFailed::authFailed();
+            throw TmdbAuthenticationFailed::invalidToken();
         }
 
         if ($response->failed()) {
@@ -227,7 +268,7 @@ final class TmdbApiService
 
     private function request(): PendingRequest
     {
-        return $this->configure(Http::baseUrl(self::BASE_URL));
+        return $this->configure(Http::getFacadeRoot()->createPendingRequest());
     }
 
     /**
