@@ -168,6 +168,11 @@ to satisfy a generator's default location.
   documents (setup, commands, env vars, architecture, dependencies, structure),
   prompt the user to update it and name the stale section. Never silently edit
   the README; never let it drift.
+- **A new required env var → update the README install steps.** When work adds an
+  env var the app needs to run (e.g. a third-party API key/token), add it to the
+  README "Required API keys" table in *Getting Started* so a fresh install has
+  every key defined — var name, what it's required for, and where to obtain it.
+  Don't leave a key documented only in `.env.example`.
 - **Grow the Overview and Screenshots as features ship.** The README `Overview`
   and `Screenshots` sections start as TODO placeholders. When a user-facing
   feature lands, prompt the user to extend the Overview to describe it and to add
