@@ -5,6 +5,7 @@ namespace App\Domains\Catalog\Services;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -29,6 +30,29 @@ final class TmdbApiService
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    public function findByImdbId(string $imdbId): ?array
+    {
+        $response = $this->request()->get("/find/{$imdbId}", [
+            'external_source' => 'imdb_id',
+        ]);
+
+        return $this->decode($response);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function configuration(): array
+    {
+        $response = $this->request()->get('/configuration');
+
+        return $this->decode($response)
+            ?? throw TmdbRequestFailed::for((string) $response->effectiveUri());
+    }
+
+    /**
      * Fetch a TMDB detail resource by id, returning the raw decoded body or
      * null when the resource does not exist.
      *
@@ -41,6 +65,17 @@ final class TmdbApiService
             'include_image_language' => 'en,null',
         ]);
 
+        return $this->decode($response);
+    }
+
+    /**
+     * Decode a TMDB response: return the raw body, null on 404, or throw on a
+     * failed (401 auth / other) response.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function decode(Response $response): ?array
+    {
         if ($response->notFound()) {
             return null;
         }

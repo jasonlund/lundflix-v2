@@ -134,3 +134,73 @@ it('retries a 429 honoring Retry-After and returns the payload from the retry', 
 
     expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true));
 });
+
+/*
+|--------------------------------------------------------------------------
+| Fixture: tests/Fixtures/Catalog/tmdb/find_by_imdb.json
+|--------------------------------------------------------------------------
+| Byte-exact live capture of the TMDB /find endpoint for the IMDb id
+| tt0133093 (The Matrix), with external_source=imdb_id, in the API's native
+| JSON wire format. movie_results[0].id=603; all *_results keys present.
+| Loaded into Http::fake() as the response body; never hand-fabricated.
+*/
+
+it('sends a Bearer-authed GET to /find/{imdbId} with external_source=imdb_id', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/find_by_imdb.json'))]);
+
+    app(TmdbApiService::class)->findByImdbId('tt0133093');
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/find/tt0133093')
+        && str_contains(urldecode($request->url()), 'external_source=imdb_id')
+        && $request->hasHeader('Authorization', 'Bearer test-token'));
+});
+
+it('returns the whole /find payload unchanged', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/find_by_imdb.json'))]);
+
+    $result = app(TmdbApiService::class)->findByImdbId('tt0133093');
+
+    expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/find_by_imdb.json'), true))
+        ->and($result)->toHaveKeys(['movie_results', 'tv_results']);
+});
+
+it('returns null on 404 for findByImdbId', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake(['*api.themoviedb.org*' => Http::response('', 404)]);
+
+    $result = app(TmdbApiService::class)->findByImdbId('tt9999999');
+
+    expect($result)->toBeNull();
+});
+
+/*
+|--------------------------------------------------------------------------
+| Fixture: tests/Fixtures/Catalog/tmdb/configuration.json
+|--------------------------------------------------------------------------
+| Byte-exact live capture of the TMDB /configuration endpoint, in the API's
+| native JSON wire format. Contains the images base urls and size lists.
+| Loaded into Http::fake() as the response body; never hand-fabricated.
+*/
+
+it('sends a Bearer-authed GET to /configuration', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/configuration.json'))]);
+
+    app(TmdbApiService::class)->configuration();
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/configuration')
+        && $request->hasHeader('Authorization', 'Bearer test-token'));
+});
+
+it('returns the raw configuration payload including images', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/configuration.json'))]);
+
+    $result = app(TmdbApiService::class)->configuration();
+
+    expect($result)->toHaveKey('images')
+        ->and($result['images']['secure_base_url'])->toBe('https://image.tmdb.org/t/p/')
+        ->and($result['images']['poster_sizes'])->not->toBeEmpty();
+});
