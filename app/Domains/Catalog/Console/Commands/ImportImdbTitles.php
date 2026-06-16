@@ -29,6 +29,11 @@ class ImportImdbTitles extends Command
     protected $description = 'Download the IMDb title.basics dataset and upsert movies and shows';
 
     /**
+     * Flush an accumulated title buffer once it reaches this size.
+     */
+    private const BATCH_SIZE = 1000;
+
+    /**
      * Execute the console command.
      */
     public function handle(
@@ -54,12 +59,12 @@ class ImportImdbTitles extends Command
                     $movies[] = $row;
                 }
 
-                if (count($movies) >= 1000) {
+                if (count($movies) >= self::BATCH_SIZE) {
                     $upsertMovies->handle($movies);
                     $movies = [];
                 }
 
-                if (count($shows) >= 1000) {
+                if (count($shows) >= self::BATCH_SIZE) {
                     $upsertShows->handle($shows);
                     $shows = [];
                 }

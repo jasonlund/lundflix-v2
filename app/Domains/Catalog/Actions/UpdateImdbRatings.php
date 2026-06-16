@@ -7,7 +7,7 @@ use App\Domains\Catalog\Models\Show;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Expression;
 
-class UpdateImdbRatings
+final class UpdateImdbRatings
 {
     /**
      * @param  array<string, array{num_votes: int, average_rating: float}>  $ratings

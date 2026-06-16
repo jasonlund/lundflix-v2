@@ -7,6 +7,7 @@ use App\Domains\Catalog\Exceptions\CannotOpenImdbDatasetArchive;
 use App\Domains\Catalog\Exceptions\CorruptImdbDatasetArchive;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
+use Throwable;
 
 final class ImdbDatasetService
 {
@@ -22,7 +23,7 @@ final class ImdbDatasetService
                 ->retry(3, 1000)
                 ->get(self::BASE_URL.'/'.$dataset->filename())
                 ->throw();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             @unlink($path);
 
             throw $e;
