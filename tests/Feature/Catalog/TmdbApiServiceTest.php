@@ -1,5 +1,6 @@
 <?php
 
+use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Services\TmdbApiService;
 use Illuminate\Support\Facades\Http;
 
@@ -95,4 +96,41 @@ it('returns null on 404 for tv', function () {
     $result = app(TmdbApiService::class)->tv(999999);
 
     expect($result)->toBeNull();
+});
+
+it('retries a transient 500 and returns the payload from the retry', function () {
+    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    Http::fake(['*api.themoviedb.org*' => Http::sequence()
+        ->push('', 500)
+        ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
+
+    $result = app(TmdbApiService::class)->movie(603);
+
+    Http::assertSentCount(2);
+    expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true));
+});
+
+it('throws TmdbRequestFailed when a 500 persists past retries', function () {
+    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    Http::fake(['*api.themoviedb.org*' => Http::response('', 500)]);
+
+    expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
+});
+
+it('throws TmdbRequestFailed on a 401 response', function () {
+    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    Http::fake(['*api.themoviedb.org*' => Http::response('', 401)]);
+
+    expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
+});
+
+it('retries a 429 honoring Retry-After and returns the payload from the retry', function () {
+    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    Http::fake(['*api.themoviedb.org*' => Http::sequence()
+        ->push('', 429, ['Retry-After' => '0'])
+        ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
+
+    $result = app(TmdbApiService::class)->movie(603);
+
+    expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true));
 });

@@ -2,8 +2,11 @@
 
 namespace App\Domains\Catalog\Services;
 
+use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 final class TmdbApiService
 {
@@ -42,6 +45,14 @@ final class TmdbApiService
             return null;
         }
 
+        if ($response->status() === 401) {
+            throw TmdbRequestFailed::authFailed();
+        }
+
+        if ($response->failed()) {
+            throw TmdbRequestFailed::for((string) $response->effectiveUri());
+        }
+
         return $response->json();
     }
 
@@ -49,6 +60,22 @@ final class TmdbApiService
     {
         return Http::withToken(config('services.tmdb.token'))
             ->baseUrl(self::BASE_URL)
-            ->acceptJson();
+            ->acceptJson()
+            ->retry(2, config('services.tmdb.retry_delay'), $this->shouldRetry(...), throw: false);
+    }
+
+    /**
+     * Retry connection errors and transient HTTP failures (429, 5xx), but not
+     * a definitive response such as a 404.
+     */
+    private function shouldRetry(Throwable $exception): bool
+    {
+        if (! $exception instanceof RequestException) {
+            return true;
+        }
+
+        $status = $exception->response->status();
+
+        return $status === 429 || $status >= 500;
     }
 }
