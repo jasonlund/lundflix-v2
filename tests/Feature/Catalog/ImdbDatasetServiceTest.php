@@ -122,10 +122,10 @@ it('shapes a kept row with header keys and typed casts', function () {
 
     $row = $service->rows($path, ImdbDataset::TitleBasics)->first();
 
-    expect($row)->toHaveKeys(['tconst', 'primaryTitle', 'isAdult', 'startYear', 'endYear', 'runtimeMinutes', 'genres']);
+    expect($row)->toHaveKeys(['tconst', 'primaryTitle', 'startYear', 'endYear', 'runtimeMinutes', 'genres']);
+    expect($row)->not->toHaveKey('isAdult');
     expect($row['tconst'])->toBe('tt0133093');
     expect($row['primaryTitle'])->toBe('The Matrix');
-    expect($row['isAdult'])->toBe(false);
     expect($row['startYear'])->toBe(1999);
     expect($row['runtimeMinutes'])->toBe(136);
     expect($row['genres'])->toBe(['Action', 'Sci-Fi']);

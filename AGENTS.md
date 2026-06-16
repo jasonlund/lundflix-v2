@@ -76,6 +76,17 @@ each case by type.
 - A static named constructor (`::at($path)`) for message construction is fine;
   one-failure-per-class is the rule, not the factory style.
 
+### Enums
+
+Logic that operates over an enum's **own cases** — validating, parsing, or
+normalizing raw values against the case set — lives as **static methods on the
+enum**, not in a trait, helper, or action. Keep it next to the cases it checks.
+
+- e.g. `Genre::knownValues(array $raw): array` filters raw IMDb strings to
+  recognized backing values, dropping unknown ones.
+- Don't reach for a shared `Concerns/` trait just because two actions need it —
+  a static enum method shares just as well and keeps the knowledge on the type.
+
 ### Cross-domain rules
 
 - A domain never imports another domain's `Models` or internals — only its
@@ -274,7 +285,7 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - Always use curly braces for control structures, even for single-line bodies.
 - Use PHP 8 constructor property promotion: `public function __construct(public GitHub $github) { }`. Do not leave empty zero-parameter `__construct()` methods unless the constructor is private.
 - Use explicit return type declarations and type hints for all method parameters: `function isAccessible(User $user, ?string $path = null): bool`
-- Follow existing application Enum naming conventions.
+- Use TitleCase for Enum keys: `FavoritePerson`, `BestLake`, `Monthly`.
 - Prefer PHPDoc blocks over inline comments. Only add inline comments for exceptionally complex logic.
 - Use array shape type definitions in PHPDoc blocks.
 

@@ -4,6 +4,7 @@ namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Database\Factories\MovieFactory;
 use App\Domains\Catalog\Enums\Genre;
+use App\Domains\Catalog\Enums\TitleType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Laravel\Scout\Searchable;
 
-#[Fillable(['imdb_id', 'title', 'year', 'runtime', 'genres', 'num_votes', 'average_rating'])]
+#[Fillable(['imdb_id', 'title', 'title_type', 'year', 'runtime', 'genres', 'num_votes', 'average_rating'])]
 class Movie extends Model
 {
     /** @use HasFactory<MovieFactory> */
@@ -49,6 +50,7 @@ class Movie extends Model
             'num_votes' => 'integer',
             'average_rating' => 'float',
             'genres' => AsEnumCollection::of(Genre::class),
+            'title_type' => TitleType::class,
         ];
     }
 }

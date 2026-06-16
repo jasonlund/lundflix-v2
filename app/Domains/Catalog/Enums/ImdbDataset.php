@@ -20,7 +20,7 @@ enum ImdbDataset: string
     public function casts(): array
     {
         return match ($this) {
-            self::TitleBasics => ['isAdult' => 'bool', 'startYear' => 'int', 'endYear' => 'int', 'runtimeMinutes' => 'int', 'genres' => 'array'],
+            self::TitleBasics => ['startYear' => 'int', 'endYear' => 'int', 'runtimeMinutes' => 'int', 'genres' => 'array'],
             self::TitleRatings => ['averageRating' => 'float', 'numVotes' => 'int'],
         };
     }

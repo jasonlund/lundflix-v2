@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('imdb_id')->unique();
             $table->string('title');
+            $table->string('title_type');
             $table->unsignedSmallInteger('year')->nullable();
             $table->unsignedInteger('runtime')->nullable();
             $table->json('genres')->nullable();

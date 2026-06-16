@@ -3,6 +3,7 @@
 namespace App\Domains\Catalog\Database\Factories;
 
 use App\Domains\Catalog\Enums\Genre;
+use App\Domains\Catalog\Enums\TitleType;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -25,6 +26,7 @@ class ShowFactory extends Factory
         return [
             'imdb_id' => 'tt'.fake()->unique()->numerify('#######'),
             'title' => fake()->sentence(3),
+            'title_type' => TitleType::TvSeries,
             'start_year' => $startYear,
             'end_year' => fake()->optional()->numberBetween($startYear, 2025),
             'runtime' => fake()->numberBetween(20, 90),

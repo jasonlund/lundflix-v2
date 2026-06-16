@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Enums;
 
+use Illuminate\Support\Collection;
+
 enum Genre: string
 {
     case Action = 'Action';
@@ -34,4 +36,20 @@ enum Genre: string
     case Thriller = 'Thriller';
     case War = 'War';
     case Western = 'Western';
+
+    /**
+     * Filter raw IMDb genre strings to known backing values, dropping unrecognized ones.
+     *
+     * @param  array<int, string>  $genres
+     * @return list<string>
+     */
+    public static function knownValues(array $genres): array
+    {
+        return Collection::make($genres)
+            ->map(fn (string $genre): ?self => self::tryFrom($genre))
+            ->filter()
+            ->map(fn (self $genre): string => $genre->value)
+            ->values()
+            ->all();
+    }
 }

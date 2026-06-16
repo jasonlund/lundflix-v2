@@ -70,6 +70,8 @@ final class ImdbDatasetService
                         continue;
                     }
 
+                    unset($raw['isAdult']);
+
                     yield $this->cast($raw, $dataset->casts());
                 }
             } finally {

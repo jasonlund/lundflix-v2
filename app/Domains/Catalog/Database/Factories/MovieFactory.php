@@ -3,6 +3,7 @@
 namespace App\Domains\Catalog\Database\Factories;
 
 use App\Domains\Catalog\Enums\Genre;
+use App\Domains\Catalog\Enums\TitleType;
 use App\Domains\Catalog\Models\Movie;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -23,6 +24,7 @@ class MovieFactory extends Factory
         return [
             'imdb_id' => 'tt'.fake()->unique()->numerify('#######'),
             'title' => fake()->sentence(3),
+            'title_type' => TitleType::Movie,
             'year' => fake()->numberBetween(1950, 2025),
             'runtime' => fake()->numberBetween(60, 240),
             'genres' => [Genre::Action, Genre::Drama],
