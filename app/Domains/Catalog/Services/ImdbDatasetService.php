@@ -10,6 +10,8 @@ use Illuminate\Support\LazyCollection;
 
 final class ImdbDatasetService
 {
+    private const BASE_URL = 'https://datasets.imdbws.com';
+
     public function rows(ImdbDataset $dataset): LazyCollection
     {
         return LazyCollection::make(function () use ($dataset) {
@@ -89,7 +91,7 @@ final class ImdbDatasetService
             Http::sink($path)
                 ->timeout(600)
                 ->retry(3, 1000)
-                ->get(config('services.imdb.base_url').'/'.$dataset->filename())
+                ->get(self::BASE_URL.'/'.$dataset->filename())
                 ->throw();
         } catch (\Throwable $e) {
             @unlink($path);
