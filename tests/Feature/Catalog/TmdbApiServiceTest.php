@@ -3,8 +3,10 @@
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Services\TmdbApiService;
+use Carbon\CarbonInterval;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 
 /*
 |--------------------------------------------------------------------------
@@ -51,6 +53,15 @@ it('returns null on 404', function () {
     $result = app(TmdbApiService::class)->movie(999999);
 
     expect($result)->toBeNull();
+});
+
+it('throws TmdbRequestFailed on a successful 200 whose body decodes to null', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake(['*api.themoviedb.org*' => Http::response('', 200)]);
+
+    $call = fn () => app(TmdbApiService::class)->movie(603);
+
+    expect($call)->toThrow(TmdbRequestFailed::class);
 });
 
 /*
@@ -113,6 +124,19 @@ it('fires one request per id', function () {
     Http::assertSentCount(2);
 });
 
+it('de-duplicates repeated input ids, firing one request per unique id and keying the result in first-seen order', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake([
+        '*/movie/603*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
+        '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
+    ]);
+
+    $result = app(TmdbApiService::class)->movies([603, 603, 604]);
+
+    Http::assertSentCount(2);
+    expect(array_keys($result))->toBe([603, 604]);
+});
+
 /*
 |--------------------------------------------------------------------------
 | movies(array $ids): a transport failure inside the pool halts loud
@@ -122,13 +146,15 @@ it('fires one request per id', function () {
 | (it does not throw). The batch must surface that as a domain
 | TmdbRequestFailed — not a raw TypeError from passing the exception to a
 | Response-typed decoder — and must evaluate every id before throwing, so a
-| multi-id failure reports ALL failed ids. retry_delay=0 exhausts retries
-| instantly (shouldRetry() retries a non-RequestException), and the fake
-| throws a ConnectionException for the failing id's url.
+| multi-id failure reports ALL failed ids. shouldRetry() retries a
+| non-RequestException, so the connection failure exhausts retries (Sleep is
+| faked so the base delay doesn't sleep), and the fake throws a
+| ConnectionException for the failing id's url.
 */
 
 it('throws TmdbRequestFailed when one id in the batch fails at the transport level', function () {
-    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    config(['services.tmdb.token' => 'test-token']);
+    Sleep::fake();
     Http::fake([
         '*/movie/603*' => fn () => throw new ConnectionException('Connection timed out'),
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
@@ -140,7 +166,8 @@ it('throws TmdbRequestFailed when one id in the batch fails at the transport lev
 });
 
 it('reports every failed id when multiple ids in the batch fail at the transport level', function () {
-    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    config(['services.tmdb.token' => 'test-token']);
+    Sleep::fake();
     Http::fake([
         '*/movie/603*' => fn () => throw new ConnectionException('Connection timed out'),
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
@@ -151,6 +178,69 @@ it('reports every failed id when multiple ids in the batch fail at the transport
 
     expect($call)->toThrow(TmdbRequestFailed::class, '603')
         ->and($call)->toThrow(TmdbRequestFailed::class, '605');
+});
+
+it('reports every failed id when multiple ids in the batch keep returning a 500 past retries', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Sleep::fake();
+    Http::fake([
+        '*/movie/603*' => Http::response('', 500),
+        '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
+        '*/movie/605*' => Http::response('', 500),
+    ]);
+
+    $call = fn () => app(TmdbApiService::class)->movies([603, 604, 605]);
+
+    expect($call)->toThrow(TmdbRequestFailed::class, '603')
+        ->and($call)->toThrow(TmdbRequestFailed::class, '605');
+});
+
+/*
+|--------------------------------------------------------------------------
+| movies(array $ids): chunked pooling sized by services.tmdb.concurrency
+|--------------------------------------------------------------------------
+| The batch fans out at most `concurrency` concurrent requests at a time by
+| splitting the input ids into ordered chunks of that size, dispatching one
+| Http::pool() per chunk. This is asserted through the public movies() method
+| (not the private chunkIds()): with concurrency=3 and 7 ids, exactly 7
+| requests fire, every id is requested, and input order is preserved across
+| chunks with the final partial chunk holding the remainder. All ids reuse the
+| byte-exact movie.json fixture body, matched per-id by url.
+*/
+
+it('fires one request per id when the batch spans multiple concurrency-sized chunks', function () {
+    config(['services.tmdb.token' => 'test-token', 'services.tmdb.concurrency' => 3]);
+    Http::fake(['*/movie/*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
+
+    app(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
+
+    Http::assertSentCount(7);
+});
+
+it('requests every id in input order across the concurrency-sized chunks', function () {
+    config(['services.tmdb.token' => 'test-token', 'services.tmdb.concurrency' => 3]);
+    Http::fake(['*/movie/*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
+
+    app(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
+
+    Http::assertSentInOrder([
+        fn ($request) => str_contains($request->url(), '/movie/1?'),
+        fn ($request) => str_contains($request->url(), '/movie/2?'),
+        fn ($request) => str_contains($request->url(), '/movie/3?'),
+        fn ($request) => str_contains($request->url(), '/movie/4?'),
+        fn ($request) => str_contains($request->url(), '/movie/5?'),
+        fn ($request) => str_contains($request->url(), '/movie/6?'),
+        fn ($request) => str_contains($request->url(), '/movie/7?'),
+    ]);
+});
+
+it('keys the result by every input id when the batch spills into a partial final chunk', function () {
+    config(['services.tmdb.token' => 'test-token', 'services.tmdb.concurrency' => 3]);
+    Http::fake(['*/movie/*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
+
+    $result = app(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
+
+    expect(array_keys($result))->toBe([1, 2, 3, 4, 5, 6, 7]);
 });
 
 /*
@@ -201,7 +291,8 @@ it('returns null on 404 for tv', function () {
 });
 
 it('retries a transient 500 and returns the payload from the retry', function () {
-    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    config(['services.tmdb.token' => 'test-token']);
+    Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push('', 500)
         ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
@@ -213,21 +304,31 @@ it('retries a transient 500 and returns the payload from the retry', function ()
 });
 
 it('throws TmdbRequestFailed when a 500 persists past retries', function () {
-    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    config(['services.tmdb.token' => 'test-token']);
+    Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => Http::response('', 500)]);
 
     expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
 });
 
+it('throws TmdbRequestFailed, not a raw ConnectionException, when a single request fails at the transport level past retries', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Sleep::fake();
+    Http::fake(['*api.themoviedb.org*' => fn () => throw new ConnectionException('Connection timed out')]);
+
+    expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
+});
+
 it('throws TmdbAuthenticationFailed on a 401 response', function () {
-    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response('', 401)]);
 
     expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbAuthenticationFailed::class);
 });
 
 it('retries a 429 honoring Retry-After and returns the payload from the retry', function () {
-    config(['services.tmdb.token' => 'test-token', 'services.tmdb.retry_delay' => 0]);
+    config(['services.tmdb.token' => 'test-token']);
+    Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push('', 429, ['Retry-After' => '0'])
         ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
@@ -237,14 +338,27 @@ it('retries a 429 honoring Retry-After and returns the payload from the retry', 
     expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true));
 });
 
+it('waits the Retry-After header duration, not the base delay, before retrying a 429', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Sleep::fake();
+    Http::fake(['*api.themoviedb.org*' => Http::sequence()
+        ->push('', 429, ['Retry-After' => '60'])
+        ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
+
+    app(TmdbApiService::class)->movie(603);
+
+    Sleep::assertSlept(fn (CarbonInterval $duration) => $duration->totalMilliseconds === 60_000.0, 1);
+});
+
 /*
 |--------------------------------------------------------------------------
 | Fixture: tests/Fixtures/Catalog/tmdb/find_by_imdb.json
 |--------------------------------------------------------------------------
-| Byte-exact live capture of the TMDB /find endpoint for the IMDb id
-| tt0133093 (The Matrix), with external_source=imdb_id, in the API's native
-| JSON wire format. movie_results[0].id=603; all *_results keys present.
-| Loaded into Http::fake() as the response body; never hand-fabricated.
+| Hand-authored fixture approximating the TMDB /find endpoint response shape
+| for the IMDb id tt0133093 (The Matrix), with external_source=imdb_id, in the
+| API's JSON wire format. movie_results[0].id=603; all *_results keys present.
+| Representative fixture, not a verbatim live capture. Loaded into Http::fake()
+| as the response body.
 */
 
 it('sends a Bearer-authed GET to /find/{imdbId} with external_source=imdb_id', function () {
@@ -321,7 +435,7 @@ it('yields null for a 404 tv id while others still resolve', function () {
 | Fires one /find/{imdbId}?external_source=imdb_id request per id via
 | Http::pool() and returns [imdbId => array|null] keyed by the input IMDb id.
 | Http::fake() matches by URL (not pool key), so each id gets a distinct url
-| pattern in the fake map, all reusing the byte-exact find_by_imdb.json
+| pattern in the fake map, all reusing the representative find_by_imdb.json
 | (tt0133093) fixture body. A per-id 404 yields null for that id without
 | sinking the others.
 */
@@ -388,12 +502,13 @@ it('returns the raw configuration payload including images', function () {
 |--------------------------------------------------------------------------
 | Fixtures: tests/Fixtures/Catalog/tmdb/movie_changes_page{1,2}.json
 |--------------------------------------------------------------------------
-| Byte-exact live captures of the TMDB /movie/changes endpoint, in the API's
-| native JSON wire format, for the two pages of a paged change feed. page1
-| (page:1, total_pages:2) carries results ids 345, 1648226, 1713517; page2
-| (page:2, total_pages:2) carries 1713517, 38702, 1712865 — id 1713517 spans
-| both pages so the flattened set must dedupe to exactly 5 ids. Loaded into
-| Http::fake() as a 2-response sequence to drive pagination; never fabricated.
+| Hand-authored fixtures approximating the TMDB /movie/changes endpoint
+| response shape, in the API's JSON wire format, for the two pages of a paged
+| change feed. page1 (page:1, total_pages:2) carries results ids 345, 1648226,
+| 1713517; page2 (page:2, total_pages:2) carries 1713517, 38702, 1712865 — id
+| 1713517 spans both pages so the flattened set must dedupe to exactly 5 ids.
+| Representative fixtures, not verbatim live captures. Loaded into Http::fake()
+| as a 2-response sequence to drive pagination.
 */
 
 it('sends a Bearer-authed GET to /movie/changes with start_date/end_date/page params', function () {
@@ -447,16 +562,36 @@ it('dedupes an id repeated across pages', function () {
         ->and($result)->toHaveCount(5);
 });
 
+it('throws TmdbRequestFailed when /movie/changes returns a 404', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake(['*api.themoviedb.org*' => Http::response('', 404)]);
+
+    $call = fn () => app(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+
+    expect($call)->toThrow(TmdbRequestFailed::class);
+});
+
+it('throws TmdbRequestFailed, not a raw ConnectionException, when /movie/changes fails at the transport level past retries', function () {
+    config(['services.tmdb.token' => 'test-token']);
+    Sleep::fake();
+    Http::fake(['*api.themoviedb.org*' => fn () => throw new ConnectionException('Connection timed out')]);
+
+    $call = fn () => app(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+
+    expect($call)->toThrow(TmdbRequestFailed::class);
+});
+
 /*
 |--------------------------------------------------------------------------
 | Fixtures: tests/Fixtures/Catalog/tmdb/tv_changes_page{1,2}.json
 |--------------------------------------------------------------------------
-| Byte-exact live captures of the TMDB /tv/changes endpoint, in the API's
-| native JSON wire format, for the two pages of a paged change feed. page1
-| (page:1, total_pages:2) carries results ids 23310, 325296; page2
+| Hand-authored fixtures approximating the TMDB /tv/changes endpoint response
+| shape, in the API's JSON wire format, for the two pages of a paged change
+| feed. page1 (page:1, total_pages:2) carries results ids 23310, 325296; page2
 | (page:2, total_pages:2) carries 325296, 325358, 314402 — id 325296 spans
-| both pages so the flattened set must dedupe to exactly 4 ids. Loaded into
-| Http::fake() as a 2-response sequence to drive pagination; never fabricated.
+| both pages so the flattened set must dedupe to exactly 4 ids. Representative
+| fixtures, not verbatim live captures. Loaded into Http::fake() as a
+| 2-response sequence to drive pagination.
 */
 
 it('GETs /tv/changes with date/page params and follows total_pages', function () {

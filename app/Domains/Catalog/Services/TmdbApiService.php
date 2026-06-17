@@ -4,6 +4,7 @@ namespace App\Domains\Catalog\Services;
 
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\RequestException;
@@ -68,7 +69,7 @@ final class TmdbApiService
      */
     public function findByImdbId(string $imdbId): ?array
     {
-        $response = $this->request()->get("/find/{$imdbId}", [
+        $response = $this->get("/find/{$imdbId}", [
             'external_source' => 'imdb_id',
         ]);
 
@@ -110,7 +111,7 @@ final class TmdbApiService
      */
     public function configuration(): array
     {
-        $response = $this->request()->get('/configuration');
+        $response = $this->get('/configuration');
 
         return $this->decode($response)
             ?? throw TmdbRequestFailed::for((string) $response->effectiveUri());
@@ -123,10 +124,14 @@ final class TmdbApiService
      * {@see configure}'s shared auth/retry), then decode in input order. A
      * single id's 404 decodes to null without sinking its siblings.
      *
-     * Transport failures don't short-circuit the batch: a pool entry that comes
-     * back as a {@see Throwable} instead of a {@see Response} is collected, the
-     * rest are still decoded, and once the loop completes any failed ids are
-     * surfaced together as a single aggregate {@see TmdbRequestFailed::forIds}.
+     * Request failures don't short-circuit the batch: both a connection-level
+     * failure (a pool entry that comes back as a {@see Throwable} instead of a
+     * {@see Response}) and a response that stays failed after retries (e.g. a
+     * persistent 5xx) are collected per-id, the rest are still decoded, and once
+     * the loop completes any failed ids are surfaced together as a single
+     * aggregate {@see TmdbRequestFailed::forIds}. A 404 still decodes to null (a
+     * per-id miss, not a failure); a 401 still throws immediately, since auth is
+     * fatal for the whole batch rather than a per-id condition.
      *
      * @template TKey of int|string
      *
@@ -136,6 +141,8 @@ final class TmdbApiService
      */
     private function pooled(array $ids, callable $build): array
     {
+        $ids = array_values(array_unique($ids));
+
         $responses = [];
 
         foreach ($this->chunkIds($ids) as $chunk) {
@@ -152,6 +159,12 @@ final class TmdbApiService
             $response = $responses[(string) $id];
 
             if (! $response instanceof Response) {
+                $failedIds[] = $id;
+
+                continue;
+            }
+
+            if ($response->failed() && ! $response->notFound() && $response->status() !== 401) {
                 $failedIds[] = $id;
 
                 continue;
@@ -178,7 +191,7 @@ final class TmdbApiService
      * @param  array<int, TKey>  $ids
      * @return array<int, array<int, TKey>>
      */
-    public function chunkIds(array $ids): array
+    private function chunkIds(array $ids): array
     {
         $size = (int) config('services.tmdb.concurrency');
 
@@ -193,7 +206,7 @@ final class TmdbApiService
      */
     private function detail(string $resource, int $id, string $append): ?array
     {
-        $response = $this->request()->get("/{$resource}/{$id}", $this->detailQuery($append));
+        $response = $this->get("/{$resource}/{$id}", $this->detailQuery($append));
 
         return $this->decode($response);
     }
@@ -226,11 +239,17 @@ final class TmdbApiService
         $totalPages = 1;
 
         do {
-            $body = $this->decode($this->request()->get($path, [
+            $response = $this->get($path, [
                 'start_date' => $start,
                 'end_date' => $end,
                 'page' => $page,
-            ])) ?? [];
+            ]);
+
+            if ($response->notFound()) {
+                throw TmdbRequestFailed::for((string) $response->effectiveUri());
+            }
+
+            $body = $this->decode($response) ?? [];
 
             foreach ($body['results'] ?? [] as $result) {
                 $ids[] = (int) $result['id'];
@@ -245,7 +264,9 @@ final class TmdbApiService
 
     /**
      * Decode a TMDB response: return the raw body, null on 404, or throw on a
-     * failed (401 auth / other) response.
+     * failed (401 auth / other) response. A successful response whose body is
+     * undecodable (json() yields null) is itself an error, not a "not found",
+     * so it throws {@see TmdbRequestFailed} rather than returning null.
      *
      * @return array<string, mixed>|null
      */
@@ -263,7 +284,25 @@ final class TmdbApiService
             throw TmdbRequestFailed::for((string) $response->effectiveUri());
         }
 
-        return $response->json();
+        return $response->json() ?? throw TmdbRequestFailed::for((string) $response->effectiveUri());
+    }
+
+    /**
+     * Perform a single configured GET, normalizing a post-retry connection
+     * failure into a {@see TmdbRequestFailed} so single-request callers see the
+     * same typed failure the batch ({@see pooled}) paths raise. `retry(...,
+     * throw: false)` suppresses a failed *response* but still lets a
+     * {@see ConnectionException} propagate raw, so it is caught here.
+     *
+     * @param  array<string, mixed>  $query
+     */
+    private function get(string $path, array $query = []): Response
+    {
+        try {
+            return $this->request()->get($path, $query);
+        } catch (ConnectionException) {
+            throw TmdbRequestFailed::for(self::BASE_URL.$path);
+        }
     }
 
     private function request(): PendingRequest
@@ -280,7 +319,25 @@ final class TmdbApiService
         return $request->withToken(config('services.tmdb.token'))
             ->baseUrl(self::BASE_URL)
             ->acceptJson()
-            ->retry(2, config('services.tmdb.retry_delay'), $this->shouldRetry(...), throw: false);
+            ->retry(2, $this->retryDelay(...), $this->shouldRetry(...), throw: false);
+    }
+
+    /**
+     * Delay before a retry, in milliseconds: honor the server's Retry-After
+     * header (seconds) on a 429/503 when present, otherwise fall back to a
+     * 1000ms base delay. Laravel's retry closure returns milliseconds.
+     */
+    private function retryDelay(int $attempt, Throwable $exception): int
+    {
+        if ($exception instanceof RequestException) {
+            $retryAfter = $exception->response->header('Retry-After');
+
+            if (is_numeric($retryAfter)) {
+                return (int) $retryAfter * 1000;
+            }
+        }
+
+        return 1000;
     }
 
     /**

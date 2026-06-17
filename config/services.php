@@ -35,14 +35,9 @@ return [
         ],
     ],
 
-    'imdb' => [
-        'base_url' => 'https://datasets.imdbws.com',
-    ],
-
     'tmdb' => [
         'token' => env('TMDB_TOKEN'),
         'concurrency' => env('TMDB_CONCURRENCY', 20),
-        'retry_delay' => env('TMDB_RETRY_DELAY', 1000),
     ],
 
 ];
