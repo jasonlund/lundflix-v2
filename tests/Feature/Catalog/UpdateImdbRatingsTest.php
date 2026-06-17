@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Domains\Catalog\Actions\UpdateImdbRatings;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
@@ -51,6 +53,34 @@ it('skips an imdb_id with no matching title', function () {
         ->and(Show::query()->count())->toBe(0)
         ->and(Movie::query()->where('imdb_id', 'tt9999999')->exists())->toBeFalse()
         ->and($result)->toBe(['movies' => 1, 'shows' => 0]);
+});
+
+it('appends CASE bindings to pre-existing join bindings instead of replacing them', function () {
+    // Arrange: a query that already carries a parameterised join, so the 'join'
+    // binding slot is non-empty before the action assigns the CASE bindings. The
+    // old code did `bindings['join'] = array_merge($case...)`, dropping the join
+    // binding entirely; a future join/global-scope on Movie would then have its
+    // binding silently swallowed. The fix must keep the existing join binding.
+    $movie = Movie::factory()->create(['num_votes' => 100, 'average_rating' => 1.0]);
+    $scopedQuery = Movie::query()->joinSub(
+        DB::table('movies')->select('id as scoped_id')->where('num_votes', '>', -98765),
+        'scoped',
+        'movies.id',
+        '=',
+        'scoped.scoped_id',
+    );
+    DB::enableQueryLog();
+
+    // Act
+    (new ReflectionMethod(UpdateImdbRatings::class, 'updateTable'))->invoke(
+        app(UpdateImdbRatings::class),
+        $scopedQuery,
+        [$movie->imdb_id => ['num_votes' => 2252453, 'average_rating' => 8.7]],
+    );
+
+    // Assert: the join's own binding (-98765) survives in the executed update.
+    $updateLog = collect(DB::getQueryLog())->firstWhere(fn (array $entry): bool => str_starts_with($entry['query'], 'update'));
+    expect($updateLog['bindings'])->toContain(-98765);
 });
 
 it('updates a mixed batch across both tables in one call', function () {

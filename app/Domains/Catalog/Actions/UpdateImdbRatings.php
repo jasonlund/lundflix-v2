@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Movie;
@@ -49,8 +51,14 @@ final class UpdateImdbRatings
         // their own. prepareBindingsForUpdate() prepends the 'join' binding slot
         // ahead of the where bindings, so the CASE bindings must live there — in
         // SET-clause column order (num_votes then average_rating) — to line up
-        // with their placeholders.
-        $update->bindings['join'] = array_merge($numVotes['bindings'], $averageRating['bindings']);
+        // with their placeholders. Append to (never replace) any existing join
+        // bindings: a future join/global-scope on the model would otherwise be
+        // silently dropped, shifting every placeholder and corrupting the update.
+        $update->bindings['join'] = array_merge(
+            $update->bindings['join'] ?? [],
+            $numVotes['bindings'],
+            $averageRating['bindings'],
+        );
         $update->update([
             'num_votes' => new Expression($numVotes['sql']),
             'average_rating' => new Expression($averageRating['sql']),

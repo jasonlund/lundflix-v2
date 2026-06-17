@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Domains\Catalog\Actions\UpsertShows;
 use App\Domains\Catalog\Enums\Genre;
 use App\Domains\Catalog\Enums\TitleType;
 use App\Domains\Catalog\Models\Show;
+use Illuminate\Support\Facades\DB;
 
 /*
 |--------------------------------------------------------------------------
@@ -89,6 +92,34 @@ it('persists genres readable back through the enum-collection cast', function ()
     // Assert
     $show = Show::query()->where('imdb_id', 'tt0047766')->firstOrFail();
     expect($show->genres->all())->toEqual([Genre::Drama, Genre::Horror, Genre::SciFi]);
+});
+
+it('stores SQL NULL for a row whose genres field is null, not the string "[]"', function () {
+    // Arrange
+    $rows = [
+        ['tconst' => 'tt0047766', 'titleType' => 'tvSeries', 'primaryTitle' => 'Quatermass II', 'originalTitle' => 'Quatermass II', 'startYear' => 1955, 'endYear' => 1955, 'runtimeMinutes' => 30, 'genres' => null],
+    ];
+
+    // Act
+    app(UpsertShows::class)->handle($rows);
+
+    // Assert
+    $genres = DB::table('shows')->where('imdb_id', 'tt0047766')->value('genres');
+    expect($genres)->toBeNull();
+});
+
+it('stores a json array for a row with real genres', function () {
+    // Arrange
+    $rows = [
+        ['tconst' => 'tt0047766', 'titleType' => 'tvSeries', 'primaryTitle' => 'Quatermass II', 'originalTitle' => 'Quatermass II', 'startYear' => 1955, 'endYear' => 1955, 'runtimeMinutes' => 30, 'genres' => ['Drama', 'Horror', 'Sci-Fi']],
+    ];
+
+    // Act
+    app(UpsertShows::class)->handle($rows);
+
+    // Assert
+    $genres = DB::table('shows')->where('imdb_id', 'tt0047766')->value('genres');
+    expect($genres)->toBe(json_encode(['Drama', 'Horror', 'Sci-Fi']));
 });
 
 it('stores the originating title type as a TitleType enum', function () {

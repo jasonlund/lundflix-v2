@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Domains\Catalog\Actions\UpsertMovies;
 use App\Domains\Catalog\Enums\Genre;
 use App\Domains\Catalog\Enums\TitleType;
 use App\Domains\Catalog\Models\Movie;
+use Illuminate\Support\Facades\DB;
 
 /*
 |--------------------------------------------------------------------------
@@ -87,6 +90,34 @@ it('persists genres readable back through the enum-collection cast', function ()
     // Assert
     $movie = Movie::query()->where('imdb_id', 'tt0133093')->firstOrFail();
     expect($movie->genres->all())->toEqual([Genre::Action, Genre::SciFi]);
+});
+
+it('stores SQL NULL for a row whose genres field is null, not the string "[]"', function () {
+    // Arrange
+    $rows = [
+        ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => null],
+    ];
+
+    // Act
+    app(UpsertMovies::class)->handle($rows);
+
+    // Assert
+    $genres = DB::table('movies')->where('imdb_id', 'tt0133093')->value('genres');
+    expect($genres)->toBeNull();
+});
+
+it('stores a json array for a row with real genres', function () {
+    // Arrange
+    $rows = [
+        ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => ['Action', 'Sci-Fi']],
+    ];
+
+    // Act
+    app(UpsertMovies::class)->handle($rows);
+
+    // Assert
+    $genres = DB::table('movies')->where('imdb_id', 'tt0133093')->value('genres');
+    expect($genres)->toBe(json_encode(['Action', 'Sci-Fi']));
 });
 
 it('stores the originating title type as a TitleType enum', function () {

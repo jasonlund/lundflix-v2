@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Catalog\Services;
 
 use App\Domains\Catalog\Enums\ImdbDataset;
@@ -32,20 +34,33 @@ final class ImdbDatasetService
         return $path;
     }
 
-    public function count(string $path): int
+    /**
+     * Count the data rows that rows() would actually yield.
+     *
+     * Applies the SAME includes() filter as rows() so the returned total equals
+     * the number of rows that will be advanced over downstream — keeping a
+     * progress bar's total honest (it reaches 100% exactly, not ~72% then snap).
+     * A dataset whose includes() always returns true counts every non-blank row.
+     */
+    public function count(string $path, ?ImdbDataset $dataset = null): int
     {
         $handle = $this->open($path);
 
         try {
-            // Discard the TSV header row before counting data rows.
-            gzgets($handle);
+            $header = $this->fields($this->readHeader($handle, $path));
 
             $count = 0;
 
             while (($line = gzgets($handle)) !== false) {
-                if (rtrim($line, "\r\n") !== '') {
-                    $count++;
+                if (rtrim($line, "\r\n") === '') {
+                    continue;
                 }
+
+                if ($dataset !== null && ! $dataset->includes($this->mapRow($header, $this->fields($line)))) {
+                    continue;
+                }
+
+                $count++;
             }
 
             return $count;
@@ -54,13 +69,21 @@ final class ImdbDatasetService
         }
     }
 
+    /**
+     * Stream the kept, casted data rows as a lazy collection.
+     *
+     * IMPORTANT: the underlying gz handle is closed in a finally that only runs
+     * when the generator completes or is garbage-collected. Callers MUST fully
+     * consume the returned collection (e.g. ->all(), or a foreach to the end);
+     * abandoning it part-way leaves the gz handle open until GC reclaims it.
+     */
     public function rows(string $path, ImdbDataset $dataset): LazyCollection
     {
         return LazyCollection::make(function () use ($path, $dataset) {
             $handle = $this->open($path);
 
             try {
-                $header = $this->fields(gzgets($handle));
+                $header = $this->fields($this->readHeader($handle, $path));
 
                 while (($line = gzgets($handle)) !== false) {
                     if (rtrim($line, "\r\n") === '') {
@@ -84,6 +107,26 @@ final class ImdbDatasetService
     }
 
     /**
+     * Read and return the raw TSV header line, guarding against an empty body.
+     *
+     * A gzip with valid magic but no content yields false on the first gzgets;
+     * passing that to array_combine would raise an opaque ValueError, so we
+     * surface the domain exception instead.
+     *
+     * @param  resource  $handle
+     */
+    private function readHeader($handle, string $path): string
+    {
+        $header = gzgets($handle);
+
+        if ($header === false) {
+            throw CorruptImdbDatasetArchive::at($path);
+        }
+
+        return $header;
+    }
+
+    /**
      * @return list<string>
      */
     private function fields(string $line): array
@@ -99,7 +142,7 @@ final class ImdbDatasetService
     private function mapRow(array $header, array $fields): array
     {
         return array_map(
-            fn ($value) => $value === '\N' ? null : $value,
+            fn (string $value): ?string => $value === '\N' ? null : $value,
             array_combine($header, $fields)
         );
     }
@@ -130,7 +173,10 @@ final class ImdbDatasetService
         return $row;
     }
 
-    private function open(string $path)
+    /**
+     * @return resource
+     */
+    private function open(string $path): mixed
     {
         if (! $this->isGzip($path)) {
             throw CorruptImdbDatasetArchive::at($path);

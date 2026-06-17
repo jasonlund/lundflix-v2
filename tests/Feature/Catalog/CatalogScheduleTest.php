@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
 
@@ -27,4 +29,5 @@ it('schedules sync:catalog at midnight and noon America/Los_Angeles without over
     expect($event)->not->toBeNull();
     expect($event->expression)->toBe('0 0,12 * * *');
     expect($event->timezone)->toBe('America/Los_Angeles');
+    expect($event->withoutOverlapping)->toBeTrue();
 });

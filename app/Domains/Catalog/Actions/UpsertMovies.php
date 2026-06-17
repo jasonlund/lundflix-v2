@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Enums\Genre;
@@ -22,7 +24,7 @@ final class UpsertMovies
             'title_type' => $row['titleType'],
             'year' => $row['startYear'],
             'runtime' => $row['runtimeMinutes'],
-            'genres' => json_encode(Genre::knownValues($row['genres'] ?? [])),
+            'genres' => $row['genres'] === null ? null : json_encode(Genre::knownValues($row['genres'])),
         ], $rows);
 
         Movie::upsert($payloads, ['imdb_id'], ['title', 'title_type', 'year', 'runtime', 'genres']);

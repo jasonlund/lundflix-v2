@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Catalog\Database\Factories;
 
 use App\Domains\Catalog\Enums\Genre;

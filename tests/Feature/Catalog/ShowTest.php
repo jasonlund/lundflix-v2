@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Domains\Catalog\Enums\Genre;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Database\QueryException;

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Exceptions\CorruptImdbDatasetArchive;
 use App\Domains\Catalog\Services\ImdbDatasetService;
@@ -18,6 +20,10 @@ use Illuminate\Support\LazyCollection;
 | title.basics — 18 data rows: 13 kept, 5 excluded by ImdbDataset filtering.
 |   First kept row: tt0133093 (The Matrix).
 | title.ratings — 4 rows (unfiltered). First row: tt0133093 (8.7 / 2252453).
+|
+| title.empty — synthetic: valid gzip magic, empty body (gzencode('')). Stands
+|   in for a truncated/empty download where the header line is missing; cannot
+|   exist as real IMDb data, so it lives as a committed synthetic fixture.
 |
 | Tests that need malformed/synthetic input (blank lines, non-gzip bodies,
 | HTTP errors) build their own bytes inline — such input cannot exist in real
@@ -68,24 +74,27 @@ it('leaves the temp file in place on success', function () {
     @unlink($path);
 });
 
-it('counts the title.basics fixture data rows excluding the header', function () {
+it('counts only the post-includes() kept rows for title.basics', function () {
+    // The fixture has 18 non-blank data rows; ImdbDataset::TitleBasics filtering
+    // keeps 13. count() must apply the SAME includes() filter as rows() so the
+    // progress total equals the number of advances (honest 100%).
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
     $service = app(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
-    $count = $service->count($path);
+    $count = $service->count($path, ImdbDataset::TitleBasics);
 
-    expect($count)->toBe(18);
+    expect($count)->toBe(13);
 
     @unlink($path);
 });
 
-it('counts the title.ratings fixture data rows', function () {
+it('counts the title.ratings fixture data rows (includes() keeps all)', function () {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
     $service = app(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleRatings);
 
-    $count = $service->count($path);
+    $count = $service->count($path, ImdbDataset::TitleRatings);
 
     expect($count)->toBe(4);
 
@@ -97,7 +106,20 @@ it('throws a corrupt archive exception when count receives a non-gzip file', fun
     $service = app(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
-    expect(fn () => $service->count($path))->toThrow(CorruptImdbDatasetArchive::class);
+    expect(fn () => $service->count($path, ImdbDataset::TitleBasics))->toThrow(CorruptImdbDatasetArchive::class);
+
+    @unlink($path);
+});
+
+it('throws a corrupt archive exception when the gzip has valid magic but no header line', function () {
+    // Valid gzip magic, empty body → gzgets() returns false on the header read.
+    // Without the false-check this surfaces an opaque ValueError from
+    // array_combine; we want the domain CorruptImdbDatasetArchive instead.
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.empty.tsv.gz'))]);
+    $service = app(ImdbDatasetService::class);
+    $path = $service->download(ImdbDataset::TitleBasics);
+
+    expect(fn () => $service->rows($path, ImdbDataset::TitleBasics)->all())->toThrow(CorruptImdbDatasetArchive::class);
 
     @unlink($path);
 });

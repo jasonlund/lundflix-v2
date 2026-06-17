@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -14,9 +16,9 @@ return new class extends Migration
         Schema::create('movies', function (Blueprint $table) {
             $table->id();
             $table->string('imdb_id')->unique();
-            $table->string('title');
+            $table->text('title');
             $table->string('title_type');
-            $table->unsignedSmallInteger('year')->nullable();
+            $table->unsignedSmallInteger('year')->nullable()->index();
             $table->unsignedInteger('runtime')->nullable();
             $table->json('genres')->nullable();
             $table->unsignedInteger('num_votes')->nullable();

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Identity\Actions;
 
 use Illuminate\Contracts\Validation\Rule;

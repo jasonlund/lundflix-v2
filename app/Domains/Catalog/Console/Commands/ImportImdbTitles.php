@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpsertMovies;
@@ -44,7 +46,7 @@ class ImportImdbTitles extends Command
         $file = spin(fn (): string => $service->download(ImdbDataset::TitleBasics), 'Downloading title.basics…');
 
         try {
-            $total = spin(fn (): int => $service->count($file), 'Counting titles…');
+            $total = spin(fn (): int => $service->count($file, ImdbDataset::TitleBasics), 'Counting titles…');
 
             $bar = progress(label: 'Importing titles', steps: $total);
             $bar->start();
