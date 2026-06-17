@@ -160,6 +160,25 @@ name, e.g. `php artisan make:model Domains/Catalog/Models/Product` →
 generate then move the file and fix its namespace. Never break the DDD layout
 to satisfy a generator's default location.
 
+## Linting & formatting (finalize gates)
+
+Before finalizing **any** change, run every linter/formatter that applies to the
+files you actually touched — not just Pint. Scope each tool to your changed work,
+never a repo-wide sweep (a bare `vendor/bin/rector` rewrites generated
+`bootstrap/cache/*` and unrelated files; only process what you changed).
+
+- **PHP files touched** → run, in order:
+  1. `vendor/bin/rector process <your changed files>` — typed constants, return
+     types, dead code, code-quality sets.
+  2. `vendor/bin/pint --dirty --format agent` — style + `declare(strict_types=1)`.
+     Run Pint **after** Rector so it normalizes anything Rector reformatted.
+- **Frontend files touched** (`.ts`/`.tsx`/`.js`/`.css` under `resources/`) → run:
+  - `npm run lint` (ESLint `--fix`)
+  - `npm run format` (Prettier `--write resources/`)
+  - `npm run types` (`tsc --noEmit`)
+- Then run the affected tests (`php artisan test` / `npm test`) — linters reorder
+  and retype code, so re-verify green before finalizing.
+
 ## Configuration
 
 - **Base URLs for third-party data sources are service constants, not env or
