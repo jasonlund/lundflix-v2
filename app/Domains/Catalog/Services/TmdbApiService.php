@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Catalog\Services;
 
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
@@ -14,11 +16,11 @@ use Throwable;
 
 final class TmdbApiService
 {
-    private const BASE_URL = 'https://api.themoviedb.org/3';
+    private const string BASE_URL = 'https://api.themoviedb.org/3';
 
-    private const MOVIE_APPEND = 'release_dates,images';
+    private const string MOVIE_APPEND = 'release_dates,images';
 
-    private const TV_APPEND = 'images,external_ids,content_ratings';
+    private const string TV_APPEND = 'images,external_ids,content_ratings';
 
     /**
      * @return array<string, mixed>|null
@@ -146,7 +148,7 @@ final class TmdbApiService
         $responses = [];
 
         foreach ($this->chunkIds($ids) as $chunk) {
-            $responses += Http::pool(fn (Pool $pool) => array_map(
+            $responses += Http::pool(fn (Pool $pool): array => array_map(
                 fn (int|string $id) => $build($this->configure($pool->as((string) $id)), $id),
                 $chunk,
             ));

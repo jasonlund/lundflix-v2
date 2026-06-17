@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Services\TmdbApiService;
@@ -17,49 +19,49 @@ use Illuminate\Support\Sleep;
 | as the response body; never hand-fabricated.
 */
 
-it('sends a Bearer-authed GET to /movie/{id}', function () {
+it('sends a Bearer-authed GET to /movie/{id}', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
 
-    app(TmdbApiService::class)->movie(603);
+    resolve(TmdbApiService::class)->movie(603);
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/movie/603')
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/movie/603')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
-it('appends the movie sub-resources and image-language params', function () {
+it('appends the movie sub-resources and image-language params', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
 
-    app(TmdbApiService::class)->movie(603);
+    resolve(TmdbApiService::class)->movie(603);
 
-    Http::assertSent(fn ($request) => str_contains(urldecode($request->url()), 'append_to_response=release_dates,images')
-        && str_contains(urldecode($request->url()), 'include_image_language=en,null'));
+    Http::assertSent(fn ($request): bool => str_contains(urldecode((string) $request->url()), 'append_to_response=release_dates,images')
+        && str_contains(urldecode((string) $request->url()), 'include_image_language=en,null'));
 });
 
-it('returns the raw payload unchanged', function () {
+it('returns the raw payload unchanged', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
 
-    $result = app(TmdbApiService::class)->movie(603);
+    $result = resolve(TmdbApiService::class)->movie(603);
 
     expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true));
 });
 
-it('returns null on 404', function () {
+it('returns null on 404', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response('', 404)]);
 
-    $result = app(TmdbApiService::class)->movie(999999);
+    $result = resolve(TmdbApiService::class)->movie(999999);
 
     expect($result)->toBeNull();
 });
 
-it('throws TmdbRequestFailed on a successful 200 whose body decodes to null', function () {
+it('throws TmdbRequestFailed on a successful 200 whose body decodes to null', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response('', 200)]);
 
-    $call = fn () => app(TmdbApiService::class)->movie(603);
+    $call = fn () => resolve(TmdbApiService::class)->movie(603);
 
     expect($call)->toThrow(TmdbRequestFailed::class);
 });
@@ -75,63 +77,63 @@ it('throws TmdbRequestFailed on a successful 200 whose body decodes to null', fu
 | that id without sinking the others.
 */
 
-it('returns an array keyed by the input tmdb ids', function () {
+it('returns an array keyed by the input tmdb ids', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake([
         '*/movie/603*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
     ]);
 
-    $result = app(TmdbApiService::class)->movies([603, 604]);
+    $result = resolve(TmdbApiService::class)->movies([603, 604]);
 
     expect(array_keys($result))->toBe([603, 604]);
 });
 
-it('values each id to its raw payload', function () {
+it('values each id to its raw payload', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake([
         '*/movie/603*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
     ]);
 
-    $result = app(TmdbApiService::class)->movies([603, 604]);
+    $result = resolve(TmdbApiService::class)->movies([603, 604]);
 
     expect($result[603])->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true));
 });
 
-it('yields null for a 404 id while others still resolve', function () {
+it('yields null for a 404 id while others still resolve', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake([
         '*/movie/603*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
         '*/movie/999*' => Http::response('', 404),
     ]);
 
-    $result = app(TmdbApiService::class)->movies([603, 999]);
+    $result = resolve(TmdbApiService::class)->movies([603, 999]);
 
     expect($result[603])->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true))
         ->and($result[999])->toBeNull();
 });
 
-it('fires one request per id', function () {
+it('fires one request per id', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake([
         '*/movie/603*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
     ]);
 
-    app(TmdbApiService::class)->movies([603, 604]);
+    resolve(TmdbApiService::class)->movies([603, 604]);
 
     Http::assertSentCount(2);
 });
 
-it('de-duplicates repeated input ids, firing one request per unique id and keying the result in first-seen order', function () {
+it('de-duplicates repeated input ids, firing one request per unique id and keying the result in first-seen order', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake([
         '*/movie/603*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
     ]);
 
-    $result = app(TmdbApiService::class)->movies([603, 603, 604]);
+    $result = resolve(TmdbApiService::class)->movies([603, 603, 604]);
 
     Http::assertSentCount(2);
     expect(array_keys($result))->toBe([603, 604]);
@@ -152,7 +154,7 @@ it('de-duplicates repeated input ids, firing one request per unique id and keyin
 | ConnectionException for the failing id's url.
 */
 
-it('throws TmdbRequestFailed when one id in the batch fails at the transport level', function () {
+it('throws TmdbRequestFailed when one id in the batch fails at the transport level', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake([
@@ -160,12 +162,12 @@ it('throws TmdbRequestFailed when one id in the batch fails at the transport lev
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
     ]);
 
-    $call = fn () => app(TmdbApiService::class)->movies([603, 604]);
+    $call = fn () => resolve(TmdbApiService::class)->movies([603, 604]);
 
     expect($call)->toThrow(TmdbRequestFailed::class);
 });
 
-it('reports every failed id when multiple ids in the batch fail at the transport level', function () {
+it('reports every failed id when multiple ids in the batch fail at the transport level', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake([
@@ -174,13 +176,13 @@ it('reports every failed id when multiple ids in the batch fail at the transport
         '*/movie/605*' => fn () => throw new ConnectionException('Connection timed out'),
     ]);
 
-    $call = fn () => app(TmdbApiService::class)->movies([603, 604, 605]);
+    $call = fn () => resolve(TmdbApiService::class)->movies([603, 604, 605]);
 
     expect($call)->toThrow(TmdbRequestFailed::class, '603')
         ->and($call)->toThrow(TmdbRequestFailed::class, '605');
 });
 
-it('reports every failed id when multiple ids in the batch keep returning a 500 past retries', function () {
+it('reports every failed id when multiple ids in the batch keep returning a 500 past retries', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake([
@@ -189,7 +191,7 @@ it('reports every failed id when multiple ids in the batch keep returning a 500 
         '*/movie/605*' => Http::response('', 500),
     ]);
 
-    $call = fn () => app(TmdbApiService::class)->movies([603, 604, 605]);
+    $call = fn () => resolve(TmdbApiService::class)->movies([603, 604, 605]);
 
     expect($call)->toThrow(TmdbRequestFailed::class, '603')
         ->and($call)->toThrow(TmdbRequestFailed::class, '605');
@@ -208,37 +210,37 @@ it('reports every failed id when multiple ids in the batch keep returning a 500 
 | byte-exact movie.json fixture body, matched per-id by url.
 */
 
-it('fires one request per id when the batch spans multiple concurrency-sized chunks', function () {
+it('fires one request per id when the batch spans multiple concurrency-sized chunks', function (): void {
     config(['services.tmdb.token' => 'test-token', 'services.tmdb.concurrency' => 3]);
     Http::fake(['*/movie/*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
 
-    app(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
+    resolve(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
 
     Http::assertSentCount(7);
 });
 
-it('requests every id in input order across the concurrency-sized chunks', function () {
+it('requests every id in input order across the concurrency-sized chunks', function (): void {
     config(['services.tmdb.token' => 'test-token', 'services.tmdb.concurrency' => 3]);
     Http::fake(['*/movie/*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
 
-    app(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
+    resolve(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
 
     Http::assertSentInOrder([
-        fn ($request) => str_contains($request->url(), '/movie/1?'),
-        fn ($request) => str_contains($request->url(), '/movie/2?'),
-        fn ($request) => str_contains($request->url(), '/movie/3?'),
-        fn ($request) => str_contains($request->url(), '/movie/4?'),
-        fn ($request) => str_contains($request->url(), '/movie/5?'),
-        fn ($request) => str_contains($request->url(), '/movie/6?'),
-        fn ($request) => str_contains($request->url(), '/movie/7?'),
+        fn ($request): bool => str_contains((string) $request->url(), '/movie/1?'),
+        fn ($request): bool => str_contains((string) $request->url(), '/movie/2?'),
+        fn ($request): bool => str_contains((string) $request->url(), '/movie/3?'),
+        fn ($request): bool => str_contains((string) $request->url(), '/movie/4?'),
+        fn ($request): bool => str_contains((string) $request->url(), '/movie/5?'),
+        fn ($request): bool => str_contains((string) $request->url(), '/movie/6?'),
+        fn ($request): bool => str_contains((string) $request->url(), '/movie/7?'),
     ]);
 });
 
-it('keys the result by every input id when the batch spills into a partial final chunk', function () {
+it('keys the result by every input id when the batch spills into a partial final chunk', function (): void {
     config(['services.tmdb.token' => 'test-token', 'services.tmdb.concurrency' => 3]);
     Http::fake(['*/movie/*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
 
-    $result = app(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
+    $result = resolve(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
 
     expect(array_keys($result))->toBe([1, 2, 3, 4, 5, 6, 7]);
 });
@@ -252,102 +254,102 @@ it('keys the result by every input id when the batch spills into a partial final
 | Http::fake() as the response body; never hand-fabricated.
 */
 
-it('sends a Bearer-authed GET to /tv/{id}', function () {
+it('sends a Bearer-authed GET to /tv/{id}', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/tv.json'))]);
 
-    app(TmdbApiService::class)->tv(1399);
+    resolve(TmdbApiService::class)->tv(1399);
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/tv/1399')
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/tv/1399')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
-it('appends the tv sub-resources and image-language params', function () {
+it('appends the tv sub-resources and image-language params', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/tv.json'))]);
 
-    app(TmdbApiService::class)->tv(1399);
+    resolve(TmdbApiService::class)->tv(1399);
 
-    Http::assertSent(fn ($request) => str_contains(urldecode($request->url()), 'append_to_response=images,external_ids,content_ratings')
-        && str_contains(urldecode($request->url()), 'include_image_language=en,null'));
+    Http::assertSent(fn ($request): bool => str_contains(urldecode((string) $request->url()), 'append_to_response=images,external_ids,content_ratings')
+        && str_contains(urldecode((string) $request->url()), 'include_image_language=en,null'));
 });
 
-it('returns the raw tv payload unchanged', function () {
+it('returns the raw tv payload unchanged', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/tv.json'))]);
 
-    $result = app(TmdbApiService::class)->tv(1399);
+    $result = resolve(TmdbApiService::class)->tv(1399);
 
     expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true));
 });
 
-it('returns null on 404 for tv', function () {
+it('returns null on 404 for tv', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response('', 404)]);
 
-    $result = app(TmdbApiService::class)->tv(999999);
+    $result = resolve(TmdbApiService::class)->tv(999999);
 
     expect($result)->toBeNull();
 });
 
-it('retries a transient 500 and returns the payload from the retry', function () {
+it('retries a transient 500 and returns the payload from the retry', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push('', 500)
         ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
 
-    $result = app(TmdbApiService::class)->movie(603);
+    $result = resolve(TmdbApiService::class)->movie(603);
 
     Http::assertSentCount(2);
     expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true));
 });
 
-it('throws TmdbRequestFailed when a 500 persists past retries', function () {
+it('throws TmdbRequestFailed when a 500 persists past retries', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => Http::response('', 500)]);
 
-    expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
+    expect(fn () => resolve(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
 });
 
-it('throws TmdbRequestFailed, not a raw ConnectionException, when a single request fails at the transport level past retries', function () {
+it('throws TmdbRequestFailed, not a raw ConnectionException, when a single request fails at the transport level past retries', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => fn () => throw new ConnectionException('Connection timed out')]);
 
-    expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
+    expect(fn () => resolve(TmdbApiService::class)->movie(603))->toThrow(TmdbRequestFailed::class);
 });
 
-it('throws TmdbAuthenticationFailed on a 401 response', function () {
+it('throws TmdbAuthenticationFailed on a 401 response', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response('', 401)]);
 
-    expect(fn () => app(TmdbApiService::class)->movie(603))->toThrow(TmdbAuthenticationFailed::class);
+    expect(fn () => resolve(TmdbApiService::class)->movie(603))->toThrow(TmdbAuthenticationFailed::class);
 });
 
-it('retries a 429 honoring Retry-After and returns the payload from the retry', function () {
+it('retries a 429 honoring Retry-After and returns the payload from the retry', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push('', 429, ['Retry-After' => '0'])
         ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
 
-    $result = app(TmdbApiService::class)->movie(603);
+    $result = resolve(TmdbApiService::class)->movie(603);
 
     expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true));
 });
 
-it('waits the Retry-After header duration, not the base delay, before retrying a 429', function () {
+it('waits the Retry-After header duration, not the base delay, before retrying a 429', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push('', 429, ['Retry-After' => '60'])
         ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
 
-    app(TmdbApiService::class)->movie(603);
+    resolve(TmdbApiService::class)->movie(603);
 
-    Sleep::assertSlept(fn (CarbonInterval $duration) => $duration->totalMilliseconds === 60_000.0, 1);
+    Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMilliseconds === 60_000.0, 1);
 });
 
 /*
@@ -361,32 +363,32 @@ it('waits the Retry-After header duration, not the base delay, before retrying a
 | as the response body.
 */
 
-it('sends a Bearer-authed GET to /find/{imdbId} with external_source=imdb_id', function () {
+it('sends a Bearer-authed GET to /find/{imdbId} with external_source=imdb_id', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/find_by_imdb.json'))]);
 
-    app(TmdbApiService::class)->findByImdbId('tt0133093');
+    resolve(TmdbApiService::class)->findByImdbId('tt0133093');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/find/tt0133093')
-        && str_contains(urldecode($request->url()), 'external_source=imdb_id')
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/find/tt0133093')
+        && str_contains(urldecode((string) $request->url()), 'external_source=imdb_id')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
-it('returns the whole /find payload unchanged', function () {
+it('returns the whole /find payload unchanged', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/find_by_imdb.json'))]);
 
-    $result = app(TmdbApiService::class)->findByImdbId('tt0133093');
+    $result = resolve(TmdbApiService::class)->findByImdbId('tt0133093');
 
     expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/find_by_imdb.json'), true))
         ->and($result)->toHaveKeys(['movie_results', 'tv_results']);
 });
 
-it('returns null on 404 for findByImdbId', function () {
+it('returns null on 404 for findByImdbId', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response('', 404)]);
 
-    $result = app(TmdbApiService::class)->findByImdbId('tt9999999');
+    $result = resolve(TmdbApiService::class)->findByImdbId('tt9999999');
 
     expect($result)->toBeNull();
 });
@@ -402,27 +404,27 @@ it('returns null on 404 for findByImdbId', function () {
 | id without sinking the others.
 */
 
-it('returns a tv map keyed by the input tmdb ids hitting /tv/{id}', function () {
+it('returns a tv map keyed by the input tmdb ids hitting /tv/{id}', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake([
         '*/tv/1399*' => Http::response(fixtureBytes('Catalog/tmdb/tv.json')),
         '*/tv/1400*' => Http::response(fixtureBytes('Catalog/tmdb/tv.json')),
     ]);
 
-    $result = app(TmdbApiService::class)->tvShows([1399, 1400]);
+    $result = resolve(TmdbApiService::class)->tvShows([1399, 1400]);
 
     expect(array_keys($result))->toBe([1399, 1400])
         ->and($result[1399])->toBe(json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true));
 });
 
-it('yields null for a 404 tv id while others still resolve', function () {
+it('yields null for a 404 tv id while others still resolve', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake([
         '*/tv/1399*' => Http::response(fixtureBytes('Catalog/tmdb/tv.json')),
         '*/tv/999*' => Http::response('', 404),
     ]);
 
-    $result = app(TmdbApiService::class)->tvShows([1399, 999]);
+    $result = resolve(TmdbApiService::class)->tvShows([1399, 999]);
 
     expect($result[1399])->toBe(json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true))
         ->and($result[999])->toBeNull();
@@ -440,29 +442,29 @@ it('yields null for a 404 tv id while others still resolve', function () {
 | sinking the others.
 */
 
-it('returns a map keyed by the input imdb ids hitting /find/{id} with external_source=imdb_id', function () {
+it('returns a map keyed by the input imdb ids hitting /find/{id} with external_source=imdb_id', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake([
         '*/find/tt0133093*' => Http::response(fixtureBytes('Catalog/tmdb/find_by_imdb.json')),
         '*/find/tt0111161*' => Http::response(fixtureBytes('Catalog/tmdb/find_by_imdb.json')),
     ]);
 
-    $result = app(TmdbApiService::class)->findManyByImdbId(['tt0133093', 'tt0111161']);
+    $result = resolve(TmdbApiService::class)->findManyByImdbId(['tt0133093', 'tt0111161']);
 
     expect(array_keys($result))->toBe(['tt0133093', 'tt0111161'])
         ->and($result['tt0133093'])->toBe(json_decode(fixtureBytes('Catalog/tmdb/find_by_imdb.json'), true));
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/find/tt0133093')
-        && str_contains(urldecode($request->url()), 'external_source=imdb_id'));
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/find/tt0133093')
+        && str_contains(urldecode((string) $request->url()), 'external_source=imdb_id'));
 });
 
-it('yields null for a 404 imdb id while others still resolve', function () {
+it('yields null for a 404 imdb id while others still resolve', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake([
         '*/find/tt0133093*' => Http::response(fixtureBytes('Catalog/tmdb/find_by_imdb.json')),
         '*/find/tt9999999*' => Http::response('', 404),
     ]);
 
-    $result = app(TmdbApiService::class)->findManyByImdbId(['tt0133093', 'tt9999999']);
+    $result = resolve(TmdbApiService::class)->findManyByImdbId(['tt0133093', 'tt9999999']);
 
     expect($result['tt0133093'])->toBe(json_decode(fixtureBytes('Catalog/tmdb/find_by_imdb.json'), true))
         ->and($result['tt9999999'])->toBeNull();
@@ -477,21 +479,21 @@ it('yields null for a 404 imdb id while others still resolve', function () {
 | Loaded into Http::fake() as the response body; never hand-fabricated.
 */
 
-it('sends a Bearer-authed GET to /configuration', function () {
+it('sends a Bearer-authed GET to /configuration', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/configuration.json'))]);
 
-    app(TmdbApiService::class)->configuration();
+    resolve(TmdbApiService::class)->configuration();
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/configuration')
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/configuration')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
-it('returns the raw configuration payload including images', function () {
+it('returns the raw configuration payload including images', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/configuration.json'))]);
 
-    $result = app(TmdbApiService::class)->configuration();
+    $result = resolve(TmdbApiService::class)->configuration();
 
     expect($result)->toHaveKey('images')
         ->and($result['images']['secure_base_url'])->toBe('https://image.tmdb.org/t/p/')
@@ -511,72 +513,72 @@ it('returns the raw configuration payload including images', function () {
 | as a 2-response sequence to drive pagination.
 */
 
-it('sends a Bearer-authed GET to /movie/changes with start_date/end_date/page params', function () {
+it('sends a Bearer-authed GET to /movie/changes with start_date/end_date/page params', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-    app(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/movie/changes')
-        && str_contains(urldecode($request->url()), 'start_date=2026-06-13')
-        && str_contains(urldecode($request->url()), 'end_date=2026-06-14')
-        && str_contains(urldecode($request->url()), 'page=1')
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/movie/changes')
+        && str_contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
+        && str_contains(urldecode((string) $request->url()), 'end_date=2026-06-14')
+        && str_contains(urldecode((string) $request->url()), 'page=1')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
-it('follows pagination across total_pages', function () {
+it('follows pagination across total_pages', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-    app(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
 
     Http::assertSentCount(2);
-    Http::assertSent(fn ($request) => str_contains(urldecode($request->url()), 'page=2'));
+    Http::assertSent(fn ($request): bool => str_contains(urldecode((string) $request->url()), 'page=2'));
 });
 
-it('flattens the results ids across pages into a flat array of ints', function () {
+it('flattens the results ids across pages into a flat array of ints', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-    $result = app(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    $result = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
 
     expect($result)->toContain(345, 1648226, 1713517, 38702, 1712865)
         ->and($result)->each->toBeInt();
 });
 
-it('dedupes an id repeated across pages', function () {
+it('dedupes an id repeated across pages', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-    $result = app(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    $result = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
 
     expect(array_keys($result, 1713517, true))->toHaveCount(1)
         ->and($result)->toHaveCount(5);
 });
 
-it('throws TmdbRequestFailed when /movie/changes returns a 404', function () {
+it('throws TmdbRequestFailed when /movie/changes returns a 404', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response('', 404)]);
 
-    $call = fn () => app(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    $call = fn () => resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
 
     expect($call)->toThrow(TmdbRequestFailed::class);
 });
 
-it('throws TmdbRequestFailed, not a raw ConnectionException, when /movie/changes fails at the transport level past retries', function () {
+it('throws TmdbRequestFailed, not a raw ConnectionException, when /movie/changes fails at the transport level past retries', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => fn () => throw new ConnectionException('Connection timed out')]);
 
-    $call = fn () => app(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    $call = fn () => resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
 
     expect($call)->toThrow(TmdbRequestFailed::class);
 });
@@ -594,30 +596,30 @@ it('throws TmdbRequestFailed, not a raw ConnectionException, when /movie/changes
 | 2-response sequence to drive pagination.
 */
 
-it('GETs /tv/changes with date/page params and follows total_pages', function () {
+it('GETs /tv/changes with date/page params and follows total_pages', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/tv_changes_page2.json'))]);
 
-    app(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14');
+    resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14');
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/tv/changes')
-        && str_contains(urldecode($request->url()), 'start_date=2026-06-13')
-        && str_contains(urldecode($request->url()), 'end_date=2026-06-14')
-        && str_contains(urldecode($request->url()), 'page=1')
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/tv/changes')
+        && str_contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
+        && str_contains(urldecode((string) $request->url()), 'end_date=2026-06-14')
+        && str_contains(urldecode((string) $request->url()), 'page=1')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
     Http::assertSentCount(2);
-    Http::assertSent(fn ($request) => str_contains(urldecode($request->url()), 'page=2'));
+    Http::assertSent(fn ($request): bool => str_contains(urldecode((string) $request->url()), 'page=2'));
 });
 
-it('flattens and dedupes the tv change ids into a flat array of ints', function () {
+it('flattens and dedupes the tv change ids into a flat array of ints', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/tv_changes_page2.json'))]);
 
-    $result = app(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14');
+    $result = resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14');
 
     expect($result)->toContain(23310, 325296, 325358, 314402)
         ->and($result)->each->toBeInt()
