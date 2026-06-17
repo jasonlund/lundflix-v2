@@ -160,6 +160,25 @@ name, e.g. `php artisan make:model Domains/Catalog/Models/Product` →
 generate then move the file and fix its namespace. Never break the DDD layout
 to satisfy a generator's default location.
 
+## Linting & formatting (finalize gates)
+
+Before finalizing **any** change, run every linter/formatter that applies to the
+files you actually touched — not just Pint. Scope each tool to your changed work,
+never a repo-wide sweep (a bare `vendor/bin/rector` rewrites generated
+`bootstrap/cache/*` and unrelated files; only process what you changed).
+
+- **PHP files touched** → run, in order:
+  1. `vendor/bin/rector process <your changed files>` — typed constants, return
+     types, dead code, code-quality sets.
+  2. `vendor/bin/pint --dirty --format agent` — style + `declare(strict_types=1)`.
+     Run Pint **after** Rector so it normalizes anything Rector reformatted.
+- **Frontend files touched** (`.ts`/`.tsx`/`.js`/`.css` under `resources/`) → run:
+  - `npm run lint` (ESLint `--fix`)
+  - `npm run format` (Prettier `--write resources/`)
+  - `npm run types` (`tsc --noEmit`)
+- Then run the affected tests (`php artisan test` / `npm test`) — linters reorder
+  and retype code, so re-verify green before finalizing.
+
 ## Configuration
 
 - **Base URLs for third-party data sources are service constants, not env or
@@ -168,6 +187,12 @@ to satisfy a generator's default location.
   environment — commit it as a `private const` on the service that calls it, so
   the value sits next to the code that uses it. Reserve `config`/`env` for
   secrets, credentials, and values that genuinely differ per environment.
+- **Only *required* env vars belong in `.env.example`.** An env var the app
+  needs to run (a secret/credential with no safe default — e.g. an API token)
+  goes in `.env.example`. An *optional* tunable that reads through `env()` with a
+  sensible default in `config/` (e.g. a concurrency cap or retry delay) stays out
+  of `.env.example` — its default IS the documentation. Don't pad the example
+  file with every knob; a fresh clone should see only the keys it must fill in.
 
 ## Documentation
 
@@ -175,6 +200,11 @@ to satisfy a generator's default location.
   documents (setup, commands, env vars, architecture, dependencies, structure),
   prompt the user to update it and name the stale section. Never silently edit
   the README; never let it drift.
+- **A new required env var → update the README install steps.** When work adds an
+  env var the app needs to run (e.g. a third-party API key/token), add it to the
+  README "Required API keys" table in *Getting Started* so a fresh install has
+  every key defined — var name, what it's required for, and where to obtain it.
+  Don't leave a key documented only in `.env.example`.
 - **Grow the Overview and Screenshots as features ship.** The README `Overview`
   and `Screenshots` sections start as TODO placeholders. When a user-facing
   feature lands, prompt the user to extend the Overview to describe it and to add

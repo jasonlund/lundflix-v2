@@ -96,6 +96,15 @@ composer setup
 copies `.env`, generates the app key, runs migrations, and builds frontend
 assets.
 
+### Required API keys
+
+Some features call third-party APIs and need credentials in your `.env` before
+they work. After `composer setup`, fill in every key below:
+
+| Env var | Required for | How to obtain |
+| --- | --- | --- |
+| `TMDB_TOKEN` | Catalog — TMDB movie/TV metadata | A TMDB API Read Access Token from your [themoviedb.org](https://www.themoviedb.org/settings/api) account settings |
+
 ### Running locally
 
 ```bash

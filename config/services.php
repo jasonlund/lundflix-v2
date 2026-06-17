@@ -37,4 +37,9 @@ return [
         ],
     ],
 
+    'tmdb' => [
+        'token' => env('TMDB_TOKEN'),
+        'concurrency' => env('TMDB_CONCURRENCY', 20),
+    ],
+
 ];
