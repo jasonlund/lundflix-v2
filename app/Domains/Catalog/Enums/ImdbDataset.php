@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Catalog\Enums;
 
 enum ImdbDataset: string
@@ -20,7 +22,7 @@ enum ImdbDataset: string
     public function casts(): array
     {
         return match ($this) {
-            self::TitleBasics => ['isAdult' => 'bool', 'startYear' => 'int', 'endYear' => 'int', 'runtimeMinutes' => 'int', 'genres' => 'array'],
+            self::TitleBasics => ['startYear' => 'int', 'endYear' => 'int', 'runtimeMinutes' => 'int', 'genres' => 'array'],
             self::TitleRatings => ['averageRating' => 'float', 'numVotes' => 'int'],
         };
     }
@@ -33,7 +35,7 @@ enum ImdbDataset: string
     public function includes(array $row): bool
     {
         return match ($this) {
-            self::TitleBasics => in_array($row['titleType'] ?? null, ['movie', 'tvMovie', 'short', 'tvSpecial', 'video', 'tvSeries', 'tvMiniSeries'], true) && ($row['isAdult'] ?? null) !== '1',
+            self::TitleBasics => in_array($row['titleType'] ?? null, array_map(fn (TitleType $type): string => $type->value, TitleType::cases()), true) && ($row['isAdult'] ?? null) !== '1',
             self::TitleRatings => true,
         };
     }
