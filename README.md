@@ -112,6 +112,28 @@ php artisan test   # backend (Pest)
 npm test           # frontend (Vitest)
 ```
 
+## Configuration
+
+`.env.example` holds **local development** values only — it is the one env file
+committed to the repo, and it is an example of a *local* setup, **not**
+production. Copy it to `.env` and you have a working local environment.
+
+Real environments are gitignored: `.env` (local) and `.env.production` (prod).
+Production values are set on the host platform (Laravel Cloud), not committed to
+the repo, so they do not live in any file you can read here.
+
+**Production diverges from `.env.example`.** When investigating a production
+issue, you cannot assume production uses the same values as `.env.example` —
+verify against the production environment, and consult the table below for the
+keys that intentionally differ.
+
+| Key | Local (`.env.example`) | Production |
+| --- | --- | --- |
+| `SCOUT_DRIVER` | `database` (search indexed in the local DB via SQL — no extra service) | `typesense` (dedicated search engine) |
+| `NIGHTWATCH_TOKEN` | empty (agent does not run locally) | set (monitoring agent runs in prod) |
+| `QUEUE_CONNECTION` | `sync` (jobs run inline; no worker/redis needed) | `redis` (jobs processed by Horizon) |
+| `SCOUT_QUEUE` | unset → `false` (catalog commands index synchronously) | `true` — the catalog is large enough that inline indexing would serialize millions of writes into the import, so writes are queued (requires Horizon running) |
+
 ## Continuous Integration
 
 Every push to `main` and every pull request runs `.github/workflows/ci.yml`,
