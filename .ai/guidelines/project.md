@@ -187,6 +187,16 @@ never a repo-wide sweep (a bare `vendor/bin/rector` rewrites generated
   environment — commit it as a `private const` on the service that calls it, so
   the value sits next to the code that uses it. Reserve `config`/`env` for
   secrets, credentials, and values that genuinely differ per environment.
+- **Name a credential's config key after the provider's own doc verbiage.** A
+  third-party credential's `config`/`env` key uses the term that provider's API
+  docs use for it — don't force one shared word across providers. TMDB's docs
+  call it the "API Read Access Token" → `services.tmdb.token` / `TMDB_TOKEN`;
+  TheTVDB's docs call it the "apikey" → `services.tvdb.key` / `TVDB_KEY`. They
+  differ on purpose: the config reads the way each provider's docs read. A
+  short-lived value *derived* from the stored credential (e.g. the JWT TheTVDB
+  returns from `POST /login`) is internal — cache it, never put it in
+  `config`/`env`. So `key`/`token` names what you store; the bearer you send may
+  be that same value (TMDB) or one exchanged for it (TVDB).
 - **Only *required* env vars belong in `.env.example`.** An env var the app
   needs to run (a secret/credential with no safe default — e.g. an API token)
   goes in `.env.example`. An *optional* tunable that reads through `env()` with a
@@ -226,3 +236,12 @@ provides detailed usage separately).
 - **Work deviates → update the ticket, confirm first.** If implementation
   diverges from the ticket, prompt the user to confirm, then update the ticket
   and mark it clearly as a deviation.
+- **Planning artifacts live in Linear, not in the repo.** PRDs, plans, slice
+  backlogs, and decomposition notes belong in the relevant Linear issue
+  (description or comment) — never committed as repo files. Do not create a
+  `docs/plans` or `.ai/plans` tree; a plan written to disk drifts from the ticket
+  and silently biases future agents who read it as if it were a convention. This
+  bars *version-controlled* planning files only — it does not apply to
+  un-versioned, gitignored scratch space an agent needs for its own tracking
+  (e.g. the `.context` working directory). Writing transient notes there is fine;
+  they never enter the repo, so they can't drift into a false convention.

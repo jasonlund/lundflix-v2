@@ -42,4 +42,9 @@ return [
         'concurrency' => env('TMDB_CONCURRENCY', 20),
     ],
 
+    'tvdb' => [
+        'key' => env('TVDB_KEY'),
+        'concurrency' => env('TVDB_CONCURRENCY', 10),
+    ],
+
 ];

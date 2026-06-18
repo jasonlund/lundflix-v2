@@ -104,6 +104,7 @@ they work. After `composer setup`, fill in every key below:
 | Env var | Required for | How to obtain |
 | --- | --- | --- |
 | `TMDB_TOKEN` | Catalog — TMDB movie/TV metadata | A TMDB API Read Access Token from your [themoviedb.org](https://www.themoviedb.org/settings/api) account settings |
+| `TVDB_KEY` | Catalog — TheTVDB movie/TV metadata | A TheTVDB v4 apikey from the [thetvdb.com](https://thetvdb.com/api-information) API information page (free tier requires TheTVDB attribution) |
 
 ### Running locally
 
