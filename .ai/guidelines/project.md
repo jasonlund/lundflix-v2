@@ -193,23 +193,37 @@ never a repo-wide sweep (a bare `vendor/bin/rector` rewrites generated
   sensible default in `config/` (e.g. a concurrency cap or retry delay) stays out
   of `.env.example` — its default IS the documentation. Don't pad the example
   file with every knob; a fresh clone should see only the keys it must fill in.
+- **A new required env var → also add it to the Conductor root `.env`.** New
+  workspaces copy `.env` from the repository's root checkout
+  (`~/conductor/repos/<repo>/.env`), not from `.env.example`. So when you add a
+  var the app needs to run, set it in that root `.env` too — otherwise fresh
+  workspaces start without it. (This is in addition to `.env.example`.)
 
 ## Documentation
 
-- **Keep the README in sync.** When a change touches anything `README.md`
-  documents (setup, commands, env vars, architecture, dependencies, structure),
-  prompt the user to update it and name the stale section. Never silently edit
-  the README; never let it drift.
-- **A new required env var → update the README install steps.** When work adds an
-  env var the app needs to run (e.g. a third-party API key/token), add it to the
-  README "Required API keys" table in *Getting Started* so a fresh install has
-  every key defined — var name, what it's required for, and where to obtain it.
-  Don't leave a key documented only in `.env.example`.
-- **Grow the Overview and Screenshots as features ship.** The README `Overview`
-  and `Screenshots` sections start as TODO placeholders. When a user-facing
-  feature lands, prompt the user to extend the Overview to describe it and to add
-  a screenshot/demo of it. Remove the TODO marker once the section has real
-  content.
+**Default to `.ai/guidelines/project.md` (agent context, loaded every session);
+write to the README only when a human running the project needs it; write nothing
+when code or git history already says it.** Triage before documenting:
+
+- **`.ai/guidelines/project.md` — default; favor it.** Anything that shapes *how
+  code is written or decided here*: a convention, a domain/architecture boundary,
+  a naming or structure rule, an "always/never," or non-obvious rationale a future
+  agent would miss. Auto-loaded every session → most leverage, least drift. Edit
+  `project.md` only (never the generated `CLAUDE.md`/`AGENTS.md`), then run
+  `php artisan boost:install --guidelines`.
+- **`README.md` — human-operator surface only.** Install, run, test, required
+  credentials, what the app is. Test: *"does someone cloning the repo need this to
+  run or understand the app?"* If no, not README. Never edit it silently — prompt
+  and name the stale section. Specifics:
+  - **New required env var → README "Required API keys" table** (in *Getting
+    Started*): var, what it's for, where to get it. Don't leave it only in
+    `.env.example`.
+  - **Grow `Overview`/`Screenshots` as user-facing features ship**; drop the TODO
+    marker once real.
+- **Nothing.** Derivable from code/tests/git, or true only of this one change.
+
+When a fact is both a rule and an operator step, rule → `project.md`, step →
+README, cross-reference — don't duplicate.
 
 ## Linear (Issue Tracking)
 
