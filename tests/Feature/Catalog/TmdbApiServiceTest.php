@@ -5,7 +5,6 @@ declare(strict_types=1);
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Services\TmdbApiService;
-use Carbon\CarbonInterval;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
@@ -326,30 +325,6 @@ it('throws TmdbAuthenticationFailed on a 401 response', function (): void {
     Http::fake(['*api.themoviedb.org*' => Http::response('', 401)]);
 
     expect(fn () => resolve(TmdbApiService::class)->movie(603))->toThrow(TmdbAuthenticationFailed::class);
-});
-
-it('retries a 429 honoring Retry-After and returns the payload from the retry', function (): void {
-    config(['services.tmdb.token' => 'test-token']);
-    Sleep::fake();
-    Http::fake(['*api.themoviedb.org*' => Http::sequence()
-        ->push('', 429, ['Retry-After' => '0'])
-        ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
-
-    $result = resolve(TmdbApiService::class)->movie(603);
-
-    expect($result)->toBe(json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true));
-});
-
-it('waits the Retry-After header duration, not the base delay, before retrying a 429', function (): void {
-    config(['services.tmdb.token' => 'test-token']);
-    Sleep::fake();
-    Http::fake(['*api.themoviedb.org*' => Http::sequence()
-        ->push('', 429, ['Retry-After' => '60'])
-        ->push(fixtureBytes('Catalog/tmdb/movie.json'), 200)]);
-
-    resolve(TmdbApiService::class)->movie(603);
-
-    Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMilliseconds === 60_000.0, 1);
 });
 
 /*

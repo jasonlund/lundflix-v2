@@ -8,6 +8,7 @@ use App\Domains\Catalog\Services\ImdbDatasetService;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
+use Illuminate\Support\Sleep;
 
 /*
 |--------------------------------------------------------------------------
@@ -333,4 +334,17 @@ it('throws a corrupt archive exception when rows receives a non-gzip file', func
     expect(fn () => $service->rows($path, ImdbDataset::TitleBasics)->all())->toThrow(CorruptImdbDatasetArchive::class);
 
     @unlink($path);
+});
+
+it('attempts the download only the native retry count on a persistent failure (no double-retry)', function () {
+    Sleep::fake();
+    Http::fake(['*datasets.imdbws.com*' => Http::response('', 500)]);
+
+    try {
+        app(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
+    } catch (RequestException) {
+        // retry COUNT is under test, not the throw
+    }
+
+    Http::assertSentCount(3);
 });

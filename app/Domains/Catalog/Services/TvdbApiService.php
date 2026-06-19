@@ -8,11 +8,9 @@ use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Throwable;
 
 final class TvdbApiService
 {
@@ -102,46 +100,13 @@ final class TvdbApiService
     /**
      * Apply the shared TheTVDB auth and headers to a pending request: the bearer
      * is the cached JWT obtained by exchanging the configured apikey via login.
+     * Transient-retry is handled globally by the shared retry middleware.
      */
     private function configure(PendingRequest $request): PendingRequest
     {
         return $request->withToken($this->token())
             ->baseUrl(self::BASE_URL)
-            ->acceptJson()
-            ->retry(2, $this->retryDelay(...), $this->shouldRetry(...), throw: false);
-    }
-
-    /**
-     * Delay before a retry, in milliseconds: honor the server's Retry-After
-     * header (seconds) on a 429/503 when present, otherwise fall back to a
-     * 1000ms base delay. Laravel's retry closure returns milliseconds.
-     */
-    private function retryDelay(int $attempt, Throwable $exception): int
-    {
-        if ($exception instanceof RequestException) {
-            $retryAfter = $exception->response->header('Retry-After');
-
-            if (is_numeric($retryAfter)) {
-                return (int) $retryAfter * 1000;
-            }
-        }
-
-        return 1000;
-    }
-
-    /**
-     * Retry connection errors and transient HTTP failures (429, 5xx), but not
-     * a definitive response such as a 404.
-     */
-    private function shouldRetry(Throwable $exception): bool
-    {
-        if (! $exception instanceof RequestException) {
-            return true;
-        }
-
-        $status = $exception->response->status();
-
-        return $status === 429 || $status >= 500;
+            ->acceptJson();
     }
 
     /**

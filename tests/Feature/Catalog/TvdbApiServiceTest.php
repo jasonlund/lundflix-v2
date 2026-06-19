@@ -5,7 +5,6 @@ declare(strict_types=1);
 use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Services\TvdbApiService;
-use Carbon\CarbonInterval;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -267,20 +266,6 @@ describe('retry policy & backoff', function (): void {
         ]);
 
         expect(fn () => resolve(TvdbApiService::class)->series(81189))->toThrow(TvdbRequestFailed::class);
-    });
-
-    it('waits the Retry-After header duration, not the base delay, before retrying a 429', function (): void {
-        Sleep::fake();
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*api4.thetvdb.com/v4/series/*' => Http::sequence()
-                ->push('', 429, ['Retry-After' => '60'])
-                ->push(fixtureBytes('Catalog/tvdb/series_extended.json'), 200),
-        ]);
-
-        resolve(TvdbApiService::class)->series(81189);
-
-        Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMilliseconds === 60_000.0, 1);
     });
 
     it('does not retry a 404', function (): void {
