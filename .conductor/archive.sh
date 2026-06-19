@@ -12,4 +12,4 @@ if [[ "${CONDUCTOR_IS_LOCAL:-1}" == "1" ]] && command -v herd >/dev/null 2>&1; t
   herd unlink "$SITE" || true
 fi
 
-echo "🧹 $WORKSPACE archived — Herd site '$SITE' removed"
+echo "🧹  $WORKSPACE archived — Herd site '$SITE' removed"

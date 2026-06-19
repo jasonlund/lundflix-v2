@@ -11,7 +11,10 @@ SITE="$(printf '%s' "$WORKSPACE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' 
 composer install --no-interaction --prefer-dist
 grep -q '^APP_KEY=base64:' .env || php artisan key:generate --force   # root .env ships empty
 
-npm install --ignore-scripts
+# `npm ci` (not `install`) — installs strictly from the lockfile and never
+# rewrites it. `npm install` would rewrite package-lock.json's "name" to the
+# workspace dir and drop optional deps, polluting the diff in every workspace.
+npm ci --ignore-scripts
 npm run build
 
 php artisan storage:link
@@ -33,4 +36,4 @@ grep -q '^DB_DATABASE=' .env \
 php artisan migrate --force
 
 php artisan optimize:clear
-echo "✅ $WORKSPACE ready → https://$SITE.test"
+echo "✅  $WORKSPACE ready → https://$SITE.test"
