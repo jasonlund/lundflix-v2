@@ -35,6 +35,27 @@ final class TvdbApiService
     }
 
     /**
+     * List a series' episodes for a season type, walking TheTVDB's top-level
+     * `links.next` cursor until it is null and flattening every page's
+     * `data.episodes` records in page order.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function episodes(int $seriesId, string $seasonType = 'default'): array
+    {
+        $episodes = [];
+        $next = "/series/{$seriesId}/episodes/{$seasonType}";
+
+        while ($next !== null) {
+            $page = $this->decode($this->get($next)) ?? [];
+            $episodes = [...$episodes, ...($page['data']['episodes'] ?? [])];
+            $next = $page['links']['next'] ?? null;
+        }
+
+        return $episodes;
+    }
+
+    /**
      * Fetch a TheTVDB "extended" resource by id, returning the raw decoded body
      * or null when the resource does not exist.
      *
