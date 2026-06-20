@@ -50,7 +50,7 @@ jobs:
         run: php artisan test --compact
 
   code-quality-php:
-    name: PHP code quality (Pint, audit)
+    name: PHP code quality (Rector, Pint, audit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -64,6 +64,9 @@ jobs:
 
       - name: Install Composer dependencies
         uses: ramsey/composer-install@v3
+
+      - name: Rector (refactor check)
+        run: vendor/bin/rector --dry-run
 
       - name: Pint (code style)
         run: vendor/bin/pint --test

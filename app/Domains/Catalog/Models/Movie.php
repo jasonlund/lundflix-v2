@@ -44,6 +44,7 @@ class Movie extends Model
     /**
      * @return array<string, mixed>
      */
+    #[\Override]
     protected function casts(): array
     {
         return [

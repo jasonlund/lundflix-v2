@@ -6,12 +6,12 @@ use App\Domains\Catalog\Actions\UpdateImdbRatings;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 
-it('updates the ratings of an existing movie', function () {
+it('updates the ratings of an existing movie', function (): void {
     // Arrange
     $movie = Movie::factory()->create(['num_votes' => 100, 'average_rating' => 1.0]);
 
     // Act
-    $result = app(UpdateImdbRatings::class)->handle([
+    $result = resolve(UpdateImdbRatings::class)->handle([
         $movie->imdb_id => ['num_votes' => 2252453, 'average_rating' => 8.7],
     ]);
 
@@ -22,12 +22,12 @@ it('updates the ratings of an existing movie', function () {
         ->and($result)->toBe(['movies' => 1, 'shows' => 0]);
 });
 
-it('updates the ratings of an existing show', function () {
+it('updates the ratings of an existing show', function (): void {
     // Arrange
     $show = Show::factory()->create(['num_votes' => 100, 'average_rating' => 1.0]);
 
     // Act
-    $result = app(UpdateImdbRatings::class)->handle([
+    $result = resolve(UpdateImdbRatings::class)->handle([
         $show->imdb_id => ['num_votes' => 987654, 'average_rating' => 9.2],
     ]);
 
@@ -38,12 +38,12 @@ it('updates the ratings of an existing show', function () {
         ->and($result)->toBe(['movies' => 0, 'shows' => 1]);
 });
 
-it('skips an imdb_id with no matching title', function () {
+it('skips an imdb_id with no matching title', function (): void {
     // Arrange
     $movie = Movie::factory()->create(['num_votes' => 100, 'average_rating' => 1.0]);
 
     // Act
-    $result = app(UpdateImdbRatings::class)->handle([
+    $result = resolve(UpdateImdbRatings::class)->handle([
         $movie->imdb_id => ['num_votes' => 2252453, 'average_rating' => 8.7],
         'tt9999999' => ['num_votes' => 50, 'average_rating' => 3.3],
     ]);
@@ -55,7 +55,7 @@ it('skips an imdb_id with no matching title', function () {
         ->and($result)->toBe(['movies' => 1, 'shows' => 0]);
 });
 
-it('appends CASE bindings to pre-existing join bindings instead of replacing them', function () {
+it('appends CASE bindings to pre-existing join bindings instead of replacing them', function (): void {
     // Arrange: a query that already carries a parameterised join, so the 'join'
     // binding slot is non-empty before the action assigns the CASE bindings. The
     // old code did `bindings['join'] = array_merge($case...)`, dropping the join
@@ -73,23 +73,23 @@ it('appends CASE bindings to pre-existing join bindings instead of replacing the
 
     // Act
     (new ReflectionMethod(UpdateImdbRatings::class, 'updateTable'))->invoke(
-        app(UpdateImdbRatings::class),
+        resolve(UpdateImdbRatings::class),
         $scopedQuery,
         [$movie->imdb_id => ['num_votes' => 2252453, 'average_rating' => 8.7]],
     );
 
     // Assert: the join's own binding (-98765) survives in the executed update.
-    $updateLog = collect(DB::getQueryLog())->firstWhere(fn (array $entry): bool => str_starts_with($entry['query'], 'update'));
+    $updateLog = collect(DB::getQueryLog())->firstWhere(fn (array $entry): bool => str_starts_with((string) $entry['query'], 'update'));
     expect($updateLog['bindings'])->toContain(-98765);
 });
 
-it('updates a mixed batch across both tables in one call', function () {
+it('updates a mixed batch across both tables in one call', function (): void {
     // Arrange
     $movie = Movie::factory()->create(['num_votes' => 100, 'average_rating' => 1.0]);
     $show = Show::factory()->create(['num_votes' => 200, 'average_rating' => 2.0]);
 
     // Act
-    $result = app(UpdateImdbRatings::class)->handle([
+    $result = resolve(UpdateImdbRatings::class)->handle([
         $movie->imdb_id => ['num_votes' => 2252453, 'average_rating' => 8.7],
         $show->imdb_id => ['num_votes' => 987654, 'average_rating' => 9.2],
     ]);

@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 |--------------------------------------------------------------------------
 */
 
-it('maps cast rows to movie columns and returns the upserted count', function () {
+it('maps cast rows to movie columns and returns the upserted count', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => ['Action', 'Sci-Fi']],
@@ -26,7 +26,7 @@ it('maps cast rows to movie columns and returns the upserted count', function ()
     ];
 
     // Act
-    $count = app(UpsertMovies::class)->handle($rows);
+    $count = resolve(UpsertMovies::class)->handle($rows);
 
     // Assert
     expect($count)->toBe(3);
@@ -35,14 +35,14 @@ it('maps cast rows to movie columns and returns the upserted count', function ()
     $this->assertDatabaseHas('movies', ['imdb_id' => 'tt0110912', 'title' => 'Pulp Fiction', 'year' => 1994, 'runtime' => 154]);
 });
 
-it('drops unknown genre values without throwing', function () {
+it('drops unknown genre values without throwing', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => ['Action', 'NotAGenre']],
     ];
 
     // Act
-    app(UpsertMovies::class)->handle($rows);
+    resolve(UpsertMovies::class)->handle($rows);
 
     // Assert
     $movie = Movie::query()->where('imdb_id', 'tt0133093')->firstOrFail();
@@ -50,7 +50,7 @@ it('drops unknown genre values without throwing', function () {
         ->and($movie->genres->all())->toEqual([Genre::Action]);
 });
 
-it('preserves num_votes and average_rating on re-upsert', function () {
+it('preserves num_votes and average_rating on re-upsert', function (): void {
     // Arrange
     $existing = Movie::factory()->create([
         'imdb_id' => 'tt0133093',
@@ -63,7 +63,7 @@ it('preserves num_votes and average_rating on re-upsert', function () {
     $originalRating = $existing->average_rating;
 
     // Act
-    app(UpsertMovies::class)->handle([
+    resolve(UpsertMovies::class)->handle([
         ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => ['Action', 'Sci-Fi']],
     ]);
 
@@ -78,70 +78,70 @@ it('preserves num_votes and average_rating on re-upsert', function () {
         ->and($fresh->average_rating)->toBe($originalRating);
 });
 
-it('persists genres readable back through the enum-collection cast', function () {
+it('persists genres readable back through the enum-collection cast', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => ['Action', 'Sci-Fi']],
     ];
 
     // Act
-    app(UpsertMovies::class)->handle($rows);
+    resolve(UpsertMovies::class)->handle($rows);
 
     // Assert
     $movie = Movie::query()->where('imdb_id', 'tt0133093')->firstOrFail();
     expect($movie->genres->all())->toEqual([Genre::Action, Genre::SciFi]);
 });
 
-it('stores SQL NULL for a row whose genres field is null, not the string "[]"', function () {
+it('stores SQL NULL for a row whose genres field is null, not the string "[]"', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => null],
     ];
 
     // Act
-    app(UpsertMovies::class)->handle($rows);
+    resolve(UpsertMovies::class)->handle($rows);
 
     // Assert
     $genres = DB::table('movies')->where('imdb_id', 'tt0133093')->value('genres');
     expect($genres)->toBeNull();
 });
 
-it('stores a json array for a row with real genres', function () {
+it('stores a json array for a row with real genres', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => ['Action', 'Sci-Fi']],
     ];
 
     // Act
-    app(UpsertMovies::class)->handle($rows);
+    resolve(UpsertMovies::class)->handle($rows);
 
     // Assert
     $genres = DB::table('movies')->where('imdb_id', 'tt0133093')->value('genres');
     expect($genres)->toBe(json_encode(['Action', 'Sci-Fi']));
 });
 
-it('stores the originating title type as a TitleType enum', function () {
+it('stores the originating title type as a TitleType enum', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => ['Action', 'Sci-Fi']],
     ];
 
     // Act
-    app(UpsertMovies::class)->handle($rows);
+    resolve(UpsertMovies::class)->handle($rows);
 
     // Assert
     $movie = Movie::query()->where('imdb_id', 'tt0133093')->firstOrFail();
     expect($movie->title_type)->toBe(TitleType::Movie);
 });
 
-it('updates the title type on re-upsert of the same tconst', function () {
+it('updates the title type on re-upsert of the same tconst', function (): void {
     // Arrange
-    app(UpsertMovies::class)->handle([
+    resolve(UpsertMovies::class)->handle([
         ['tconst' => 'tt0133093', 'titleType' => 'movie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => ['Action', 'Sci-Fi']],
     ]);
 
     // Act
-    app(UpsertMovies::class)->handle([
+    resolve(UpsertMovies::class)->handle([
         ['tconst' => 'tt0133093', 'titleType' => 'tvMovie', 'primaryTitle' => 'The Matrix', 'originalTitle' => 'The Matrix', 'startYear' => 1999, 'endYear' => null, 'runtimeMinutes' => 136, 'genres' => ['Action', 'Sci-Fi']],
     ]);
 

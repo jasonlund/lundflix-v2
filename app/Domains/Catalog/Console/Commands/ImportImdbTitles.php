@@ -9,31 +9,21 @@ use App\Domains\Catalog\Actions\UpsertShows;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Enums\TitleType;
 use App\Domains\Catalog\Services\ImdbDatasetService;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 use function Laravel\Prompts\progress;
 use function Laravel\Prompts\spin;
 
+#[Description('Download the IMDb title.basics dataset and upsert movies and shows')]
+#[Signature('imdb:import-titles')]
 class ImportImdbTitles extends Command
 {
     /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'imdb:import-titles';
-
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Download the IMDb title.basics dataset and upsert movies and shows';
-
-    /**
      * Flush an accumulated title buffer once it reaches this size.
      */
-    private const BATCH_SIZE = 1000;
+    private const int BATCH_SIZE = 1000;
 
     /**
      * Execute the console command.
