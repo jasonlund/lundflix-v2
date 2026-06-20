@@ -21,7 +21,7 @@ uses(RefreshDatabase::class);
 |   tt0000001  5.7  2211
 */
 
-it('populates ratings on pre-seeded titles', function () {
+it('populates ratings on pre-seeded titles', function (): void {
     // Arrange
     $matrix = Movie::factory()->create(['imdb_id' => 'tt0133093', 'num_votes' => 1, 'average_rating' => 1.0]);
     $interstellar = Movie::factory()->create(['imdb_id' => 'tt0816692', 'num_votes' => 1, 'average_rating' => 1.0]);
@@ -45,7 +45,7 @@ it('populates ratings on pre-seeded titles', function () {
     expect($fightClub->average_rating)->toBe(8.8);
 });
 
-it('exits SUCCESS', function () {
+it('exits SUCCESS', function (): void {
     // Arrange
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
 
@@ -53,7 +53,7 @@ it('exits SUCCESS', function () {
     $this->artisan('imdb:import-ratings')->assertExitCode(0);
 });
 
-it('deletes the temp file afterward', function () {
+it('deletes the temp file afterward', function (): void {
     // Arrange
     $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);

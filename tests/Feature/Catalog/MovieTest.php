@@ -7,7 +7,7 @@ use App\Domains\Catalog\Models\Movie;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 
-it('persists a movie row to the database', function () {
+it('persists a movie row to the database', function (): void {
     // Arrange
     $movie = Movie::factory()->make();
 
@@ -22,7 +22,7 @@ it('persists a movie row to the database', function () {
     ]);
 });
 
-it('rejects a duplicate imdb_id', function () {
+it('rejects a duplicate imdb_id', function (): void {
     // Arrange
     Movie::factory()->create(['imdb_id' => 'tt1234567']);
 
@@ -31,7 +31,7 @@ it('rejects a duplicate imdb_id', function () {
         ->toThrow(QueryException::class);
 });
 
-it('casts typed attributes when fetched fresh from the database', function () {
+it('casts typed attributes when fetched fresh from the database', function (): void {
     // Arrange
     $movie = Movie::factory()->create([
         'year' => 1999,
@@ -53,7 +53,7 @@ it('casts typed attributes when fetched fresh from the database', function () {
         ->and($fresh->genres[0])->toBeInstanceOf(Genre::class);
 });
 
-it('exposes only the searchable keys with matching values', function () {
+it('exposes only the searchable keys with matching values', function (): void {
     // Arrange
     $movie = Movie::factory()->create();
 

@@ -13,7 +13,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('shows', function (Blueprint $table) {
+        Schema::create('shows', function (Blueprint $table): void {
             $table->id();
             $table->string('imdb_id')->unique();
             $table->text('title');
