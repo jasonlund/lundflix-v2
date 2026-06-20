@@ -50,7 +50,7 @@ jobs:
         run: php artisan test --compact
 
   code-quality-php:
-    name: PHP code quality (Rector, Pint, audit)
+    name: PHP code quality (Pint, audit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
