@@ -25,7 +25,7 @@ uses(RefreshDatabase::class);
 |     tt0038276 (You Are an Artist, tvSeries).
 */
 
-it('splits movies vs shows from the fixture', function () {
+it('splits movies vs shows from the fixture', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
 
     $this->artisan('imdb:import-titles');
@@ -36,7 +36,7 @@ it('splits movies vs shows from the fixture', function () {
     expect(Show::pluck('imdb_id')->all())->toContain('tt0030138', 'tt0047766', 'tt0038276');
 });
 
-it('maps genres to Genre cases', function () {
+it('maps genres to Genre cases', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
     $this->artisan('imdb:import-titles');
 
@@ -46,7 +46,7 @@ it('maps genres to Genre cases', function () {
     expect($movie->genres->all())->toBe([Genre::Action, Genre::SciFi]);
 });
 
-it('preserves the specific originating title type per table', function () {
+it('preserves the specific originating title type per table', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
 
     $this->artisan('imdb:import-titles');
@@ -55,13 +55,13 @@ it('preserves the specific originating title type per table', function () {
     expect(Show::where('imdb_id', 'tt0047766')->firstOrFail()->title_type)->toBe(TitleType::TvMiniSeries);
 });
 
-it('exits SUCCESS', function () {
+it('exits SUCCESS', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
 
     $this->artisan('imdb:import-titles')->assertExitCode(0);
 });
 
-it('deletes the temp file afterward', function () {
+it('deletes the temp file afterward', function (): void {
     $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
     $before = $tempFiles();
@@ -71,7 +71,7 @@ it('deletes the temp file afterward', function () {
     expect($tempFiles())->toBe($before);
 });
 
-it('is idempotent on re-run', function () {
+it('is idempotent on re-run', function (): void {
     Http::fake(['*datasets.imdbws.com*' => fn () => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
     $this->artisan('imdb:import-titles');
 

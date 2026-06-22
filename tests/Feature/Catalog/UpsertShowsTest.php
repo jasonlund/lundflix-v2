@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 |--------------------------------------------------------------------------
 */
 
-it('maps cast rows to show columns and returns the upserted count', function () {
+it('maps cast rows to show columns and returns the upserted count', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0047766', 'titleType' => 'tvSeries', 'primaryTitle' => 'Quatermass II', 'originalTitle' => 'Quatermass II', 'startYear' => 1955, 'endYear' => 1955, 'runtimeMinutes' => 30, 'genres' => ['Drama', 'Horror', 'Sci-Fi']],
@@ -26,7 +26,7 @@ it('maps cast rows to show columns and returns the upserted count', function () 
     ];
 
     // Act
-    $count = app(UpsertShows::class)->handle($rows);
+    $count = resolve(UpsertShows::class)->handle($rows);
 
     // Assert
     expect($count)->toBe(3);
@@ -35,14 +35,14 @@ it('maps cast rows to show columns and returns the upserted count', function () 
     $this->assertDatabaseHas('shows', ['imdb_id' => 'tt0944947', 'title' => 'Game of Thrones', 'start_year' => 2011, 'end_year' => null, 'runtime' => 57]);
 });
 
-it('drops unknown genre values without throwing', function () {
+it('drops unknown genre values without throwing', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0047766', 'titleType' => 'tvSeries', 'primaryTitle' => 'Quatermass II', 'originalTitle' => 'Quatermass II', 'startYear' => 1955, 'endYear' => 1955, 'runtimeMinutes' => 30, 'genres' => ['Drama', 'NotAGenre']],
     ];
 
     // Act
-    app(UpsertShows::class)->handle($rows);
+    resolve(UpsertShows::class)->handle($rows);
 
     // Assert
     $show = Show::query()->where('imdb_id', 'tt0047766')->firstOrFail();
@@ -50,7 +50,7 @@ it('drops unknown genre values without throwing', function () {
         ->and($show->genres->all())->toEqual([Genre::Drama]);
 });
 
-it('preserves num_votes and average_rating on re-upsert', function () {
+it('preserves num_votes and average_rating on re-upsert', function (): void {
     // Arrange
     $existing = Show::factory()->create([
         'imdb_id' => 'tt0047766',
@@ -64,7 +64,7 @@ it('preserves num_votes and average_rating on re-upsert', function () {
     $originalRating = $existing->average_rating;
 
     // Act
-    app(UpsertShows::class)->handle([
+    resolve(UpsertShows::class)->handle([
         ['tconst' => 'tt0047766', 'titleType' => 'tvSeries', 'primaryTitle' => 'Quatermass II', 'originalTitle' => 'Quatermass II', 'startYear' => 1955, 'endYear' => 1955, 'runtimeMinutes' => 30, 'genres' => ['Drama', 'Horror', 'Sci-Fi']],
     ]);
 
@@ -80,56 +80,56 @@ it('preserves num_votes and average_rating on re-upsert', function () {
         ->and($fresh->average_rating)->toBe($originalRating);
 });
 
-it('persists genres readable back through the enum-collection cast', function () {
+it('persists genres readable back through the enum-collection cast', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0047766', 'titleType' => 'tvSeries', 'primaryTitle' => 'Quatermass II', 'originalTitle' => 'Quatermass II', 'startYear' => 1955, 'endYear' => 1955, 'runtimeMinutes' => 30, 'genres' => ['Drama', 'Horror', 'Sci-Fi']],
     ];
 
     // Act
-    app(UpsertShows::class)->handle($rows);
+    resolve(UpsertShows::class)->handle($rows);
 
     // Assert
     $show = Show::query()->where('imdb_id', 'tt0047766')->firstOrFail();
     expect($show->genres->all())->toEqual([Genre::Drama, Genre::Horror, Genre::SciFi]);
 });
 
-it('stores SQL NULL for a row whose genres field is null, not the string "[]"', function () {
+it('stores SQL NULL for a row whose genres field is null, not the string "[]"', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0047766', 'titleType' => 'tvSeries', 'primaryTitle' => 'Quatermass II', 'originalTitle' => 'Quatermass II', 'startYear' => 1955, 'endYear' => 1955, 'runtimeMinutes' => 30, 'genres' => null],
     ];
 
     // Act
-    app(UpsertShows::class)->handle($rows);
+    resolve(UpsertShows::class)->handle($rows);
 
     // Assert
     $genres = DB::table('shows')->where('imdb_id', 'tt0047766')->value('genres');
     expect($genres)->toBeNull();
 });
 
-it('stores a json array for a row with real genres', function () {
+it('stores a json array for a row with real genres', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0047766', 'titleType' => 'tvSeries', 'primaryTitle' => 'Quatermass II', 'originalTitle' => 'Quatermass II', 'startYear' => 1955, 'endYear' => 1955, 'runtimeMinutes' => 30, 'genres' => ['Drama', 'Horror', 'Sci-Fi']],
     ];
 
     // Act
-    app(UpsertShows::class)->handle($rows);
+    resolve(UpsertShows::class)->handle($rows);
 
     // Assert
     $genres = DB::table('shows')->where('imdb_id', 'tt0047766')->value('genres');
     expect($genres)->toBe(json_encode(['Drama', 'Horror', 'Sci-Fi']));
 });
 
-it('stores the originating title type as a TitleType enum', function () {
+it('stores the originating title type as a TitleType enum', function (): void {
     // Arrange
     $rows = [
         ['tconst' => 'tt0047766', 'titleType' => 'tvSeries', 'primaryTitle' => 'Quatermass II', 'originalTitle' => 'Quatermass II', 'startYear' => 1955, 'endYear' => 1955, 'runtimeMinutes' => 30, 'genres' => ['Drama', 'Horror', 'Sci-Fi']],
     ];
 
     // Act
-    app(UpsertShows::class)->handle($rows);
+    resolve(UpsertShows::class)->handle($rows);
 
     // Assert
     $show = Show::query()->where('imdb_id', 'tt0047766')->firstOrFail();

@@ -26,7 +26,7 @@ uses(RefreshDatabase::class);
 | commands download DISTINCT files, so we fake per-file (not a host wildcard).
 */
 
-it('runs titles then ratings end-to-end', function () {
+it('runs titles then ratings end-to-end', function (): void {
     // Arrange
     Http::fake([
         '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),
@@ -46,7 +46,7 @@ it('runs titles then ratings end-to-end', function () {
     expect($matrix->average_rating)->toBe(8.7);
 });
 
-it('continues to ratings when titles fails, exits FAILURE and reports the exception', function () {
+it('continues to ratings when titles fails, exits FAILURE and reports the exception', function (): void {
     // Arrange
     Exceptions::fake();
     Http::fake([
@@ -61,7 +61,7 @@ it('continues to ratings when titles fails, exits FAILURE and reports the except
     Exceptions::assertReported(fn (RequestException $e): bool => true);
 });
 
-it('exits SUCCESS when both commands succeed', function () {
+it('exits SUCCESS when both commands succeed', function (): void {
     // Arrange
     Http::fake([
         '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),

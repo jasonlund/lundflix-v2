@@ -13,7 +13,7 @@ use Throwable;
 
 final class ImdbDatasetService
 {
-    private const BASE_URL = 'https://datasets.imdbws.com';
+    private const string BASE_URL = 'https://datasets.imdbws.com';
 
     public function download(ImdbDataset $dataset): string
     {
@@ -56,7 +56,7 @@ final class ImdbDatasetService
                     continue;
                 }
 
-                if ($dataset !== null && ! $dataset->includes($this->mapRow($header, $this->fields($line)))) {
+                if ($dataset instanceof ImdbDataset && ! $dataset->includes($this->mapRow($header, $this->fields($line)))) {
                     continue;
                 }
 
