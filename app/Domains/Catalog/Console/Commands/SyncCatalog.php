@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
 use Throwable;
 
+#[Description('Run the IMDb catalog import commands in order, surviving any single failure')]
+#[Signature('sync:catalog')]
 class SyncCatalog extends Command
 {
     /**
@@ -15,25 +19,8 @@ class SyncCatalog extends Command
      *
      * @var list<class-string<Command>>
      */
-    private const COMMANDS = [ImportImdbTitles::class, ImportImdbRatings::class];
+    private const array COMMANDS = [ImportImdbTitles::class, ImportImdbRatings::class];
 
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'sync:catalog';
-
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Run the IMDb catalog import commands in order, surviving any single failure';
-
-    /**
-     * Execute the console command.
-     */
     public function handle(): int
     {
         $failed = false;
