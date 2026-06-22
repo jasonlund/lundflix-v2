@@ -173,6 +173,29 @@ name, e.g. `php artisan make:model Domains/Catalog/Models/Product` →
 generate then move the file and fix its namespace. Never break the DDD layout
 to satisfy a generator's default location.
 
+## Persistence: third-party API columns (raw-source prefix)
+
+A DB column populated directly by a third-party API's attribute is **prefixed
+with its source** — `_{source}_{rawAttribute}` — and stores the value **raw, as
+the API returned it**:
+
+- `_imdb_runtime`, `_tmdb_original_title`, `_tvdb_overview`.
+- **No transform at ingest.** Persist the raw value unmodified. Any
+  crosswalk/enum mapping/normalization (e.g. TMDB `"Science Fiction"` →
+  `Genre::SciFi`, or unioning sources into a display value) happens at **read
+  time**, never at write time.
+- **Group columns by source, order sources `imdb → tmdb → tvdb`** in migrations
+  and model definitions, so each source's fields sit together in a predictable
+  order.
+- **App-owned bookkeeping columns are NOT prefixed** — `id`, foreign/morph keys,
+  `*_synced_at`, `is_active`, `created_at`/`updated_at`, and any column the app
+  computes or owns.
+
+This is deliberate: each source owns its own namespaced columns, so there are no
+cross-source value "conflicts" to resolve at ingest (e.g. `_imdb_runtime` and
+`_tmdb_runtime` coexist rather than fighting over one `runtime` column). The
+source of truth is chosen per read, not baked into the schema.
+
 ## Linting & formatting (finalize gates)
 
 Before finalizing **any** change, run every linter/formatter that applies to the
