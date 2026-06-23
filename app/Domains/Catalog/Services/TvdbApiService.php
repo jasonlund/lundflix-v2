@@ -8,6 +8,7 @@ use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -25,6 +26,130 @@ final class TvdbApiService
     {
         return $this->detail('series', $id);
     }
+
+    // === FLIX-160 seriesMany() pooled batch ===
+
+    /**
+     * Batch-fetch series "extended" details, one request per id via a connection
+     * pool. Returns a map of input id to its raw payload (null for a 404),
+     * preserving input order; a single id's 404 does not sink the others.
+     *
+     * @param  array<int, int>  $ids
+     * @return array<int, array<string, mixed>|null>
+     */
+    public function seriesMany(array $ids): array
+    {
+        return $this->pooled($ids, fn (PendingRequest $request, int $id) => $request
+            ->get("/series/{$id}/extended"));
+    }
+
+    /**
+     * Batch-fetch one request per id, fanning out one {@see Http::pool} per
+     * chunk from {@see chunkIds} so at most `concurrency` requests are in flight
+     * at once; responses accumulate across chunks (each named after its id via
+     * {@see configure}'s shared auth), then decode in input order. A single id's
+     * 404 decodes to null without sinking its siblings.
+     *
+     * Request failures don't short-circuit the batch: both a connection-level
+     * failure (a pool entry that comes back as a {@see \Throwable} instead of a
+     * {@see Response}) and a response that stays failed after retries (e.g. a
+     * persistent 5xx) are collected per-id, the rest are still decoded, and once
+     * the loop completes any failed ids are surfaced together as a single
+     * aggregate {@see TvdbRequestFailed::forIds}. A 404 still decodes to null (a
+     * per-id miss, not a failure); a 401 throws immediately, since auth is fatal
+     * for the whole batch rather than a per-id condition.
+     *
+     * @template TKey of int|string
+     *
+     * @param  array<int, TKey>  $ids
+     * @param  callable(PendingRequest, TKey): Response  $build
+     * @return array<TKey, array<string, mixed>|null>
+     */
+    private function pooled(array $ids, callable $build): array
+    {
+        $ids = array_values(array_unique($ids));
+
+        $responses = [];
+
+        foreach ($this->chunkIds($ids) as $chunk) {
+            $responses += Http::pool(fn (Pool $pool): array => array_map(
+                fn (int|string $id) => $build($this->configure($pool->as((string) $id)), $id),
+                $chunk,
+            ));
+        }
+
+        $results = [];
+        $failedIds = [];
+
+        foreach ($ids as $id) {
+            $response = $responses[(string) $id];
+
+            if (! $response instanceof Response) {
+                $failedIds[] = $id;
+
+                continue;
+            }
+
+            if ($response->status() === 401) {
+                throw TvdbAuthenticationFailed::invalidToken();
+            }
+
+            if ($response->failed() && ! $response->notFound()) {
+                $failedIds[] = $id;
+
+                continue;
+            }
+
+            $results[$id] = $this->decode($response);
+        }
+
+        if ($failedIds !== []) {
+            throw TvdbRequestFailed::forIds($failedIds);
+        }
+
+        return $results;
+    }
+
+    /**
+     * Split the input ids into ordered chunks sized by the configured
+     * concurrency, so each {@see pooled} fan-out dispatches at most one chunk's
+     * worth of concurrent requests. Order is preserved and the final chunk holds
+     * the remainder.
+     *
+     * @template TKey of int|string
+     *
+     * @param  array<int, TKey>  $ids
+     * @return array<int, array<int, TKey>>
+     */
+    private function chunkIds(array $ids): array
+    {
+        $size = (int) config('services.tvdb.concurrency');
+
+        return array_chunk($ids, max(1, $size));
+    }
+
+    /**
+     * Batch-resolve IMDb ids to their TheTVDB series, firing one
+     * GET /search/remoteid/{tt} per unique id through the same pooled() seam and
+     * returning a map of [imdbId => series entry|null] keyed in input order; each
+     * value is the same filtered series entry the single-id resolveByImdbId()
+     * returns (not the raw search-remoteid envelope).
+     *
+     * @param  array<int, string>  $imdbIds
+     * @return array<string, array<string, mixed>|null>
+     */
+    public function resolveManyByImdbId(array $imdbIds): array
+    {
+        $envelopes = $this->pooled($imdbIds, fn (PendingRequest $request, string $imdbId) => $request
+            ->get("/search/remoteid/{$imdbId}"));
+
+        return array_map(
+            fn (?array $envelope): ?array => $envelope === null ? null : $this->seriesResult($envelope['data'] ?? []),
+            $envelopes,
+        );
+    }
+
+    // === end FLIX-160 seriesMany() pooled batch ===
 
     /**
      * @return array<string, mixed>|null
@@ -54,6 +179,31 @@ final class TvdbApiService
 
         return $episodes;
     }
+
+    // === FLIX-161 updates() feed — RED stub (no real logic yet) ===
+
+    /**
+     * List TheTVDB EntityUpdate records since a timestamp for an entity type,
+     * walking the top-level `links.next` cursor until null and flattening every
+     * page's `data` records in page order — full record shape preserved.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function updates(int $since, string $type): array
+    {
+        $updates = [];
+        $next = "/updates?since={$since}&type={$type}";
+
+        while ($next !== null) {
+            $page = $this->decode($this->get($next)) ?? [];
+            $updates = [...$updates, ...($page['data'] ?? [])];
+            $next = $page['links']['next'] ?? null;
+        }
+
+        return $updates;
+    }
+
+    // === end FLIX-161 updates() feed stub ===
 
     /**
      * Resolve an IMDb id to its TheTVDB series via GET /search/remoteid/{tt},

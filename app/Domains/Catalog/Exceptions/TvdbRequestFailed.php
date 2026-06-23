@@ -12,4 +12,12 @@ class TvdbRequestFailed extends Exception
     {
         return new self("TheTVDB request to [{$url}] failed after retries.");
     }
+
+    /**
+     * @param  array<int, int|string>  $ids
+     */
+    public static function forIds(array $ids): self
+    {
+        return new self('TheTVDB batch request failed for ids ['.implode(', ', $ids).'] after retries.');
+    }
 }
