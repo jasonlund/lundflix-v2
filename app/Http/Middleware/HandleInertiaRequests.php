@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Domains\Common\Data\SharedData;
+use App\Domains\Identity\Data\UserData;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -39,9 +41,13 @@ class HandleInertiaRequests extends Middleware
     #[\Override]
     public function share(Request $request): array
     {
+        $user = $request->user();
+
         return [
             ...parent::share($request),
-            //
+            'auth' => new SharedData(
+                user: $user ? UserData::from($user) : null,
+            ),
         ];
     }
 }
