@@ -4,18 +4,20 @@ Each case shows the checklist applied. Reference, not exhaustive.
 
 ## 1. PHP docblock — cut boilerplate, keep type info
 
-Two units in the same file get opposite verdicts. The verdict is about signal,
-not about "docblocks are bad."
+Two methods, in different classes, get opposite verdicts. The verdict is about
+signal, not about "docblocks are bad."
 
 **Before**
 ```php
+// SyncCatalog
 /**
- * The console command signature.
+ * Execute the console command.
  *
- * @var string
+ * @return int
  */
-protected $signature = 'catalog:sync';
+public function handle(): int
 
+// UpdateImdbRatings
 /**
  * Apply the supplied ratings to one table in a single bulk CASE update.
  *
@@ -27,8 +29,10 @@ public function handle(Builder $query, array $ratings): int
 
 **After**
 ```php
-protected $signature = 'catalog:sync';
+// SyncCatalog
+public function handle(): int
 
+// UpdateImdbRatings
 /**
  * Apply the supplied ratings to one table in a single bulk CASE update.
  *
@@ -38,9 +42,10 @@ protected $signature = 'catalog:sync';
 public function handle(Builder $query, array $ratings): int
 ```
 
-- `@var string` over `$signature` → **cut**. The native `protected $signature`
-  declaration already says it; the docblock restates the name. Pure boilerplate.
-- The `handle` block → **keep**. `Builder<Movie>|Builder<Show>` and the
+- `SyncCatalog::handle(): int` → **cut**. "Execute the console command." restates
+  the method name, and `@return int` just repeats the native `: int` return type.
+  Both lines add nothing past the signature — pure boilerplate.
+- `UpdateImdbRatings::handle(...)` → **keep**. `Builder<Movie>|Builder<Show>` and the
   `array{...}` shape are type info PHP can't express natively — Larastan and the
   IDE depend on it. The summary line earns its place by naming the *non-obvious*
   mechanism ("single bulk CASE update"), not by restating `handle`.

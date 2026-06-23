@@ -150,8 +150,8 @@ break the DDD layout to satisfy a generator's default location.
 - **Docblocks: keep type info PHP can't express** (`@param array<int, array{...}>`,
   `@return list<string>`, generics, `@throws`) and genuine "why" prose. Cut
   summary lines that restate the method name, `@param`/`@var` that add nothing
-  past the native type hint, and framework stubs (`@var string` over
-  `$signature`/`$description`).
+  past the native type hint, and framework stubs (a `@var string` that only
+  restates a typed property).
 
 ## Linting & formatting (finalize gates)
 
