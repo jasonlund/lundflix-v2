@@ -56,6 +56,38 @@ final class TvdbApiService
     }
 
     /**
+     * Resolve an IMDb id to its TheTVDB series via GET /search/remoteid/{tt},
+     * returning the raw `data[]` element whose member is `series`, or null when
+     * no element carries a `series` key (and on 404, where decode() yields null).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function resolveByImdbId(string $imdbId): ?array
+    {
+        $body = $this->decode($this->get("/search/remoteid/{$imdbId}"));
+
+        return $this->seriesResult($body['data'] ?? []);
+    }
+
+    /**
+     * Select the series member out of a search remote-id result set: the first
+     * `data[]` entry carrying a `series` key, or null when none do.
+     *
+     * @param  array<int, array<string, mixed>>  $results
+     * @return array<string, mixed>|null
+     */
+    private function seriesResult(array $results): ?array
+    {
+        foreach ($results as $result) {
+            if (array_key_exists('series', $result)) {
+                return $result;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Fetch a TheTVDB "extended" resource by id, returning the raw decoded body
      * or null when the resource does not exist.
      *

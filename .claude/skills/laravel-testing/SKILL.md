@@ -63,6 +63,12 @@ shape (fabricated fixtures drift from what the API actually emits and still pass
   any un-faked external request fails the test. Fake every external call.
 - Synthetic bodies are allowed **only** for inputs that can't exist in real data:
   malformed/corrupt payloads, blank lines, HTTP error statuses.
+- Keep fixtures minimal in bytes — only **required** whitespace, no needless data. A
+  real capture is committed exactly as the API emits it (usually already one line, no
+  pretty-print). A **constructed** body (a synthetic shape, or real members you splice
+  together) gets minified to a single line the same way — no indentation, no trailing
+  whitespace — so it diffs cleanly and matches the sibling fixtures. Don't pad it with
+  fields beyond what the captured/spliced members already carry.
 - NB: the "never raw inserts or fixtures" rule below is about **DB state** (use
   factories) — it does not apply to these external-response fixtures.
 
