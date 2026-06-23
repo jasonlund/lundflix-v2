@@ -78,11 +78,12 @@ it('leaves the temp file in place on success', function (): void {
 |--------------------------------------------------------------------------
 | rows() — fixture: tests/Fixtures/Catalog/tmdb/movie_ids.json.gz
 |--------------------------------------------------------------------------
-| Gz JSONL export, 10 lines. Each line shape:
+| Gz JSONL export, 11 lines. Each line shape:
 |   {"adult":bool,"id":int,"original_title":string,"popularity":float,"video":bool}
 |
-| 8 real adult:false rows (byte-exact from the live TMDB daily export):
-|   ids 3924, 8773, 25449, 31975, 2, 3, 5, 6  (id 31975 has "video":true).
+| 9 real adult:false rows (byte-exact from the live TMDB daily export, plus id
+| 603 The Matrix appended for the ingestor slice):
+|   ids 3924, 8773, 25449, 31975, 2, 3, 5, 6, 603  (id 31975 has "video":true).
 |
 | 2 SYNTHETIC injected lines that rows() must SKIP:
 |   - id 9999990: "adult":true
@@ -91,7 +92,7 @@ it('leaves the temp file in place on success', function (): void {
 | key at all, so these two lines are hand-injected — the skip behavior cannot be
 | proven from byte-exact real data, which is the one sanctioned synthetic case.
 |
-| So rows() yields exactly 8 kept rows; ids 9999990 and 9999991 are dropped.
+| So rows() yields exactly 9 kept rows; ids 9999990 and 9999991 are dropped.
 */
 
 it('yields one decoded object per kept JSONL line', function (): void {
@@ -101,7 +102,7 @@ it('yields one decoded object per kept JSONL line', function (): void {
 
     $rows = $service->rows($path)->all();
 
-    expect($rows)->toHaveCount(8);
+    expect($rows)->toHaveCount(9);
     expect(collect($rows)->pluck('id')->all())->toContain(3924, 2);
     expect($rows[0])->toHaveKeys(['id', 'original_title', 'popularity', 'video']);
 
@@ -184,8 +185,8 @@ it('throws a corrupt archive exception when rows receives a non-gzip body', func
 });
 
 it('counts only the kept (non-adult/non-softcore) data lines', function (): void {
-    // The fixture has 10 JSONL lines; the synthetic adult (9999990) and softcore
-    // (9999991) lines are dropped, leaving 8. count() must apply the SAME skip as
+    // The fixture has 11 JSONL lines; the synthetic adult (9999990) and softcore
+    // (9999991) lines are dropped, leaving 9. count() must apply the SAME skip as
     // rows() so the progress total equals the number of rows actually yielded.
     Http::fake(['*files.tmdb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz'))]);
     $service = resolve(TmdbExportService::class);
@@ -193,7 +194,7 @@ it('counts only the kept (non-adult/non-softcore) data lines', function (): void
 
     $count = $service->count($path);
 
-    expect($count)->toBe(8);
+    expect($count)->toBe(9);
 
     @unlink($path);
 });
