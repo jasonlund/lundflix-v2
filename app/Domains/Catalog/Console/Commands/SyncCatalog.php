@@ -21,9 +21,6 @@ class SyncCatalog extends Command
      */
     private const array COMMANDS = [ImportImdbTitles::class, ImportImdbRatings::class];
 
-    /**
-     * Execute the console command.
-     */
     public function handle(): int
     {
         $failed = false;

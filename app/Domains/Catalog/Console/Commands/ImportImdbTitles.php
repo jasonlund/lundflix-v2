@@ -25,9 +25,6 @@ class ImportImdbTitles extends Command
      */
     private const int BATCH_SIZE = 1000;
 
-    /**
-     * Execute the console command.
-     */
     public function handle(
         ImdbDatasetService $service,
         UpsertMovies $upsertMovies,
