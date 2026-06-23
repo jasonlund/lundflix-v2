@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
 
     /*
@@ -35,8 +37,9 @@ return [
         ],
     ],
 
-    'imdb' => [
-        'base_url' => 'https://datasets.imdbws.com',
+    'tmdb' => [
+        'token' => env('TMDB_TOKEN'),
+        'concurrency' => env('TMDB_CONCURRENCY', 20),
     ],
 
 ];

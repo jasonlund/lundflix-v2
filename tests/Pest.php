@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -16,8 +18,8 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)
- // ->use(RefreshDatabase::class)
-    ->beforeEach(function () {
+    ->use(RefreshDatabase::class)
+    ->beforeEach(function (): void {
         Http::preventStrayRequests();
     })
     ->in('Feature');
@@ -33,9 +35,7 @@ pest()->extend(TestCase::class)
 |
 */
 
-expect()->extend('toBeOne', function () {
-    return $this->toBe(1);
-});
+expect()->extend('toBeOne', fn () => $this->toBe(1));
 
 /*
 |--------------------------------------------------------------------------

@@ -96,6 +96,32 @@ composer setup
 copies `.env`, generates the app key, runs migrations, and builds frontend
 assets.
 
+### Using Conductor (parallel agent workspaces)
+
+Each Conductor workspace is its own git worktree; setup/teardown is automated by
+`.conductor/`:
+
+- **Create** → `.conductor/setup.sh` installs deps, builds assets, links a
+  per-workspace Herd site (`https://<workspace>.test`), and points the app at the
+  shared local SQLite db.
+- **Run** → `npm run dev` (Vite); Herd serves the PHP app. One workspace at a time
+  (`run_mode = "nonconcurrent"`).
+- **Merge** → the workspace auto-archives on PR merge, `.conductor/archive.sh`
+  unlinks the Herd site, and the branch is deleted.
+
+**Env vars under Conductor:** new workspaces copy `.env` from the repository's
+**root checkout** (`~/conductor/repos/lundflix-v2/.env`), *not* from
+`.env.example` — so a new required var must be added to that root `.env` too.
+
+### Required API keys
+
+Some features call third-party APIs and need credentials in your `.env` before
+they work. After `composer setup`, fill in every key below:
+
+| Env var | Required for | How to obtain |
+| --- | --- | --- |
+| `TMDB_TOKEN` | Catalog — TMDB movie/TV metadata | A TMDB API Read Access Token from your [themoviedb.org](https://www.themoviedb.org/settings/api) account settings |
+
 ### Running locally
 
 ```bash
@@ -105,12 +131,37 @@ composer dev
 Starts the PHP server, queue worker, log tailer (Pail), and Vite dev server
 together. Visit the app at the URL printed by `php artisan serve`.
 
+In a Conductor workspace, the app is served by Herd at `https://<workspace>.test`
+and `npm run dev` (the Run button) only starts Vite.
+
 ### Running tests
 
 ```bash
 php artisan test   # backend (Pest)
 npm test           # frontend (Vitest)
 ```
+
+## Configuration
+
+`.env.example` holds **local development** values only — it is the one env file
+committed to the repo, and it is an example of a *local* setup, **not**
+production. Copy it to `.env` and you have a working local environment.
+
+Real environments are gitignored: `.env` (local) and `.env.production` (prod).
+Production values are set on the host platform (Laravel Cloud), not committed to
+the repo, so they do not live in any file you can read here.
+
+**Production diverges from `.env.example`.** When investigating a production
+issue, you cannot assume production uses the same values as `.env.example` —
+verify against the production environment, and consult the table below for the
+keys that intentionally differ.
+
+| Key | Local (`.env.example`) | Production |
+| --- | --- | --- |
+| `SCOUT_DRIVER` | `database` (search indexed in the local DB via SQL — no extra service) | `typesense` (dedicated search engine) |
+| `NIGHTWATCH_TOKEN` | empty (agent does not run locally) | set (monitoring agent runs in prod) |
+| `QUEUE_CONNECTION` | `sync` (jobs run inline; no worker/redis needed) | `redis` (jobs processed by Horizon) |
+| `SCOUT_QUEUE` | unset → `false` (catalog commands index synchronously) | `true` — the catalog is large enough that inline indexing would serialize millions of writes into the import, so writes are queued (requires Horizon running) |
 
 ## Continuous Integration
 

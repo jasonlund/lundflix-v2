@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Identity\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -20,10 +22,9 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     /**
-     * Get the attributes that should be cast.
-     *
      * @return array<string, string>
      */
+    #[\Override]
     protected function casts(): array
     {
         return [
