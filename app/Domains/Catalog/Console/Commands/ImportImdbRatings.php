@@ -28,9 +28,6 @@ class ImportImdbRatings extends Command
         parent::__construct();
     }
 
-    /**
-     * Execute the console command.
-     */
     public function handle(): int
     {
         $path = $this->datasets->download(ImdbDataset::TitleRatings);
