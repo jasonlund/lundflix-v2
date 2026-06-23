@@ -26,9 +26,6 @@ class SyncTmdbMovies extends Command
      */
     private const int BATCH_SIZE = 1000;
 
-    /**
-     * Execute the console command.
-     */
     public function handle(
         TmdbExportService $export,
         TmdbApiService $api,
