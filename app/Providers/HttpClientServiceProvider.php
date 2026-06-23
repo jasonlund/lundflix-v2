@@ -12,31 +12,15 @@ use Psr\Http\Message\ResponseInterface;
 final class HttpClientServiceProvider extends ServiceProvider
 {
     /**
-     * Maximum number of retry attempts after the initial request, so a
-     * persistent failure is attempted at most three times total. This is a
-     * fixed, non-secret tunable, so it lives as a const rather than config.
+     * Retries after the initial request, so a persistent failure runs at most
+     * three times total. Fixed non-secret tunable → const, not config.
      */
     private const int MAX_RETRY_ATTEMPTS = 2;
 
     /**
-     * Register the global outbound-HTTP retry seam.
-     *
-     * Every Laravel HTTP client request transparently retries transient
-     * 429/500 responses via Guzzle's retry middleware, so no individual
-     * service has to opt in. The should_retry_callback (self::shouldRetry)
-     * decides retryability and caps attempts at self::MAX_RETRY_ATTEMPTS; any
-     * other status (e.g. 404) is treated as definitive.
-     *
-     * The base delay is config-backed because guzzle-retry sleeps through
-     * Guzzle directly and bypasses Laravel's Sleep::fake() — production keeps
-     * a real back-off while tests pin HTTP_RETRY_BASE_DELAY=0 to stay
-     * sleep-free.
-     *
-     * Connection-level failures (no HTTP response) are retried via
-     * retry_on_timeout, sharing the same MAX_RETRY_ATTEMPTS cap and back-off.
-     *
-     * The policy options themselves live in self::retryOptions(); boot() only
-     * registers the middleware built from them.
+     * Register the global outbound-HTTP retry seam: every Laravel HTTP request
+     * transparently retries transient 429/5xx responses and connection timeouts,
+     * so no service opts in. Policy lives in {@see retryOptions}.
      */
     public function boot(): void
     {
@@ -44,12 +28,9 @@ final class HttpClientServiceProvider extends ServiceProvider
     }
 
     /**
-     * The single source of the global outbound-HTTP retry policy options.
-     *
-     * Returns the guzzle-retry factory configuration: a config-backed base
-     * delay, the MAX_RETRY_ATTEMPTS cap, connection-timeout retry, and the
-     * should_retry_callback (self::shouldRetry) deciding HTTP-status
-     * retryability.
+     * Single source of the global retry policy: config-backed base delay,
+     * {@see MAX_RETRY_ATTEMPTS} cap, connection-timeout retry, and
+     * {@see shouldRetry} for HTTP-status retryability.
      *
      * @return array{
      *     default_retry_multiplier: float,
@@ -69,14 +50,11 @@ final class HttpClientServiceProvider extends ServiceProvider
     }
 
     /**
-     * Decide whether an outbound request should be retried.
+     * Retry only transient HTTP statuses: 429 or any 5xx. A null response is a
+     * connection-level failure (retried separately via retry_on_timeout), not
+     * here.
      *
-     * Retry policy: a 429 (rate limited) or any 5xx (server error) is treated
-     * as transient and retried. Every other status (e.g. 404) is definitive.
-     * A null response means a connection-level failure (no HTTP status to
-     * inspect), which is not retried here.
-     *
-     * @param  array<string, mixed>  $options  Guzzle request options for this attempt.
+     * @param  array<string, mixed>  $options
      */
     private static function shouldRetry(array $options, ?ResponseInterface $response = null): bool
     {

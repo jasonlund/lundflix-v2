@@ -27,12 +27,9 @@ final class TvdbApiService
         return $this->detail('series', $id);
     }
 
-    // === FLIX-160 seriesMany() pooled batch ===
-
     /**
-     * Batch-fetch series "extended" details, one request per id via a connection
-     * pool. Returns a map of input id to its raw payload (null for a 404),
-     * preserving input order; a single id's 404 does not sink the others.
+     * Batch-fetch each series' "extended" detail through {@see pooled} — map of
+     * id → raw payload (null on 404), input order preserved.
      *
      * @param  array<int, int>  $ids
      * @return array<int, array<string, mixed>|null>
@@ -44,20 +41,12 @@ final class TvdbApiService
     }
 
     /**
-     * Batch-fetch one request per id, fanning out one {@see Http::pool} per
-     * chunk from {@see chunkIds} so at most `concurrency` requests are in flight
-     * at once; responses accumulate across chunks (each named after its id via
-     * {@see configure}'s shared auth), then decode in input order. A single id's
-     * 404 decodes to null without sinking its siblings.
-     *
-     * Request failures don't short-circuit the batch: both a connection-level
-     * failure (a pool entry that comes back as a {@see \Throwable} instead of a
-     * {@see Response}) and a response that stays failed after retries (e.g. a
-     * persistent 5xx) are collected per-id, the rest are still decoded, and once
-     * the loop completes any failed ids are surfaced together as a single
-     * aggregate {@see TvdbRequestFailed::forIds}. A 404 still decodes to null (a
-     * per-id miss, not a failure); a 401 throws immediately, since auth is fatal
-     * for the whole batch rather than a per-id condition.
+     * Batch one request per id via {@see Http::pool}, fanned out in {@see chunkIds}
+     * chunks so at most `concurrency` are in flight; responses decode in input
+     * order. A 404 decodes to null (per-id miss). A 401 throws immediately — auth
+     * is fatal for the whole batch. Connection failures and post-retry response
+     * failures (e.g. persistent 5xx) don't short-circuit: collected per-id and
+     * surfaced together as one {@see TvdbRequestFailed::forIds}.
      *
      * @template TKey of int|string
      *
@@ -111,10 +100,8 @@ final class TvdbApiService
     }
 
     /**
-     * Split the input ids into ordered chunks sized by the configured
-     * concurrency, so each {@see pooled} fan-out dispatches at most one chunk's
-     * worth of concurrent requests. Order is preserved and the final chunk holds
-     * the remainder.
+     * Split ids into ordered chunks of `concurrency` (min 1), so each
+     * {@see pooled} fan-out dispatches at most one chunk concurrently.
      *
      * @template TKey of int|string
      *
@@ -129,11 +116,10 @@ final class TvdbApiService
     }
 
     /**
-     * Batch-resolve IMDb ids to their TheTVDB series, firing one
-     * GET /search/remoteid/{tt} per unique id through the same pooled() seam and
-     * returning a map of [imdbId => series entry|null] keyed in input order; each
-     * value is the same filtered series entry the single-id resolveByImdbId()
-     * returns (not the raw search-remoteid envelope).
+     * Batch-resolve IMDb ids through {@see pooled} (one /search/remoteid/{tt}
+     * each) to a map of imdbId → series entry|null, input order preserved. Each
+     * value is the filtered entry {@see resolveByImdbId} returns, not the raw
+     * search envelope.
      *
      * @param  array<int, string>  $imdbIds
      * @return array<string, array<string, mixed>|null>
@@ -148,8 +134,6 @@ final class TvdbApiService
             $envelopes,
         );
     }
-
-    // === end FLIX-160 seriesMany() pooled batch ===
 
     /**
      * @return array<string, mixed>|null
@@ -180,8 +164,6 @@ final class TvdbApiService
         return $episodes;
     }
 
-    // === FLIX-161 updates() feed — RED stub (no real logic yet) ===
-
     /**
      * List TheTVDB EntityUpdate records since a timestamp for an entity type,
      * walking the top-level `links.next` cursor until null and flattening every
@@ -202,8 +184,6 @@ final class TvdbApiService
 
         return $updates;
     }
-
-    // === end FLIX-161 updates() feed stub ===
 
     /**
      * Resolve an IMDb id to its TheTVDB series via GET /search/remoteid/{tt},
