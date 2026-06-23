@@ -63,7 +63,8 @@ Single-purpose actions live in `App\Domains\{Domain}\Actions`.
 ### Exceptions
 
 **One explicitly named class per distinct failure**, named for the condition,
-PascalCase, in `App\Domains\{Domain}\Exceptions` (e.g. `CorruptImdbDatasetArchive`).
+PascalCase, in `App\Domains\{Domain}\Exceptions` — one domain often has several
+(e.g. `CorruptImdbDatasetArchive` and `CannotOpenImdbDatasetArchive`).
 Never funnel unrelated failures through a catch-all (factory methods or a
 type/code discriminator) — split them so callers `catch` each by type. A static
 named constructor (`::at($path)`) for the message is fine.
