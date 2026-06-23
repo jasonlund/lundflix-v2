@@ -7,17 +7,15 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Symfony\Component\Finder\Finder;
 
 /**
- * Discover every class declared under `app/Domains/**` that carries the
- * `#[TypeScript]` attribute.
+ * Discover every `app/Domains/**` class carrying `#[TypeScript]`.
  *
- * We scan the source files directly (rather than relying on what the autoloader
- * happens to have loaded) so the fence cannot go hollow: every domain Data file
- * is loaded and reflected on, including ones nothing else has referenced yet.
+ * Scans source files directly, not the autoloaded set, so the fence can't go
+ * hollow — every domain Data file is reflected, including ones nothing else
+ * references yet.
  *
- * Reflection (not Pest's fluent `toHaveAttribute`) is deliberate: that selector
- * is the inverse of what we need — it asserts a targeted namespace's classes
- * *have* an attribute, whereas this fence asserts the conditional "classes that
- * *have* `#[TypeScript]` are well-formed". Do not "simplify" this into it.
+ * Reflection (not Pest's `toHaveAttribute`) is deliberate: that selector asserts
+ * a namespace's classes *have* an attribute — the inverse of the conditional we
+ * need ("classes that *have* `#[TypeScript]` are well-formed"). Don't fold it in.
  *
  * @return list<ReflectionClass<object>>
  */
@@ -50,10 +48,9 @@ function typeScriptAnnotatedDomainClasses(): array
 }
 
 /**
- * Assert that no `#[TypeScript]`-annotated domain class violates the given rule.
+ * Assert no `#[TypeScript]`-annotated domain class violates `$violates`.
  *
- * Discovers the annotated classes, keeps the ones the predicate flags as
- * offending, and asserts that set — reported by FQCN — is empty.
+ * Offenders are reported by FQCN so a failure names the class to fix.
  *
  * @param  callable(ReflectionClass<object>): bool  $violates
  */
@@ -65,14 +62,14 @@ function expectNoAnnotatedClassViolates(callable $violates, string $message): vo
         ->toBe([], $message);
 }
 
-it('only annotates spatie Data classes with the TypeScript attribute', function () {
+it('only annotates spatie Data classes with the TypeScript attribute', function (): void {
     expectNoAnnotatedClassViolates(
         fn (ReflectionClass $class): bool => ! $class->isSubclassOf(Data::class),
         'Every #[TypeScript] class must extend '.Data::class.'.',
     );
 });
 
-it('only annotates classes living in a domain Data namespace with the TypeScript attribute', function () {
+it('only annotates classes living in a domain Data namespace with the TypeScript attribute', function (): void {
     expectNoAnnotatedClassViolates(
         fn (ReflectionClass $class): bool => ! str_starts_with($class->getName(), 'App\\Domains\\')
             || ! str_contains($class->getName(), '\\Data\\'),
