@@ -166,6 +166,35 @@ describe('series() JWT auth', function (): void {
 
         expect(Http::recorded(fn ($request): bool => str_contains((string) $request->url(), '/login')))->toHaveCount(2);
     });
+
+    it('throws TvdbAuthenticationFailed and caches nothing when /login returns no usable token', function (): void {
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(['status' => 'success', 'data' => ['token' => '']]),
+            '*api4.thetvdb.com/v4/series/*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
+        ]);
+
+        expect(fn () => resolve(TvdbApiService::class)->series(81189))->toThrow(TvdbAuthenticationFailed::class);
+
+        expect(Cache::get('tvdb.jwt'))->toBeNull();
+    });
+
+    it('re-attempts login rather than presenting a null bearer after a malformed login body', function (): void {
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::sequence()
+                ->push(['status' => 'success', 'data' => []])
+                ->push(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
+        ]);
+
+        try {
+            resolve(TvdbApiService::class)->series(81189);
+        } catch (TvdbAuthenticationFailed) {
+            // first call: malformed login body must not cache a null bearer
+        }
+        $payload = resolve(TvdbApiService::class)->series(81189);
+
+        expect($payload)->toBe(json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true));
+    });
 });
 
 /*

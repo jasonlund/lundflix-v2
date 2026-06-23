@@ -44,9 +44,9 @@ final class TvdbApiService
      * Batch one request per id via {@see Http::pool}, fanned out in {@see chunkIds}
      * chunks so at most `concurrency` are in flight; responses decode in input
      * order. A 404 decodes to null (per-id miss). A 401 throws immediately — auth
-     * is fatal for the whole batch. Connection failures and post-retry response
-     * failures (e.g. persistent 5xx) don't short-circuit: collected per-id and
-     * surfaced together as one {@see TvdbRequestFailed::forIds}.
+     * is fatal for the whole batch. Connection failures, post-retry response
+     * failures (e.g. persistent 5xx), and undecodable 200s don't short-circuit:
+     * collected per-id and surfaced together as one {@see TvdbRequestFailed::forIds}.
      *
      * @template TKey of int|string
      *
@@ -80,6 +80,8 @@ final class TvdbApiService
             }
 
             if ($response->status() === 401) {
+                Cache::forget(self::JWT_CACHE_KEY);
+
                 throw TvdbAuthenticationFailed::invalidToken();
             }
 
@@ -89,7 +91,11 @@ final class TvdbApiService
                 continue;
             }
 
-            $results[$id] = $this->decode($response);
+            try {
+                $results[$id] = $this->decode($response);
+            } catch (TvdbRequestFailed) {
+                $failedIds[] = $id;
+            }
         }
 
         if ($failedIds !== []) {
@@ -308,8 +314,14 @@ final class TvdbApiService
      */
     private function login(): string
     {
-        return Http::asJson()
+        $token = Http::asJson()
             ->post(self::BASE_URL.'/login', ['apikey' => config('services.tvdb.key')])
             ->json('data.token');
+
+        if (! is_string($token) || $token === '') {
+            throw TvdbAuthenticationFailed::noUsableToken();
+        }
+
+        return $token;
     }
 }

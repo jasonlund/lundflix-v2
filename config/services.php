@@ -47,11 +47,12 @@ return [
         'concurrency' => env('TVDB_CONCURRENCY', 10),
     ],
 
-    // Base delay (seconds) for the global guzzle-retry middleware's backoff.
-    // Per-environment because guzzle-retry sleeps via its own usleep and bypasses
-    // Sleep::fake() — phpunit.xml pins this to 0 so retry tests don't really sleep.
+    // Per-retry backoff multiplier for the global guzzle-retry middleware (escalating
+    // semantics in HttpClientServiceProvider::retryOptions). Per-environment because
+    // guzzle-retry sleeps via its own usleep and bypasses Sleep::fake() — phpunit.xml
+    // pins this to 0 so retry tests don't really sleep.
     'http_retry' => [
-        'base_delay' => env('HTTP_RETRY_BASE_DELAY', 1.0),
+        'retry_multiplier' => env('HTTP_RETRY_MULTIPLIER', 1.0),
     ],
 
 ];

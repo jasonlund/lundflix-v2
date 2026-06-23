@@ -36,15 +36,21 @@ final class HttpClientServiceProvider extends ServiceProvider
      *     default_retry_multiplier: float,
      *     max_retry_attempts: int,
      *     retry_on_timeout: bool,
+     *     retry_on_status: list<int>,
      *     should_retry_callback: callable,
      * }
      */
     public static function retryOptions(): array
     {
         return [
-            'default_retry_multiplier' => (float) config('services.http_retry.base_delay'),
+            // Per-retry backoff multiplier: waits multiplier × retry_count seconds
+            // before each attempt (escalating, not flat).
+            'default_retry_multiplier' => (float) config('services.http_retry.retry_multiplier'),
             'max_retry_attempts' => self::MAX_RETRY_ATTEMPTS,
             'retry_on_timeout' => true,
+            // Empty so the library does no status pre-filtering: shouldRetry is the
+            // single source of truth for HTTP-status retryability (retry any 5xx/429).
+            'retry_on_status' => [],
             'should_retry_callback' => self::shouldRetry(...),
         ];
     }

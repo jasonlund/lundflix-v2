@@ -40,6 +40,17 @@ it('retries a transient 500 through to the eventual 200', function (): void {
     expect($response->json())->toBe(['ok' => true]);
 });
 
+it('retries a 5xx outside the library default status filter', function (): void {
+    Http::fake(['retry.test/*' => Http::sequence()
+        ->push('', 502)
+        ->push('{"ok":true}', 200)]);
+
+    $response = Http::get('https://retry.test/ping');
+
+    Http::assertSentCount(2);
+    expect($response->json())->toBe(['ok' => true]);
+});
+
 it('sends a first-try 200 only once', function (): void {
     Http::fake(['retry.test/*' => Http::response('{"ok":true}', 200)]);
 
@@ -97,6 +108,6 @@ it('configures connection-timeout retry capped at two attempts', function (): vo
         'retry_on_timeout' => true,
         'max_retry_attempts' => 2,
     ])
-        ->and($options['default_retry_multiplier'])->toBe((float) config('services.http_retry.base_delay'))
+        ->and($options['default_retry_multiplier'])->toBe((float) config('services.http_retry.retry_multiplier'))
         ->and($options['should_retry_callback'])->toBeCallable();
 });
