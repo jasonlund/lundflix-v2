@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Domains\Catalog\Services;
 
 use App\Domains\Catalog\Enums\ImdbDataset;
@@ -7,40 +9,81 @@ use App\Domains\Catalog\Exceptions\CannotOpenImdbDatasetArchive;
 use App\Domains\Catalog\Exceptions\CorruptImdbDatasetArchive;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
+use Throwable;
 
 final class ImdbDatasetService
 {
-    private const BASE_URL = 'https://datasets.imdbws.com';
+    private const string BASE_URL = 'https://datasets.imdbws.com';
 
-    public function rows(ImdbDataset $dataset): LazyCollection
+    public function download(ImdbDataset $dataset): string
     {
-        return LazyCollection::make(function () use ($dataset) {
-            $path = $this->download($dataset);
+        $path = tempnam(sys_get_temp_dir(), 'imdb_');
 
-            yield from $this->parse($dataset, $path);
-        });
+        try {
+            Http::sink($path)
+                ->timeout(600)
+                ->retry(3, 1000)
+                ->get(self::BASE_URL.'/'.$dataset->filename())
+                ->throw();
+        } catch (Throwable $e) {
+            @unlink($path);
+
+            throw $e;
+        }
+
+        return $path;
     }
 
     /**
-     * Stream the gzipped TSV at $path, yielding each kept-and-cast row.
+     * Count the data rows that rows() would actually yield.
      *
-     * @return \Generator<int, array<string, mixed>>
+     * Applies the SAME includes() filter as rows() so the returned total equals
+     * the number of rows that will be advanced over downstream — keeping a
+     * progress bar's total honest (it reaches 100% exactly, not ~72% then snap).
+     * A dataset whose includes() always returns true counts every non-blank row.
      */
-    private function parse(ImdbDataset $dataset, string $path): \Generator
+    public function count(string $path, ?ImdbDataset $dataset = null): int
     {
+        $handle = $this->open($path);
+
         try {
-            if (! $this->isGzip($path)) {
-                throw CorruptImdbDatasetArchive::at($path);
+            $header = $this->fields($this->readHeader($handle, $path));
+
+            $count = 0;
+
+            while (($line = gzgets($handle)) !== false) {
+                if (rtrim($line, "\r\n") === '') {
+                    continue;
+                }
+
+                if ($dataset instanceof ImdbDataset && ! $dataset->includes($this->mapRow($header, $this->fields($line)))) {
+                    continue;
+                }
+
+                $count++;
             }
 
-            $handle = gzopen($path, 'rb');
+            return $count;
+        } finally {
+            gzclose($handle);
+        }
+    }
 
-            if ($handle === false) {
-                throw CannotOpenImdbDatasetArchive::at($path);
-            }
+    /**
+     * Stream the kept, casted data rows as a lazy collection.
+     *
+     * IMPORTANT: the underlying gz handle is closed in a finally that only runs
+     * when the generator completes or is garbage-collected. Callers MUST fully
+     * consume the returned collection (e.g. ->all(), or a foreach to the end);
+     * abandoning it part-way leaves the gz handle open until GC reclaims it.
+     */
+    public function rows(string $path, ImdbDataset $dataset): LazyCollection
+    {
+        return LazyCollection::make(function () use ($path, $dataset) {
+            $handle = $this->open($path);
 
             try {
-                $header = $this->fields(gzgets($handle));
+                $header = $this->fields($this->readHeader($handle, $path));
 
                 while (($line = gzgets($handle)) !== false) {
                     if (rtrim($line, "\r\n") === '') {
@@ -53,57 +96,38 @@ final class ImdbDatasetService
                         continue;
                     }
 
+                    unset($raw['isAdult']);
+
                     yield $this->cast($raw, $dataset->casts());
                 }
             } finally {
                 gzclose($handle);
             }
-        } finally {
-            @unlink($path);
-        }
+        });
     }
 
     /**
-     * Determine whether the file at $path begins with the gzip magic bytes.
+     * Read and return the raw TSV header line, guarding against an empty body.
+     *
+     * A gzip with valid magic but no content yields false on the first gzgets;
+     * passing that to array_combine would raise an opaque ValueError, so we
+     * surface the domain exception instead.
+     *
+     * @param  resource  $handle
      */
-    private function isGzip(string $path): bool
+    private function readHeader($handle, string $path): string
     {
-        $handle = fopen($path, 'rb');
+        $header = gzgets($handle);
 
-        if ($handle === false) {
-            return false;
+        if ($header === false) {
+            throw CorruptImdbDatasetArchive::at($path);
         }
 
-        try {
-            $magic = fread($handle, 2);
-        } finally {
-            fclose($handle);
-        }
-
-        return $magic === "\x1f\x8b";
-    }
-
-    private function download(ImdbDataset $dataset): string
-    {
-        $path = tempnam(sys_get_temp_dir(), 'imdb_');
-
-        try {
-            Http::sink($path)
-                ->timeout(600)
-                ->retry(3, 1000)
-                ->get(self::BASE_URL.'/'.$dataset->filename())
-                ->throw();
-        } catch (\Throwable $e) {
-            @unlink($path);
-
-            throw $e;
-        }
-
-        return $path;
+        return $header;
     }
 
     /**
-     * @return array<int, string>
+     * @return list<string>
      */
     private function fields(string $line): array
     {
@@ -111,8 +135,8 @@ final class ImdbDatasetService
     }
 
     /**
-     * @param  array<int, string>  $header
-     * @param  array<int, string>  $fields
+     * @param  list<string>  $header
+     * @param  list<string>  $fields
      * @return array<string, string|null>
      */
     private function mapRow(array $header, array $fields): array
@@ -130,14 +154,14 @@ final class ImdbDatasetService
      */
     private function cast(array $row, array $casts): array
     {
-        foreach ($casts as $col => $type) {
-            if (! array_key_exists($col, $row) || $row[$col] === null) {
+        foreach ($casts as $column => $type) {
+            if (! array_key_exists($column, $row) || $row[$column] === null) {
                 continue;
             }
 
-            $value = $row[$col];
+            $value = $row[$column];
 
-            $row[$col] = match ($type) {
+            $row[$column] = match ($type) {
                 'int' => (int) $value,
                 'float' => (float) $value,
                 'bool' => $value === '1',
@@ -147,5 +171,40 @@ final class ImdbDatasetService
         }
 
         return $row;
+    }
+
+    /**
+     * @return resource
+     */
+    private function open(string $path): mixed
+    {
+        if (! $this->isGzip($path)) {
+            throw CorruptImdbDatasetArchive::at($path);
+        }
+
+        $handle = gzopen($path, 'rb');
+
+        if ($handle === false) {
+            throw CannotOpenImdbDatasetArchive::at($path);
+        }
+
+        return $handle;
+    }
+
+    private function isGzip(string $path): bool
+    {
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            return false;
+        }
+
+        try {
+            $magic = fread($handle, 2);
+
+            return $magic === "\x1f\x8b";
+        } finally {
+            fclose($handle);
+        }
     }
 }
