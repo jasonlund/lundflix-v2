@@ -1,0 +1,13 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+setup = "bash .conductor/setup.sh"
+run = "npm run dev"
+archive = "bash .conductor/archive.sh"
+run_mode = "nonconcurrent"
+
+[git]
+archive_on_merge = true
+delete_branch_on_archive = true
+worktree_push_auto_setup_remote = true
+branch_prefix_type = "none"

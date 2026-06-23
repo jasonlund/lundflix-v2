@@ -178,18 +178,29 @@ touched — scoped to your changed work, never a repo-wide sweep (a bare
 - **Only *required* env vars belong in `.env.example`** — a secret/credential the
   app needs to run. Optional tunables that read `env()` with a `config/` default
   stay out; the default is the documentation.
+- **New required env var → also set the Conductor root `.env`.** Fresh workspaces
+  copy `.env` from `~/conductor/repos/<repo>/.env`, not from `.env.example` — set
+  it there too or new workspaces start without it.
 
 ## Documentation
 
-- **Keep `README.md` in sync.** When a change touches what it documents (setup,
-  commands, env vars, architecture, deps, structure), prompt the user and name
-  the stale section — never silently edit, never let it drift.
-- **New required env var → README install steps.** Add it to the "Required API
-  keys" table in *Getting Started* (var name, what it's for, where to obtain it),
-  not only `.env.example`.
-- **Grow Overview + Screenshots as features ship.** Both start as TODO; when a
-  user-facing feature lands, prompt the user to extend Overview and add a
-  screenshot, then drop the TODO marker.
+**Default to `.ai/guidelines/project.md` (agent context, every session); write to
+README only when a human operator needs it; write nothing when code or git
+already says it.**
+
+- **`project.md` — default.** Any convention, architecture/domain boundary,
+  naming/structure rule, always/never, or non-obvious rationale a future agent
+  would miss. Edit `project.md` only (never the generated `CLAUDE.md`/`AGENTS.md`),
+  then run `php artisan boost:install --guidelines`.
+- **`README.md` — human-operator surface only.** Install, run, test, required
+  credentials, what the app is. Never edit silently — prompt and name the stale
+  section. New required env var → README "Required API keys" table (var, purpose,
+  where to get it). Grow `Overview`/`Screenshots` as user-facing features ship;
+  drop the TODO marker once real.
+- **Nothing** when derivable from code/tests/git, or true only of this one change.
+
+Both a rule and an operator step? Rule → `project.md`, step → README,
+cross-reference — don't duplicate.
 
 ## Linear (issue tracking)
 
