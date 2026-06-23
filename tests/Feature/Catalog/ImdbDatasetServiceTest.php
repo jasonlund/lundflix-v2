@@ -31,19 +31,19 @@ use Illuminate\Support\Sleep;
 | IMDb data.
 */
 
-it('requests the correct dataset url', function () {
+it('requests the correct dataset url', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
 
-    app(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
+    resolve(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
 
-    Http::assertSent(fn ($request) => str_contains($request->url(), 'title.basics.tsv.gz'));
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), 'title.basics.tsv.gz'));
 });
 
-it('returns a temp path whose contents are the downloaded bytes', function () {
+it('returns a temp path whose contents are the downloaded bytes', function (): void {
     $bytes = fixtureBytes('Catalog/imdb/title.basics.tsv.gz');
     Http::fake(['*datasets.imdbws.com*' => Http::response($bytes)]);
 
-    $path = app(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
+    $path = resolve(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
 
     expect(file_exists($path))->toBeTrue();
     expect(file_get_contents($path))->toBe($bytes);
@@ -51,13 +51,13 @@ it('returns a temp path whose contents are the downloaded bytes', function () {
     @unlink($path);
 });
 
-it('removes the temp file when the download fails', function () {
+it('removes the temp file when the download fails', function (): void {
     $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');
     Http::fake(['*datasets.imdbws.com*' => Http::response('', 500)]);
     $before = $tempFiles();
 
     try {
-        app(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
+        resolve(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
     } catch (RequestException) {
         // the leak, not the throw, is under test
     }
@@ -65,22 +65,22 @@ it('removes the temp file when the download fails', function () {
     expect($tempFiles())->toBe($before);
 });
 
-it('leaves the temp file in place on success', function () {
+it('leaves the temp file in place on success', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
 
-    $path = app(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
+    $path = resolve(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
 
     expect(file_exists($path))->toBeTrue();
 
     @unlink($path);
 });
 
-it('counts only the post-includes() kept rows for title.basics', function () {
+it('counts only the post-includes() kept rows for title.basics', function (): void {
     // The fixture has 18 non-blank data rows; ImdbDataset::TitleBasics filtering
     // keeps 13. count() must apply the SAME includes() filter as rows() so the
     // progress total equals the number of advances (honest 100%).
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $count = $service->count($path, ImdbDataset::TitleBasics);
@@ -90,9 +90,9 @@ it('counts only the post-includes() kept rows for title.basics', function () {
     @unlink($path);
 });
 
-it('counts the title.ratings fixture data rows (includes() keeps all)', function () {
+it('counts the title.ratings fixture data rows (includes() keeps all)', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleRatings);
 
     $count = $service->count($path, ImdbDataset::TitleRatings);
@@ -102,9 +102,9 @@ it('counts the title.ratings fixture data rows (includes() keeps all)', function
     @unlink($path);
 });
 
-it('throws a corrupt archive exception when count receives a non-gzip file', function () {
+it('throws a corrupt archive exception when count receives a non-gzip file', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response('this is not gzip data at all')]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     expect(fn () => $service->count($path, ImdbDataset::TitleBasics))->toThrow(CorruptImdbDatasetArchive::class);
@@ -112,12 +112,12 @@ it('throws a corrupt archive exception when count receives a non-gzip file', fun
     @unlink($path);
 });
 
-it('throws a corrupt archive exception when the gzip has valid magic but no header line', function () {
+it('throws a corrupt archive exception when the gzip has valid magic but no header line', function (): void {
     // Valid gzip magic, empty body → gzgets() returns false on the header read.
     // Without the false-check this surfaces an opaque ValueError from
     // array_combine; we want the domain CorruptImdbDatasetArchive instead.
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.empty.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     expect(fn () => $service->rows($path, ImdbDataset::TitleBasics)->all())->toThrow(CorruptImdbDatasetArchive::class);
@@ -125,9 +125,9 @@ it('throws a corrupt archive exception when the gzip has valid magic but no head
     @unlink($path);
 });
 
-it('skips the header and yields one entry per kept data row', function () {
+it('skips the header and yields one entry per kept data row', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $rows = $service->rows($path, ImdbDataset::TitleBasics)->all();
@@ -138,9 +138,9 @@ it('skips the header and yields one entry per kept data row', function () {
     @unlink($path);
 });
 
-it('shapes a kept row with header keys and typed casts', function () {
+it('shapes a kept row with header keys and typed casts', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $row = $service->rows($path, ImdbDataset::TitleBasics)->first();
@@ -156,9 +156,9 @@ it('shapes a kept row with header keys and typed casts', function () {
     @unlink($path);
 });
 
-it('keeps every allowed title type', function () {
+it('keeps every allowed title type', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $tconsts = collect($service->rows($path, ImdbDataset::TitleBasics)->all())->pluck('tconst')->all();
@@ -168,9 +168,9 @@ it('keeps every allowed title type', function () {
     @unlink($path);
 });
 
-it('excludes disallowed title types', function () {
+it('excludes disallowed title types', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $tconsts = collect($service->rows($path, ImdbDataset::TitleBasics)->all())->pluck('tconst')->all();
@@ -180,9 +180,9 @@ it('excludes disallowed title types', function () {
     @unlink($path);
 });
 
-it('excludes adult titles', function () {
+it('excludes adult titles', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $tconsts = collect($service->rows($path, ImdbDataset::TitleBasics)->all())->pluck('tconst')->all();
@@ -193,9 +193,9 @@ it('excludes adult titles', function () {
     @unlink($path);
 });
 
-it('leaves \N numeric fields as null instead of casting them', function () {
+it('leaves \N numeric fields as null instead of casting them', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $row = collect($service->rows($path, ImdbDataset::TitleBasics)->all())->firstWhere('tconst', 'tt0000615');
@@ -207,9 +207,9 @@ it('leaves \N numeric fields as null instead of casting them', function () {
     @unlink($path);
 });
 
-it('leaves a \N genres column as null instead of exploding it', function () {
+it('leaves a \N genres column as null instead of exploding it', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $row = collect($service->rows($path, ImdbDataset::TitleBasics)->all())->firstWhere('tconst', 'tt0000502');
@@ -219,9 +219,9 @@ it('leaves a \N genres column as null instead of exploding it', function () {
     @unlink($path);
 });
 
-it('leaves a \N startYear as null', function () {
+it('leaves a \N startYear as null', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $row = collect($service->rows($path, ImdbDataset::TitleBasics)->all())->firstWhere('tconst', 'tt0063362');
@@ -232,9 +232,9 @@ it('leaves a \N startYear as null', function () {
     @unlink($path);
 });
 
-it('casts a fully populated row including a single-genre list', function () {
+it('casts a fully populated row including a single-genre list', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $row = collect($service->rows($path, ImdbDataset::TitleBasics)->all())->firstWhere('tconst', 'tt0038276');
@@ -247,13 +247,13 @@ it('casts a fully populated row including a single-genre list', function () {
     @unlink($path);
 });
 
-it('ignores blank and trailing-newline lines', function () {
+it('ignores blank and trailing-newline lines', function (): void {
     $header = "tconst\ttitleType\tprimaryTitle\toriginalTitle\tisAdult\tstartYear\tendYear\truntimeMinutes\tgenres";
     $row1 = "tt0133093\tmovie\tThe Matrix\tThe Matrix\t0\t1999\t\\N\t136\tAction,Sci-Fi";
     $row2 = "tt0137523\tmovie\tFight Club\tFight Club\t0\t1999\t\\N\t139\tDrama";
     $tsv = $header."\n".$row1."\n"."\n".$row2."\n";
     Http::fake(['*datasets.imdbws.com*' => Http::response(gzencode($tsv))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $rows = $service->rows($path, ImdbDataset::TitleBasics)->all();
@@ -264,9 +264,9 @@ it('ignores blank and trailing-newline lines', function () {
     @unlink($path);
 });
 
-it('returns a lazy collection', function () {
+it('returns a lazy collection', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $rows = $service->rows($path, ImdbDataset::TitleBasics);
@@ -276,7 +276,7 @@ it('returns a lazy collection', function () {
     @unlink($path);
 });
 
-it('parses lazily and stops reading once the consumer has taken enough', function () {
+it('parses lazily and stops reading once the consumer has taken enough', function (): void {
     // A poison (malformed) row placed AFTER the rows we take proves parsing is
     // on-demand: if rows() pre-parsed eagerly the malformed row would blow up
     // before take(2) ever returns. Stopping cleanly at 2 means it never read it.
@@ -286,7 +286,7 @@ it('parses lazily and stops reading once the consumer has taken enough', functio
     $malformed = "tt0000000\tmovie\ttoo few columns";
     $tsv = $header."\n".$row1."\n".$row2."\n".$malformed."\n";
     Http::fake(['*datasets.imdbws.com*' => Http::response(gzencode($tsv))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $rows = $service->rows($path, ImdbDataset::TitleBasics)->take(2)->all();
@@ -296,7 +296,7 @@ it('parses lazily and stops reading once the consumer has taken enough', functio
     @unlink($path);
 });
 
-it('reads rows on demand surfacing a malformed row only when fully consumed', function () {
+it('reads rows on demand surfacing a malformed row only when fully consumed', function (): void {
     // Mirror of the take(2) test: here full consumption reaches the malformed
     // short row, so array_combine(header, shortRow) mismatches column counts and
     // raises a ValueError (PHP 8.4). That this only blows up on full consumption
@@ -306,7 +306,7 @@ it('reads rows on demand surfacing a malformed row only when fully consumed', fu
     $malformed = "tt0000000\tmovie\ttoo few columns";
     $tsv = $header."\n".$row1."\n".$malformed."\n";
     Http::fake(['*datasets.imdbws.com*' => Http::response(gzencode($tsv))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     expect(fn () => $service->rows($path, ImdbDataset::TitleBasics)->all())->toThrow(ValueError::class);
@@ -314,9 +314,9 @@ it('reads rows on demand surfacing a malformed row only when fully consumed', fu
     @unlink($path);
 });
 
-it('does not delete the file when the rows are consumed', function () {
+it('does not delete the file when the rows are consumed', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     $service->rows($path, ImdbDataset::TitleBasics)->all();
@@ -326,9 +326,9 @@ it('does not delete the file when the rows are consumed', function () {
     @unlink($path);
 });
 
-it('throws a corrupt archive exception when rows receives a non-gzip file', function () {
+it('throws a corrupt archive exception when rows receives a non-gzip file', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response('this is not gzip data at all')]);
-    $service = app(ImdbDatasetService::class);
+    $service = resolve(ImdbDatasetService::class);
     $path = $service->download(ImdbDataset::TitleBasics);
 
     expect(fn () => $service->rows($path, ImdbDataset::TitleBasics)->all())->toThrow(CorruptImdbDatasetArchive::class);

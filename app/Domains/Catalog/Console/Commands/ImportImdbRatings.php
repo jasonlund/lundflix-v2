@@ -7,40 +7,27 @@ namespace App\Domains\Catalog\Console\Commands;
 use App\Domains\Catalog\Actions\UpdateImdbRatings;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Services\ImdbDatasetService;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
 
+#[Description('Download the IMDb title.ratings dataset and update ratings on catalog titles')]
+#[Signature('imdb:import-ratings')]
 class ImportImdbRatings extends Command
 {
     /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'imdb:import-ratings';
-
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Download the IMDb title.ratings dataset and update ratings on catalog titles';
-
-    /**
      * Flush the accumulated ratings buffer once it reaches this size.
      */
-    private const BATCH_SIZE = 5000;
+    private const int BATCH_SIZE = 5000;
 
     public function __construct(
-        private ImdbDatasetService $datasets,
-        private UpdateImdbRatings $updater,
+        private readonly ImdbDatasetService $datasets,
+        private readonly UpdateImdbRatings $updater,
     ) {
         parent::__construct();
     }
 
-    /**
-     * Execute the console command.
-     */
     public function handle(): int
     {
         $path = $this->datasets->download(ImdbDataset::TitleRatings);

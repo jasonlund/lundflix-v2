@@ -96,6 +96,23 @@ composer setup
 copies `.env`, generates the app key, runs migrations, and builds frontend
 assets.
 
+### Using Conductor (parallel agent workspaces)
+
+Each Conductor workspace is its own git worktree; setup/teardown is automated by
+`.conductor/`:
+
+- **Create** → `.conductor/setup.sh` installs deps, builds assets, links a
+  per-workspace Herd site (`https://<workspace>.test`), and points the app at the
+  shared local SQLite db.
+- **Run** → `npm run dev` (Vite); Herd serves the PHP app. One workspace at a time
+  (`run_mode = "nonconcurrent"`).
+- **Merge** → the workspace auto-archives on PR merge, `.conductor/archive.sh`
+  unlinks the Herd site, and the branch is deleted.
+
+**Env vars under Conductor:** new workspaces copy `.env` from the repository's
+**root checkout** (`~/conductor/repos/lundflix-v2/.env`), *not* from
+`.env.example` — so a new required var must be added to that root `.env` too.
+
 ### Required API keys
 
 Some features call third-party APIs and need credentials in your `.env` before
@@ -114,6 +131,9 @@ composer dev
 
 Starts the PHP server, queue worker, log tailer (Pail), and Vite dev server
 together. Visit the app at the URL printed by `php artisan serve`.
+
+In a Conductor workspace, the app is served by Herd at `https://<workspace>.test`
+and `npm run dev` (the Run button) only starts Vite.
 
 ### Running tests
 

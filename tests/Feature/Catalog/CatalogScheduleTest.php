@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
 
-it('registers the sync:catalog command', function () {
+it('registers the sync:catalog command', function (): void {
     // Arrange
     $commands = Artisan::all();
 
@@ -16,13 +16,13 @@ it('registers the sync:catalog command', function () {
     expect($hasCommand)->toBeTrue();
 });
 
-it('schedules sync:catalog at midnight and noon America/Los_Angeles without overlapping', function () {
+it('schedules sync:catalog at midnight and noon America/Los_Angeles without overlapping', function (): void {
     // Arrange
-    $schedule = app(Schedule::class);
+    $schedule = resolve(Schedule::class);
 
     // Act
     $event = collect($schedule->events())->first(
-        fn ($e) => str_contains($e->command ?? '', 'sync:catalog'),
+        fn ($e): bool => str_contains($e->command ?? '', 'sync:catalog'),
     );
 
     // Assert

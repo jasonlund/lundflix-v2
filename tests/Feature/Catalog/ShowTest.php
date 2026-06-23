@@ -8,7 +8,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
-it('persists a show row to the database', function () {
+it('persists a show row to the database', function (): void {
     // Arrange
     $show = Show::factory()->make();
 
@@ -23,7 +23,7 @@ it('persists a show row to the database', function () {
     ]);
 });
 
-it('rejects a duplicate imdb_id', function () {
+it('rejects a duplicate imdb_id', function (): void {
     // Arrange
     Show::factory()->create(['imdb_id' => 'tt1234567']);
 
@@ -32,7 +32,7 @@ it('rejects a duplicate imdb_id', function () {
         ->toThrow(QueryException::class);
 });
 
-it('casts typed attributes when fetched fresh from the database', function () {
+it('casts typed attributes when fetched fresh from the database', function (): void {
     // Arrange
     $show = Show::factory()->create([
         'start_year' => 1999,
@@ -56,7 +56,7 @@ it('casts typed attributes when fetched fresh from the database', function () {
         ->and($fresh->genres[0])->toBeInstanceOf(Genre::class);
 });
 
-it('has start_year and end_year columns but no year column', function () {
+it('has start_year and end_year columns but no year column', function (): void {
     // Arrange / Act
     $hasStartYear = Schema::hasColumn('shows', 'start_year');
     $hasEndYear = Schema::hasColumn('shows', 'end_year');
@@ -68,7 +68,7 @@ it('has start_year and end_year columns but no year column', function () {
         ->and($hasYear)->toBeFalse();
 });
 
-it('exposes only the searchable keys with matching values', function () {
+it('exposes only the searchable keys with matching values', function (): void {
     // Arrange
     $show = Show::factory()->create();
 
