@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
@@ -26,12 +27,25 @@ uses(RefreshDatabase::class);
 | commands download DISTINCT files, so we fake per-file (not a host wildcard).
 */
 
-it('runs titles then ratings end-to-end', function (): void {
-    // Arrange
+/**
+ * Fake every host sync:catalog touches with the happy-path fixtures: both IMDb
+ * datasets, the TMDB export, and the TMDB API (The Matrix for id 603, 404 else).
+ */
+function fakeCatalogSync(): void
+{
     Http::fake([
         '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),
         '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
+        '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
+        '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/movie/603')
+            ? Http::response(fixtureBytes('Catalog/tmdb/movie.json'))
+            : Http::response('', 404),
     ]);
+}
+
+it('runs titles then ratings end-to-end', function (): void {
+    // Arrange
+    fakeCatalogSync();
 
     // Act
     $this->artisan('sync:catalog');
@@ -52,6 +66,10 @@ it('continues to ratings when titles fails, exits FAILURE and reports the except
     Http::fake([
         '*title.basics*' => Http::response('', 500),
         '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
+        '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
+        '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/movie/603')
+            ? Http::response(fixtureBytes('Catalog/tmdb/movie.json'))
+            : Http::response('', 404),
     ]);
 
     // Act
@@ -63,11 +81,20 @@ it('continues to ratings when titles fails, exits FAILURE and reports the except
 
 it('exits SUCCESS when both commands succeed', function (): void {
     // Arrange
-    Http::fake([
-        '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),
-        '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
-    ]);
+    fakeCatalogSync();
 
     // Act & Assert
     $this->artisan('sync:catalog')->assertExitCode(Command::SUCCESS);
+});
+
+it('syncs TMDB data onto IMDb movies after the IMDb imports', function (): void {
+    // Arrange
+    fakeCatalogSync();
+
+    // Act
+    $this->artisan('sync:catalog');
+
+    // Assert
+    $matrix = Movie::where('imdb_id', 'tt0133093')->firstOrFail();
+    expect($matrix->_tmdb_id)->toBe(603);
 });

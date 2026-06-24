@@ -29,9 +29,8 @@ final class TmdbApiService
     }
 
     /**
-     * Batch-fetch movie details, one request per id via a single connection
-     * pool. Returns a map of input id to its raw payload (null for a 404),
-     * preserving the input order; a single id's 404 does not sink the others.
+     * Batch /movie/{id} keyed by movie id. See {@see pooled} for the shared
+     * order/404/failure contract.
      *
      * @param  array<int, int>  $ids
      * @return array<int, array<string, mixed>|null>
@@ -51,9 +50,8 @@ final class TmdbApiService
     }
 
     /**
-     * Batch-fetch tv details, one request per id via a single connection pool.
-     * Returns a map of input id to its raw payload (null for a 404), preserving
-     * the input order; a single id's 404 does not sink the others.
+     * Batch /tv/{id} keyed by tv id. See {@see pooled} for the shared
+     * order/404/failure contract.
      *
      * @param  array<int, int>  $ids
      * @return array<int, array<string, mixed>|null>
@@ -77,9 +75,8 @@ final class TmdbApiService
     }
 
     /**
-     * Batch-resolve IMDb ids, one /find request per id via a single connection
-     * pool. Returns a map of input IMDb id to its raw /find payload (null for a
-     * 404), preserving input order; a single id's 404 does not sink the others.
+     * Batch /find/{imdbId} keyed by IMDb id. See {@see pooled} for the shared
+     * order/404/failure contract.
      *
      * @param  array<int, string>  $imdbIds
      * @return array<string, array<string, mixed>|null>

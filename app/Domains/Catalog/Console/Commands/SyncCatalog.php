@@ -19,7 +19,7 @@ class SyncCatalog extends Command
      *
      * @var list<class-string<Command>>
      */
-    private const array COMMANDS = [ImportImdbTitles::class, ImportImdbRatings::class];
+    private const array COMMANDS = [ImportImdbTitles::class, ImportImdbRatings::class, SyncTmdbMovies::class];
 
     public function handle(): int
     {
