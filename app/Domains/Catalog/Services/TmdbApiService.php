@@ -9,10 +9,8 @@ use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
-use Throwable;
 
 final class TmdbApiService
 {
@@ -289,9 +287,10 @@ final class TmdbApiService
     /**
      * Perform a single configured GET, normalizing a post-retry connection
      * failure into a {@see TmdbRequestFailed} so single-request callers see the
-     * same typed failure the batch ({@see pooled}) paths raise. `retry(...,
-     * throw: false)` suppresses a failed *response* but still lets a
-     * {@see ConnectionException} propagate raw, so it is caught here.
+     * same typed failure the batch ({@see pooled}) paths raise. Retries are
+     * applied globally by the registered retry middleware; a
+     * {@see ConnectionException} that survives those retries propagates raw, so
+     * it is caught here.
      *
      * @param  array<string, mixed>  $query
      */
@@ -310,47 +309,14 @@ final class TmdbApiService
     }
 
     /**
-     * Apply the shared TMDB auth, headers, and retry policy to a pending
-     * request (used both for single calls and pooled batch requests).
+     * Apply the shared TMDB auth and headers to a pending request (used both
+     * for single calls and pooled batch requests). Retries are applied
+     * globally by the registered retry middleware, not here.
      */
     private function configure(PendingRequest $request): PendingRequest
     {
         return $request->withToken(config('services.tmdb.token'))
             ->baseUrl(self::BASE_URL)
-            ->acceptJson()
-            ->retry(2, $this->retryDelay(...), $this->shouldRetry(...), throw: false);
-    }
-
-    /**
-     * Delay before a retry, in milliseconds: honor the server's Retry-After
-     * header (seconds) on a 429/503 when present, otherwise fall back to a
-     * 1000ms base delay. Laravel's retry closure returns milliseconds.
-     */
-    private function retryDelay(int $attempt, Throwable $exception): int
-    {
-        if ($exception instanceof RequestException) {
-            $retryAfter = $exception->response->header('Retry-After');
-
-            if (is_numeric($retryAfter)) {
-                return (int) $retryAfter * 1000;
-            }
-        }
-
-        return 1000;
-    }
-
-    /**
-     * Retry connection errors and transient HTTP failures (429, 5xx), but not
-     * a definitive response such as a 404.
-     */
-    private function shouldRetry(Throwable $exception): bool
-    {
-        if (! $exception instanceof RequestException) {
-            return true;
-        }
-
-        $status = $exception->response->status();
-
-        return $status === 429 || $status >= 500;
+            ->acceptJson();
     }
 }

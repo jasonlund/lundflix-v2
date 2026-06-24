@@ -22,6 +22,7 @@ final class ImdbDatasetService
         try {
             Http::sink($path)
                 ->timeout(600)
+                ->withOptions(['retry_enabled' => false])
                 ->retry(3, 1000)
                 ->get(self::BASE_URL.'/'.$dataset->filename())
                 ->throw();

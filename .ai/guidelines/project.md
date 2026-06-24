@@ -198,6 +198,14 @@ touched — scoped to your changed work, never a repo-wide sweep (a bare
   doesn't vary by environment — commit it as a `private const` on the calling
   service. Reserve `config`/`env` for secrets and genuinely per-environment
   values.
+- **Name a credential's config key after the provider's own doc verbiage.** A
+  credential's `config`/`env` key uses the term that provider's API docs use —
+  don't force one shared word across providers. TMDB's "API Read Access Token" →
+  `services.tmdb.token` / `TMDB_TOKEN`; TheTVDB's "apikey" → `services.tvdb.key`
+  / `TVDB_KEY`. A short-lived value *derived* from the stored credential (e.g.
+  the JWT TheTVDB returns from `POST /login`) is internal — cache it, never put
+  it in `config`/`env`. So `key`/`token` names what you store; the bearer you
+  send may be that same value (TMDB) or one exchanged for it (TVDB).
 - **Only *required* env vars belong in `.env.example`** — a secret/credential the
   app needs to run. Optional tunables that read `env()` with a `config/` default
   stay out; the default is the documentation.
@@ -234,3 +242,9 @@ cross-reference — don't duplicate.
 - **No ticket yet → prompt to create one** before proceeding.
 - **Work deviates → confirm first, then update the ticket** and mark it a
   deviation.
+- **Planning artifacts live in Linear, not in the repo.** PRDs, plans, slice
+  backlogs, and decomposition notes belong in the relevant Linear issue —
+  never committed as repo files. Don't create a `docs/plans` or `.ai/plans`
+  tree; a plan on disk drifts from the ticket and biases future agents who read
+  it as a convention. Bars *version-controlled* planning files only — gitignored
+  scratch space (e.g. `.context`) is fine; it never enters the repo.
