@@ -152,6 +152,18 @@ it('inserts a tmdb-only row when the payload has no imdb_id key', function (): v
         ->and($movie->_tmdb_id)->toBe(701);
 });
 
+it('stores SQL NULL (not the string "null") for a null json column on the tmdb-only upsert path', function (): void {
+    // Arrange
+    $payloads = [tmdbPayload(['id' => 703, 'imdb_id' => 'tt7777777', 'belongs_to_collection' => null])];
+
+    // Act
+    resolve(UpsertTmdbMovies::class)->handle($payloads);
+
+    // Assert
+    $stored = DB::table('movies')->where('_tmdb_id', 703)->value('_tmdb_belongs_to_collection');
+    expect($stored)->toBeNull();
+});
+
 it('does not duplicate a tmdb-only row when the same payload is re-run', function (): void {
     // Arrange
     $payloads = [tmdbPayload(['id' => 702, 'imdb_id' => 'tt5555555', 'title' => 'Z'])];

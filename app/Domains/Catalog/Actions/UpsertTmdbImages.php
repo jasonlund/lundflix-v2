@@ -52,8 +52,14 @@ class UpsertTmdbImages
 
             foreach (self::ARTWORK_TYPE_BY_KEY as $key => $type) {
                 foreach ($images[$key] ?? [] as $image) {
+                    // A path-less image yields a path-less CDN url — meaningless, and
+                    // multiple would collapse onto one `_tmdb_file_path IS NULL` row.
+                    if (empty($image['file_path'])) {
+                        continue;
+                    }
+
                     $movie->media()->updateOrCreate(
-                        ['_tmdb_file_path' => $image['file_path'] ?? null],
+                        ['_tmdb_file_path' => $image['file_path']],
                         ['type' => $type, 'is_active' => true, ...$this->rawAttributes($image)],
                     );
                 }

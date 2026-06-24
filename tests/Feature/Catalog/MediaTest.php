@@ -65,6 +65,20 @@ it('builds the default-size CDN URL from the artwork type and file path', functi
     expect($url)->toBe('https://image.tmdb.org/t/p/w500/abc.jpg');
 });
 
+it('returns null from url() when the file path is null', function (): void {
+    // Arrange
+    $media = Media::factory()->create([
+        'type' => ArtworkType::Poster,
+        '_tmdb_file_path' => null,
+    ]);
+
+    // Act
+    $url = $media->url();
+
+    // Assert
+    expect($url)->toBeNull();
+});
+
 it('overrides the size segment when a size is passed to url()', function (): void {
     // Arrange
     $media = Media::factory()->create([

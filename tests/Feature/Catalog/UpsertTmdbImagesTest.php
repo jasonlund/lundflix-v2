@@ -95,6 +95,30 @@ it('is idempotent on re-run — no duplicate rows and a stable active set', func
     expect(Media::where('is_active', true)->count())->toBe(229);
 });
 
+it('skips images missing a file_path instead of creating a null-path row', function (): void {
+    // Arrange
+    $movie = Movie::factory()->create();
+    $images = [
+        'posters' => [
+            ['file_path' => '/valid-poster.jpg', 'vote_average' => 5.0],
+            ['vote_average' => 7.0],
+        ],
+    ];
+
+    // Act
+    $count = (new UpsertTmdbImages)->handle($movie, $images);
+
+    // Assert
+    $this->assertDatabaseCount('media', 1);
+    $this->assertDatabaseHas('media', [
+        'mediable_id' => $movie->id,
+        '_tmdb_file_path' => '/valid-poster.jpg',
+        'is_active' => true,
+    ]);
+    $this->assertDatabaseMissing('media', ['_tmdb_file_path' => null]);
+    expect($count)->toBe(1);
+});
+
 it('reactivates a previously-inactive file_path that reappears in the payload', function (): void {
     // Arrange
     $movie = Movie::factory()->create();

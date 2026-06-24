@@ -138,7 +138,7 @@ final class UpsertTmdbMovies
         $row = $this->tmdbColumnsFor($payload, $now);
 
         foreach (self::JSON_COLUMNS as $column) {
-            $row[$column] = json_encode($row[$column]);
+            $row[$column] = $row[$column] === null ? null : json_encode($row[$column]);
         }
 
         $row['tmdb_synced_at'] = $now->toDateTimeString();

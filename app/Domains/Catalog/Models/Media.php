@@ -33,8 +33,12 @@ class Media extends Model
 
     private const string CDN_BASE = 'https://image.tmdb.org/t/p';
 
-    public function url(?string $size = null): string
+    public function url(?string $size = null): ?string
     {
+        if ($this->_tmdb_file_path === null) {
+            return null;
+        }
+
         return self::CDN_BASE.'/'.($size ?? $this->type->defaultSize()).$this->_tmdb_file_path;
     }
 

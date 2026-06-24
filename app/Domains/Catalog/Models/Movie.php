@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Models;
 
+use App\Domains\Catalog\Casts\NullableDate;
 use App\Domains\Catalog\Database\Factories\MovieFactory;
 use App\Domains\Catalog\Enums\Genre;
 use App\Domains\Catalog\Enums\TitleType;
@@ -100,7 +101,7 @@ class Movie extends Model
             'genres' => AsEnumCollection::of(Genre::class),
             'title_type' => TitleType::class,
             '_tmdb_id' => 'integer',
-            '_tmdb_release_date' => 'date',
+            '_tmdb_release_date' => NullableDate::class,
             '_tmdb_runtime' => 'integer',
             '_tmdb_budget' => 'integer',
             '_tmdb_revenue' => 'integer',

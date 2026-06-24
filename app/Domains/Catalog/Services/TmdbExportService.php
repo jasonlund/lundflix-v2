@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services;
 
+use App\Domains\Catalog\Exceptions\CannotCreateTmdbTempFile;
 use App\Domains\Catalog\Exceptions\CannotOpenTmdbExportArchive;
 use App\Domains\Catalog\Exceptions\CorruptTmdbExportArchive;
 use Generator;
@@ -45,6 +46,10 @@ final class TmdbExportService
     private function attempt(string $date, bool $allow404): ?string
     {
         $path = tempnam(sys_get_temp_dir(), 'tmdb_');
+
+        if ($path === false) {
+            throw CannotCreateTmdbTempFile::inTempDir(sys_get_temp_dir());
+        }
 
         try {
             $response = Http::sink($path)
@@ -118,6 +123,10 @@ final class TmdbExportService
                 }
 
                 $row = json_decode(trim($line), true);
+
+                if (! is_array($row)) {
+                    continue;
+                }
 
                 if ($this->isExcluded($row)) {
                     continue;

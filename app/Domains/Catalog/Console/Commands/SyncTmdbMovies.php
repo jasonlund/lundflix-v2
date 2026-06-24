@@ -35,34 +35,78 @@ class SyncTmdbMovies extends Command
         $file = spin(fn (): string => $export->download(), 'Downloading movie-ids export…');
 
         try {
-            $total = spin(fn (): int => $export->count($file), 'Counting movies…');
+            // The export count only matches the rows actually iterated when --fresh
+            // skips nothing and no --limit caps the stream; only then is a
+            // determinate bar's total honest. Otherwise drive an indeterminate
+            // spinner rather than show a bar that stalls below 100%.
+            $determinate = $this->option('fresh') && $this->option('limit') === null;
 
-            $bar = progress(label: 'Syncing movies', steps: $total);
-            $bar->start();
-
-            $ids = [];
-
-            foreach ($this->keptRows($export, $file) as $row) {
-                $ids[] = (int) $row['id'];
-
-                if (count($ids) >= self::BATCH_SIZE) {
-                    $this->syncChunk($ids, $api, $upsertMovies, $upsertImages);
-                    $ids = [];
-                }
-
-                $bar->advance();
+            if ($determinate) {
+                $this->syncDeterminate($export, $file, $api, $upsertMovies, $upsertImages);
+            } else {
+                spin(
+                    fn () => $this->syncRows($export, $file, $api, $upsertMovies, $upsertImages),
+                    'Syncing movies',
+                );
             }
-
-            if ($ids !== []) {
-                $this->syncChunk($ids, $api, $upsertMovies, $upsertImages);
-            }
-
-            $bar->finish();
         } finally {
             @unlink($file);
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Iterate the kept rows with a determinate progress bar — only valid when the
+     * export count exactly equals the rows iterated (--fresh, no --limit).
+     */
+    private function syncDeterminate(
+        TmdbExportService $export,
+        string $file,
+        TmdbApiService $api,
+        UpsertTmdbMovies $upsertMovies,
+        UpsertTmdbImages $upsertImages,
+    ): void {
+        $total = spin(fn (): int => $export->count($file), 'Counting movies…');
+
+        $bar = progress(label: 'Syncing movies', steps: $total);
+        $bar->start();
+
+        $this->syncRows($export, $file, $api, $upsertMovies, $upsertImages, $bar->advance(...));
+
+        $bar->finish();
+    }
+
+    /**
+     * Stream the kept rows, hydrating and upserting in BATCH_SIZE chunks. When an
+     * $advance callback is given (determinate bar) it fires once per row.
+     */
+    private function syncRows(
+        TmdbExportService $export,
+        string $file,
+        TmdbApiService $api,
+        UpsertTmdbMovies $upsertMovies,
+        UpsertTmdbImages $upsertImages,
+        ?callable $advance = null,
+    ): void {
+        $ids = [];
+
+        foreach ($this->keptRows($export, $file) as $row) {
+            $ids[] = (int) $row['id'];
+
+            if (count($ids) >= self::BATCH_SIZE) {
+                $this->syncChunk($ids, $api, $upsertMovies, $upsertImages);
+                $ids = [];
+            }
+
+            if ($advance !== null) {
+                $advance();
+            }
+        }
+
+        if ($ids !== []) {
+            $this->syncChunk($ids, $api, $upsertMovies, $upsertImages);
+        }
     }
 
     /**
@@ -105,12 +149,17 @@ class SyncTmdbMovies extends Command
 
         $upsertMovies->handle($payloads);
 
+        $movies = Movie::query()
+            ->whereIn('_tmdb_id', array_column($payloads, 'id'))
+            ->get()
+            ->keyBy('_tmdb_id');
+
         foreach ($payloads as $payload) {
             if (! isset($payload['images'])) {
                 continue;
             }
 
-            $movie = Movie::query()->where('_tmdb_id', $payload['id'])->first();
+            $movie = $movies->get($payload['id']);
 
             if ($movie instanceof Movie) {
                 $upsertImages->handle($movie, $payload['images']);

@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Exceptions\CorruptTmdbExportArchive;
 use App\Domains\Catalog\Services\TmdbExportService;
-use Carbon\Carbon;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
 
+afterEach(fn () => Date::setTestNow());
+
 it('requests the daily movie-ids export for today', function (): void {
-    Carbon::setTestNow('2026-06-21');
+    Date::setTestNow('2026-06-21');
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
     $expectedFilename = 'movie_ids_'.now()->format('m_d_Y').'.json.gz';
 
@@ -22,7 +24,7 @@ it('requests the daily movie-ids export for today', function (): void {
 });
 
 it('falls back to the prior day when today returns a 404', function (): void {
-    Carbon::setTestNow('2026-06-21');
+    Date::setTestNow('2026-06-21');
     $todayFilename = 'movie_ids_'.now()->format('m_d_Y').'.json.gz';
     $yesterdayFilename = 'movie_ids_'.now()->subDay()->format('m_d_Y').'.json.gz';
     Http::fake([
@@ -170,6 +172,26 @@ it('parses lazily and stops reading before a poison line once enough is taken', 
     $rows = $service->rows($path)->take(2)->all();
 
     expect($rows)->toHaveCount(2);
+
+    @unlink($path);
+});
+
+it('skips a malformed line mid-stream and yields the surrounding valid rows', function (): void {
+    // A truncated/corrupt JSONL line decodes to null, which would throw a TypeError
+    // against the array-typed isExcluded() and abort the whole stream. Fully consuming
+    // past the bad line (no take() stopping short) proves one corrupt line is skipped
+    // rather than killing the entire export.
+    $row1 = '{"adult":false,"id":11,"original_title":"Star Wars","popularity":50.0,"video":false}';
+    $poison = '{"adult":false,"id":12,"original_title":"Trunca';
+    $row2 = '{"adult":false,"id":13,"original_title":"Finding Nemo","popularity":40.0,"video":false}';
+    $jsonl = $row1."\n".$poison."\n".$row2."\n";
+    Http::fake(['*files.tmdb.org*' => Http::response(gzencode($jsonl))]);
+    $service = resolve(TmdbExportService::class);
+    $path = $service->download();
+
+    $rows = $service->rows($path)->all();
+
+    expect(collect($rows)->pluck('id')->all())->toEqualCanonicalizing([11, 13]);
 
     @unlink($path);
 });

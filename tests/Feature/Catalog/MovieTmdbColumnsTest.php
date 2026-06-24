@@ -65,6 +65,34 @@ it('casts json _tmdb_* columns to arrays when fetched fresh', function (): void 
         ->and($fresh->_tmdb_release_dates[0]['iso_3166_1'])->toBe('US');
 });
 
+it('reads a sentinel or blank _tmdb_release_date back as null without throwing', function (string $raw): void {
+    // Arrange
+    $movie = Movie::factory()->create();
+    Movie::query()->where('id', $movie->id)->update(['_tmdb_release_date' => $raw]);
+
+    // Act
+    $fresh = Movie::query()->findOrFail($movie->id);
+
+    // Assert
+    expect($fresh->_tmdb_release_date)->toBeNull();
+})->with([
+    'legacy zero date' => '0000-00-00',
+    'blank string' => '',
+]);
+
+it('reads a valid _tmdb_release_date back as a Carbon date', function (): void {
+    // Arrange
+    $movie = Movie::factory()->create();
+    Movie::query()->where('id', $movie->id)->update(['_tmdb_release_date' => '2024-05-01']);
+
+    // Act
+    $fresh = Movie::query()->findOrFail($movie->id);
+
+    // Assert
+    expect($fresh->_tmdb_release_date)->toBeInstanceOf(Carbon::class)
+        ->and($fresh->_tmdb_release_date->toDateString())->toBe('2024-05-01');
+});
+
 it('creates a movie with a null imdb_id', function (): void {
     // Arrange / Act
     $movie = Movie::factory()->create([
