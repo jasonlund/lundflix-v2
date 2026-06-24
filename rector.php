@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Rector\Config\RectorConfig;
+use RectorLaravel\Rector\ArrayDimFetch\EnvVariableToEnvHelperRector;
 use RectorLaravel\Set\LaravelSetList;
 
 return RectorConfig::configure()
@@ -16,6 +17,12 @@ return RectorConfig::configure()
     ])
     ->withSkip([
         __DIR__.'/bootstrap/cache',
+        // Rewrites $_ENV['X'] reads to Env::get('X'), but mis-fires inside unset():
+        // unset(Env::get('X')) is a fatal error. This test deliberately clears the
+        // superglobals to assert a config default, so the read-helper rule is wrong here.
+        EnvVariableToEnvHelperRector::class => [
+            __DIR__.'/tests/Feature/Catalog/TvdbApiServiceTest.php',
+        ],
     ])
     ->withPhpSets()
     ->withSets([
