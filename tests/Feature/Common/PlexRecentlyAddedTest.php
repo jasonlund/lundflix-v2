@@ -60,11 +60,19 @@ it('requests type=4 for show sections and no type for movie sections', function 
     // Act
     resolve(PlexApiService::class)->getRecentlyAdded($uri, 'tok', 50);
 
-    // Assert
-    Http::assertSent(fn ($r): bool => str_contains((string) $r->url(), '/library/sections/2/recentlyAdded')
-        && (data_get($r->data(), 'type') == 4 || str_contains((string) $r->url(), 'type=4')));
-    Http::assertSent(fn ($r): bool => str_contains((string) $r->url(), '/library/sections/1/recentlyAdded')
-        && ! str_contains((string) $r->url(), 'type='));
+    // Assert — inspect the exact parsed query params, not URL substrings.
+    Http::assertSent(function ($r): bool {
+        parse_str((string) parse_url((string) $r->url(), PHP_URL_QUERY), $query);
+
+        return str_contains((string) $r->url(), '/library/sections/2/recentlyAdded')
+            && ($query['type'] ?? null) === '4';
+    });
+    Http::assertSent(function ($r): bool {
+        parse_str((string) parse_url((string) $r->url(), PHP_URL_QUERY), $query);
+
+        return str_contains((string) $r->url(), '/library/sections/1/recentlyAdded')
+            && ! array_key_exists('type', $query);
+    });
 });
 
 it('skips sections that are not movie or show', function (): void {

@@ -50,7 +50,6 @@ return [
     'plex' => [
         'client_identifier' => env('PLEX_CLIENT_IDENTIFIER', 'lundflix'),
         'server_identifier' => env('PLEX_SERVER_IDENTIFIER'),
-        'concurrency' => env('PLEX_CONCURRENCY', 10),
     ],
 
     // Per-retry backoff multiplier for the global guzzle-retry middleware (escalating

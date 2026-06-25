@@ -60,8 +60,9 @@ it('prefers IPv4 over IPv6 over relay when choosing the best connection', functi
     expect($result->first()['uri'] ?? null)->toBe('https://ipv4-9.mix.plex.direct:32400');
 });
 
-it('skips local connections when selecting the best uri', function (): void {
-    // Arrange
+it('skips local connections and prefers an https uri over an earlier http one in the same class', function (): void {
+    // Arrange — the lundflix server lists an http:// direct connection BEFORE a
+    // non-local https:// direct one; secure transport must win within the class.
     Http::fake([
         '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
     ]);
@@ -70,7 +71,22 @@ it('skips local connections when selecting the best uri', function (): void {
     $result = resolve(PlexApiService::class)->getOnlineServers('the-token');
 
     // Assert
-    expect($result->first()['uri'] ?? null)->toBe('http://server.example.com:6022');
+    expect($result->first()['uri'] ?? null)->toBe('https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022');
+});
+
+it('treats an unflagged plex.direct host with a stray hex letter as a direct (IPv4-class) connection', function (): void {
+    // Arrange — the only non-local direct connections carry no explicit IPv6
+    // flag; "deadbox" has hex letters but is not a dash-encoded IPv6 label, so
+    // it must be classed direct (IPv4) and, being first, win the direct slot.
+    Http::fake([
+        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources_unflagged_direct.json')),
+    ]);
+
+    // Act
+    $result = resolve(PlexApiService::class)->getOnlineServers('the-token');
+
+    // Assert
+    expect($result->first()['uri'] ?? null)->toBe('https://deadbox.unflagged.plex.direct:32400');
 });
 
 it('drops a server with no usable (non-local) connection', function (): void {

@@ -6,6 +6,7 @@ namespace App\Domains\Common\Services;
 
 use App\Domains\Common\Exceptions\PlexAuthenticationFailed;
 use App\Domains\Common\Exceptions\PlexRequestFailed;
+use App\Domains\Common\Exceptions\PlexServerIdentifierMissing;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
@@ -13,9 +14,6 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 
-/**
- * Plex API service.
- */
 final class PlexApiService
 {
     private const string CLIENTS_HOST = 'https://clients.plex.tv/api/v2';
@@ -37,11 +35,19 @@ final class PlexApiService
      */
     public function createPin(): array
     {
-        $response = $this->request()->post(self::CLIENTS_HOST.'/pins?strong=true');
+        $url = self::CLIENTS_HOST.'/pins?strong=true';
+
+        try {
+            $response = $this->request()->post($url);
+        } catch (ConnectionException) {
+            throw PlexRequestFailed::for($url);
+        }
+
+        $body = $this->decode($response);
 
         return [
-            'id' => $response->json('id'),
-            'code' => $response->json('code'),
+            'id' => $body['id'] ?? null,
+            'code' => $body['code'] ?? null,
         ];
     }
 
@@ -65,7 +71,7 @@ final class PlexApiService
     }
 
     /**
-     * @return array{id: int, uuid: string, username: string, email: string, thumb: string}
+     * @return array{id: int|null, uuid: string|null, username: string|null, email: string|null, thumb: string|null}
      */
     public function getUserInfo(string $token): array
     {
@@ -104,7 +110,13 @@ final class PlexApiService
 
     public function hasServerAccess(string $token): bool
     {
-        return $this->getUserResources($token)->contains(fn (array $resource): bool => ($resource['clientIdentifier'] ?? null) === config('services.plex.server_identifier')
+        $serverId = (string) config('services.plex.server_identifier');
+
+        if ($serverId === '') {
+            throw PlexServerIdentifierMissing::notConfigured();
+        }
+
+        return $this->getUserResources($token)->contains(fn (array $resource): bool => ($resource['clientIdentifier'] ?? null) === $serverId
             && ($resource['provides'] ?? null) === 'server');
     }
 
@@ -136,11 +148,25 @@ final class PlexApiService
     {
         $nonLocal = collect($connections)->filter(fn (array $c): bool => ! ($c['local'] ?? false));
 
-        $directIpv4 = $nonLocal->first(fn (array $c): bool => ! $this->isRelayConnection($c) && ! $this->isIpv6Connection($c));
-        $directIpv6 = $nonLocal->first(fn (array $c): bool => ! $this->isRelayConnection($c) && $this->isIpv6Connection($c));
-        $relay = $nonLocal->first(fn (array $c): bool => $this->isRelayConnection($c));
+        $directIpv4 = $this->preferHttps($nonLocal->filter(fn (array $c): bool => ! $this->isRelayConnection($c) && ! $this->isIpv6Connection($c)));
+        $directIpv6 = $this->preferHttps($nonLocal->filter(fn (array $c): bool => ! $this->isRelayConnection($c) && $this->isIpv6Connection($c)));
+        $relay = $this->preferHttps($nonLocal->filter(fn (array $c): bool => $this->isRelayConnection($c)));
 
         return $directIpv4['uri'] ?? $directIpv6['uri'] ?? $relay['uri'] ?? null;
+    }
+
+    /**
+     * Pick a connection from a single class (already filtered), preferring a
+     * secure https:// uri over an earlier plain http:// one; fall back to the
+     * first of the class when none are https.
+     *
+     * @param  Collection<int, array<string, mixed>>  $candidates
+     * @return array<string, mixed>|null
+     */
+    private function preferHttps(Collection $candidates): ?array
+    {
+        return $candidates->first(fn (array $c): bool => str_starts_with((string) ($c['uri'] ?? ''), 'https://'))
+            ?? $candidates->first();
     }
 
     /**
@@ -174,7 +200,11 @@ final class PlexApiService
 
         $firstLabel = explode('.', $host)[0];
 
-        return ! preg_match('/^\d+(?:-\d+){3}$/', $firstLabel) && (bool) preg_match('/[a-f]/i', $firstLabel);
+        // A genuine .direct IPv6 first label is the hex groups with colons
+        // replaced by dashes (e.g. 2001-db8--1). Require the whole label to be
+        // hex-and-dashes so a stray hex letter (deadbox) doesn't false-positive;
+        // keep the dash-encoded IPv4-octet guard so 1-2-3-4 stays IPv4-class.
+        return ! preg_match('/^\d+(?:-\d+){3}$/', $firstLabel) && (bool) preg_match('/^[0-9a-f]{1,4}(?:-[0-9a-f]{0,4})+$/i', $firstLabel);
     }
 
     public function resolvePlexGuid(string $token, string $externalGuid, int $type): ?string
@@ -430,20 +460,31 @@ final class PlexApiService
 
         $identifiers = [];
 
+        // First-wins: Guid[] is iterated before the top-level guid/parentGuid/
+        // grandparentGuid fields, so the entity's own ids beat a parent/show id
+        // that shares the same scheme (e.g. an episode's imdb:// over its show's).
         foreach ($guids->unique() as $guid) {
-            if (str_starts_with((string) $guid, 'imdb://')) {
+            if (! isset($identifiers['imdb']) && str_starts_with((string) $guid, 'imdb://')) {
                 $identifiers['imdb'] = substr((string) $guid, strlen('imdb://'));
             }
 
             if (str_starts_with((string) $guid, 'tmdb://')) {
-                $identifiers['tmdb'] = (int) substr((string) $guid, strlen('tmdb://'));
+                $remainder = substr((string) $guid, strlen('tmdb://'));
+
+                if ($remainder !== '' && ctype_digit($remainder)) {
+                    $identifiers['tmdb'] ??= (int) $remainder;
+                }
             }
 
             if (str_starts_with((string) $guid, 'tvdb://')) {
-                $identifiers['tvdb'] = (int) substr((string) $guid, strlen('tvdb://'));
+                $remainder = substr((string) $guid, strlen('tvdb://'));
+
+                if ($remainder !== '' && ctype_digit($remainder)) {
+                    $identifiers['tvdb'] ??= (int) $remainder;
+                }
             }
 
-            if (str_starts_with((string) $guid, 'plex://')) {
+            if (! isset($identifiers['plex']) && str_starts_with((string) $guid, 'plex://')) {
                 $identifiers['plex'] = $guid;
             }
         }

@@ -28,7 +28,7 @@ it('returns the raw detail array for a rating key', function (): void {
     // Arrange
     $uri = 'https://srv.plex.direct:32400';
     Http::fake([
-        '*srv.plex.direct*/library/metadata/34277*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
+        '*srv.plex.direct*/library/metadata/34277' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
     ]);
 
     // Act
