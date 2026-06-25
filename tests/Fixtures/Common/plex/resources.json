@@ -1,0 +1,248 @@
+[
+  {
+    "name": "lundflix",
+    "product": "Plex Media Server",
+    "productVersion": "1.43.2.10687-563d026ea",
+    "platform": "Linux",
+    "platformVersion": "5.15.0-181-generic",
+    "device": "Docker Container",
+    "clientIdentifier": "servermachineidentifier000000000",
+    "provides": "server",
+    "ownerId": 1000000,
+    "sourceTitle": null,
+    "publicAddress": "203.0.113.3",
+    "accessToken": "REDACTED-accessToken",
+    "searchEnabled": true,
+    "createdAt": "2021-10-26T18:25:16Z",
+    "lastSeenAt": "2026-06-24T03:29:57Z",
+    "owned": true,
+    "home": false,
+    "synced": false,
+    "relay": true,
+    "presence": true,
+    "httpsRequired": false,
+    "publicAddressMatches": false,
+    "dnsRebindingProtection": false,
+    "natLoopbackSupported": true,
+    "connections": [
+      {
+        "protocol": "http",
+        "address": "203.0.113.1",
+        "port": 6022,
+        "uri": "http://server.example.com:6022",
+        "local": false,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "10.1.1.2",
+        "port": 32400,
+        "uri": "https://10-1-1-2.servermachineidentifier000000000.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.2",
+        "port": 6022,
+        "uri": "https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022",
+        "local": false,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "45.10.0.3",
+        "port": 8443,
+        "uri": "https://45-10-0-3.servermachineidentifier000000000.plex.direct:8443",
+        "local": false,
+        "relay": true,
+        "IPv6": false
+      }
+    ]
+  },
+  {
+    "name": "slappy",
+    "product": "Plex Media Server",
+    "productVersion": "1.42.2.10156-f737b826c",
+    "platform": "Linux",
+    "platformVersion": "20.04.6 LTS (Focal Fossa)",
+    "device": "Gigabyte Technology Co., Ltd. P55M-UD2",
+    "clientIdentifier": "clientslappy",
+    "provides": "server",
+    "ownerId": 1000000,
+    "sourceTitle": "Plex User",
+    "publicAddress": "203.0.113.12",
+    "accessToken": "REDACTED-accessToken",
+    "searchEnabled": true,
+    "createdAt": "2020-06-04T14:46:22Z",
+    "lastSeenAt": "2026-06-16T02:08:22Z",
+    "owned": false,
+    "home": false,
+    "synced": false,
+    "relay": true,
+    "presence": false,
+    "httpsRequired": false,
+    "publicAddressMatches": false,
+    "dnsRebindingProtection": false,
+    "natLoopbackSupported": true,
+    "connections": [
+      {
+        "protocol": "https",
+        "address": "10.1.1.4",
+        "port": 32400,
+        "uri": "https://10-1-1-4.servermachineidentifier000000000.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.4",
+        "port": 32400,
+        "uri": "https://203-0-113-4.servermachineidentifier000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": true
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.5",
+        "port": 32400,
+        "uri": "https://203-0-113-5.servermachineidentifier000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": true
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.6",
+        "port": 32400,
+        "uri": "https://203-0-113-6.servermachineidentifier000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": true
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.7",
+        "port": 32400,
+        "uri": "https://203-0-113-7.servermachineidentifier000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": true
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.8",
+        "port": 32400,
+        "uri": "https://203-0-113-8.servermachineidentifier000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": true
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.9",
+        "port": 32400,
+        "uri": "https://203-0-113-9.servermachineidentifier000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": true
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.10",
+        "port": 32400,
+        "uri": "https://203-0-113-10.servermachineidentifier000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": true
+      },
+      {
+        "protocol": "https",
+        "address": "203.0.113.11",
+        "port": 32400,
+        "uri": "https://203-0-113-11.servermachineidentifier000000000.plex.direct:32400",
+        "local": false,
+        "relay": false,
+        "IPv6": false
+      }
+    ]
+  },
+  {
+    "name": "sofia3",
+    "product": "Plex Media Server",
+    "productVersion": "1.43.2.10687-563d026ea",
+    "platform": "Linux",
+    "platformVersion": "6.17.0-35-generic",
+    "device": "Docker Container (LinuxServer.io)",
+    "clientIdentifier": "clientsofia3",
+    "provides": "server",
+    "ownerId": 1000000,
+    "sourceTitle": "Plex User",
+    "publicAddress": "203.0.113.13",
+    "accessToken": "REDACTED-accessToken",
+    "searchEnabled": true,
+    "createdAt": "2020-11-30T01:50:31Z",
+    "lastSeenAt": "2026-06-23T17:37:44Z",
+    "owned": false,
+    "home": false,
+    "synced": false,
+    "relay": false,
+    "presence": true,
+    "httpsRequired": false,
+    "publicAddressMatches": false,
+    "dnsRebindingProtection": false,
+    "natLoopbackSupported": false,
+    "connections": [
+      {
+        "protocol": "https",
+        "address": "10.1.1.13",
+        "port": 32400,
+        "uri": "https://10-1-1-13.servermachineidentifier000000000.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "10.1.1.13",
+        "port": 32400,
+        "uri": "https://10-1-1-13.servermachineidentifier000000000.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "10.1.1.13",
+        "port": 32400,
+        "uri": "https://10-1-1-13.servermachineidentifier000000000.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "10.1.1.13",
+        "port": 32400,
+        "uri": "https://10-1-1-13.servermachineidentifier000000000.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      },
+      {
+        "protocol": "https",
+        "address": "10.1.1.13",
+        "port": 32400,
+        "uri": "https://10-1-1-13.servermachineidentifier000000000.plex.direct:32400",
+        "local": true,
+        "relay": false,
+        "IPv6": false
+      }
+    ]
+  }
+]

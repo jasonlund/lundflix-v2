@@ -47,6 +47,12 @@ return [
         'concurrency' => env('TVDB_CONCURRENCY', 10),
     ],
 
+    'plex' => [
+        'client_identifier' => env('PLEX_CLIENT_IDENTIFIER', 'lundflix'),
+        'server_identifier' => env('PLEX_SERVER_IDENTIFIER'),
+        'concurrency' => env('PLEX_CONCURRENCY', 10),
+    ],
+
     // Per-retry backoff multiplier for the global guzzle-retry middleware (escalating
     // semantics in HttpClientServiceProvider::retryOptions). Per-environment because
     // guzzle-retry sleeps via its own usleep and bypasses Sleep::fake() — phpunit.xml
