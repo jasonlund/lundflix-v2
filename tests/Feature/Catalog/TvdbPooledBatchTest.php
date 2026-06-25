@@ -129,10 +129,32 @@ describe('seriesMany()', function (): void {
             '*/series/424242/extended*' => Http::response('', 500),
         ]);
 
-        $call = fn () => resolve(TvdbApiService::class)->seriesMany([121361, 305288, 424242]);
+        $msg = '';
+        try {
+            resolve(TvdbApiService::class)->seriesMany([121361, 305288, 424242]);
+        } catch (TvdbRequestFailed $e) {
+            $msg = $e->getMessage();
+        }
 
-        expect($call)->toThrow(TvdbRequestFailed::class, '121361')
-            ->and($call)->toThrow(TvdbRequestFailed::class, '424242');
+        expect($msg)->toContain('121361')->toContain('424242');
+    });
+
+    it('reports both a 5xx id and an undecodable-200 id together in one aggregate failure', function (): void {
+        Sleep::fake();
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*/series/121361/extended*' => Http::response('', 500),
+            '*/series/305288/extended*' => Http::response('not json', 200),
+        ]);
+
+        $msg = '';
+        try {
+            resolve(TvdbApiService::class)->seriesMany([121361, 305288]);
+        } catch (TvdbRequestFailed $e) {
+            $msg = $e->getMessage();
+        }
+
+        expect($msg)->toContain('121361')->toContain('305288');
     });
 
     it('throws TvdbAuthenticationFailed when one series id in the batch returns 401', function (): void {
@@ -145,6 +167,21 @@ describe('seriesMany()', function (): void {
         $call = fn () => resolve(TvdbApiService::class)->seriesMany([121361, 305288]);
 
         expect($call)->toThrow(TvdbAuthenticationFailed::class);
+    });
+
+    it('forgets the cached jwt when a series id in the batch returns 401 so a retry re-authenticates', function (): void {
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*/series/121361/extended*' => Http::response('', 401),
+            '*/series/305288/extended*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
+        ]);
+
+        try {
+            resolve(TvdbApiService::class)->seriesMany([121361, 305288]);
+        } catch (TvdbAuthenticationFailed) {
+        }
+
+        expect(Cache::get('tvdb.jwt'))->toBeNull();
     });
 });
 
@@ -222,10 +259,14 @@ describe('resolveManyByImdbId()', function (): void {
             '*/search/remoteid/tt0424242*' => Http::response('', 500),
         ]);
 
-        $call = fn () => resolve(TvdbApiService::class)->resolveManyByImdbId(['tt0944947', 'tt0903747', 'tt0424242']);
+        $msg = '';
+        try {
+            resolve(TvdbApiService::class)->resolveManyByImdbId(['tt0944947', 'tt0903747', 'tt0424242']);
+        } catch (TvdbRequestFailed $e) {
+            $msg = $e->getMessage();
+        }
 
-        expect($call)->toThrow(TvdbRequestFailed::class, 'tt0944947')
-            ->and($call)->toThrow(TvdbRequestFailed::class, 'tt0424242');
+        expect($msg)->toContain('tt0944947')->toContain('tt0424242');
     });
 
     it('throws TvdbAuthenticationFailed when one imdb lookup in the batch returns 401', function (): void {

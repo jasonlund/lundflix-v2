@@ -336,12 +336,12 @@ it('throws a corrupt archive exception when rows receives a non-gzip file', func
     @unlink($path);
 });
 
-it('attempts the download only the native retry count on a persistent failure (no double-retry)', function () {
+it('attempts the download only the native retry count on a persistent failure (no double-retry)', function (): void {
     Sleep::fake();
     Http::fake(['*datasets.imdbws.com*' => Http::response('', 500)]);
 
     try {
-        app(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
+        resolve(ImdbDatasetService::class)->download(ImdbDataset::TitleBasics);
     } catch (RequestException) {
         // retry COUNT is under test, not the throw
     }

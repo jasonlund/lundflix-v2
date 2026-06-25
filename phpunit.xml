@@ -33,6 +33,6 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
-        <env name="HTTP_RETRY_BASE_DELAY" value="0"/>
+        <env name="HTTP_RETRY_MULTIPLIER" value="0"/>
     </php>
 </phpunit>

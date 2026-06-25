@@ -12,4 +12,9 @@ class TvdbAuthenticationFailed extends Exception
     {
         return new self('TheTVDB authentication failed (401). Check services.tvdb.key.');
     }
+
+    public static function noUsableToken(): self
+    {
+        return new self('TheTVDB /login returned no usable token. Check services.tvdb.key.');
+    }
 }
