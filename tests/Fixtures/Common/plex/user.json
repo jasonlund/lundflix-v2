@@ -289,7 +289,7 @@
       "identifier": "lyricfind",
       "endpoint": "https://lyricfind.plex.tv/",
       "token": "REDACTED-token",
-      "secret": "H8q1AfgeOcf8+wx2ODos1mLBkmsSE4PMCJkkdx27xNwpzzKVV3up6gZJb+teyIOw",
+      "secret": "REDACTED-secret",
       "status": "online"
     },
     {

@@ -25,8 +25,9 @@ use Illuminate\Support\Facades\Http;
 |     plex://movie/5d77685333f255001e852e11.
 |   matches_empty.json — SYNTHETIC empty body ({"MediaContainer":{"size":0}});
 |     a no-match the real provider can't be made to emit on demand.
-|   resources.json — real capture; the only online server with a usable
-|     non-local uri is lundflix at http://server.example.com:6022.
+|   resources.json — real capture; the one online server is lundflix, whose best
+|     connection (non-local direct IPv4, https preferred) resolves to
+|     https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022.
 |   library_all.json — real {uri}/library/all match; Metadata.0.ratingKey = 34277,
 |     a lean record (no Guid/Media/Producer/Rating).
 |   library_metadata.json — real {uri}/library/metadata/34277 DETAIL record;
@@ -39,7 +40,7 @@ use Illuminate\Support\Facades\Http;
 it('resolves an external id to a plex guid', function (): void {
     // Arrange
     Http::fake([
-        '*metadata.provider.plex.tv*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
+        'https://metadata.provider.plex.tv/library/metadata/matches*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
     ]);
 
     // Act
@@ -52,7 +53,7 @@ it('resolves an external id to a plex guid', function (): void {
 it('returns null when the external id has no match', function (): void {
     // Arrange
     Http::fake([
-        '*metadata.provider.plex.tv*' => Http::response(fixtureBytes('Common/plex/matches_empty.json')),
+        'https://metadata.provider.plex.tv/library/metadata/matches*' => Http::response(fixtureBytes('Common/plex/matches_empty.json')),
     ]);
 
     // Act
@@ -65,7 +66,7 @@ it('returns null when the external id has no match', function (): void {
 it('returns an empty collection when the guid does not resolve', function (): void {
     // Arrange — only the metadata provider is faked; reaching any server host is a stray-request failure.
     Http::fake([
-        '*metadata.provider.plex.tv*' => Http::response(fixtureBytes('Common/plex/matches_empty.json')),
+        'https://metadata.provider.plex.tv/library/metadata/matches*' => Http::response(fixtureBytes('Common/plex/matches_empty.json')),
     ]);
 
     // Act
@@ -79,10 +80,10 @@ it('returns an empty collection when the guid does not resolve', function (): vo
 it('returns the matched server carrying detail metadata', function (): void {
     // Arrange
     Http::fake([
-        '*metadata.provider.plex.tv*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-        '*server.example.com*/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
-        '*server.example.com*/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
+        'https://metadata.provider.plex.tv/library/metadata/matches*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
+        'https://clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        'https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
+        'https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
     ]);
 
     // Act
@@ -98,11 +99,11 @@ it('returns the matched server carrying detail metadata', function (): void {
 it('keeps the healthy server and drops the down one', function (): void {
     // Arrange
     Http::fake([
-        '*metadata.provider.plex.tv*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources_two_servers.json')),
-        '*good-9.plex.direct*/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
-        '*good-9.plex.direct*/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
-        '*bad-9.plex.direct*/library/all*' => Http::response('', 500),
+        'https://metadata.provider.plex.tv/library/metadata/matches*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
+        'https://clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources_two_servers.json')),
+        'https://good-9.plex.direct:32400/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
+        'https://good-9.plex.direct:32400/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
+        'https://bad-9.plex.direct:32400/library/all*' => Http::response('', 500),
     ]);
 
     // Act
@@ -115,11 +116,11 @@ it('keeps the healthy server and drops the down one', function (): void {
 it('fails a down pooled server fast without retrying', function (): void {
     // Arrange
     Http::fake([
-        '*metadata.provider.plex.tv*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources_two_servers.json')),
-        '*good-9.plex.direct*/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
-        '*good-9.plex.direct*/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
-        '*bad-9.plex.direct*/library/all*' => Http::response('', 500),
+        'https://metadata.provider.plex.tv/library/metadata/matches*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
+        'https://clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources_two_servers.json')),
+        'https://good-9.plex.direct:32400/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
+        'https://good-9.plex.direct:32400/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
+        'https://bad-9.plex.direct:32400/library/all*' => Http::response('', 500),
     ]);
 
     // Act
@@ -127,7 +128,6 @@ it('fails a down pooled server fast without retrying', function (): void {
 
     // Assert
     expect(
-        Http::recorded(fn ($r): bool => str_contains((string) $r->url(), 'bad-9.plex.direct')
-            && str_contains((string) $r->url(), '/library/all'))->count()
+        Http::recorded(fn ($r): bool => str_starts_with((string) $r->url(), 'https://bad-9.plex.direct:32400/library/all'))->count()
     )->toBe(1);
 });

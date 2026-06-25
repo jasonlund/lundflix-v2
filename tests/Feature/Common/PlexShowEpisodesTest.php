@@ -25,7 +25,9 @@ use Illuminate\Support\Facades\Http;
 |   metadata_matches.json — external-id match; resolves to a plex:// guid.
 |   matches_empty.json    — SYNTHETIC empty body; a no-match.
 |   resources.json        — only lundflix is an online server with a usable
-|                           non-local uri (http://server.example.com:6022).
+|                           non-local uri; its best connection (non-local direct
+|                           IPv4, https preferred) resolves to
+|                           https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022.
 |   library_all.json      — /library/all match; Metadata.0.ratingKey = 34277.
 |   library_metadata.json — /library/metadata/34277 DETAIL record (the show).
 |   all_leaves.json       — /library/metadata/{ratingKey}/allLeaves: 3 episodes;
@@ -40,9 +42,9 @@ it('returns each hosting server with the show and its episodes', function (): vo
     Http::fake([
         '*metadata.provider.plex.tv*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
         '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-        '*server.example.com*/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
-        '*server.example.com*/library/metadata/*/allLeaves*' => Http::response(fixtureBytes('Common/plex/all_leaves.json')),
-        '*server.example.com*/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
+        'https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
+        'https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022/library/metadata/*/allLeaves*' => Http::response(fixtureBytes('Common/plex/all_leaves.json')),
+        'https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
     ]);
 
     // Act
@@ -83,9 +85,9 @@ it('keeps the server with empty episodes when allLeaves fails', function (): voi
     Http::fake([
         '*metadata.provider.plex.tv*' => Http::response(fixtureBytes('Common/plex/metadata_matches.json')),
         '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-        '*server.example.com*/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
-        '*server.example.com*/library/metadata/*/allLeaves*' => Http::response('', 500),
-        '*server.example.com*/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
+        'https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022/library/all*' => Http::response(fixtureBytes('Common/plex/library_all.json')),
+        'https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022/library/metadata/*/allLeaves*' => Http::response('', 500),
+        'https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022/library/metadata/*' => Http::response(fixtureBytes('Common/plex/library_metadata.json')),
     ]);
 
     // Act

@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Domains\Common\Exceptions\PlexAuthenticationFailed;
+use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\Common\Services\PlexApiService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 /*
@@ -42,6 +45,22 @@ it('sends the X-Plex identity headers on the createPin request', function (): vo
     Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), 'clients.plex.tv/api/v2/pins')
         && $request->hasHeader('X-Plex-Client-Identifier', config('services.plex.client_identifier'))
         && $request->hasHeader('X-Plex-Product', 'lundflix'));
+});
+
+it('throws PlexAuthenticationFailed when createPin gets a 401', function (): void {
+    Http::fake([
+        '*clients.plex.tv/api/v2/pins*' => Http::response('', 401),
+    ]);
+
+    expect(fn () => resolve(PlexApiService::class)->createPin())->toThrow(PlexAuthenticationFailed::class);
+});
+
+it('throws PlexRequestFailed when createPin fails at the transport level', function (): void {
+    Http::fake([
+        '*clients.plex.tv/api/v2/pins*' => fn () => throw new ConnectionException('Connection timed out'),
+    ]);
+
+    expect(fn () => resolve(PlexApiService::class)->createPin())->toThrow(PlexRequestFailed::class);
 });
 
 it('returns the authToken when the PIN is claimed', function (): void {

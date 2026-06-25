@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Common\Exceptions\PlexServerIdentifierMissing;
 use App\Domains\Common\Services\PlexApiService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -62,3 +63,16 @@ it('returns false from hasServerAccess when no resource matches the configured s
 
     expect($hasAccess)->toBeFalse();
 });
+
+it('throws when the server id is unconfigured', function (mixed $value): void {
+    // PLEX_SERVER_IDENTIFIER is required: missing/empty must fail loud, before any
+    // HTTP call. Http::preventStrayRequests() is global, so a stray request would
+    // fail the test — proving the throw fires pre-network with no Http::fake.
+    config(['services.plex.server_identifier' => $value]);
+
+    expect(fn () => resolve(PlexApiService::class)->hasServerAccess('the-token'))
+        ->toThrow(PlexServerIdentifierMissing::class);
+})->with([
+    'null' => [null],
+    'empty string' => [''],
+]);

@@ -63,6 +63,39 @@ it('reads top-level guid, parentGuid and grandparentGuid', function (): void {
         ->and($result['tmdb'] ?? null)->toBe(300);
 });
 
+it('lets the entity own Guid win over a duplicate scheme from a top-level field', function (): void {
+    // Arrange
+    $metadata = [
+        'Guid' => [
+            ['id' => 'imdb://tt_episode'],
+        ],
+        'grandparentGuid' => 'imdb://tt_show',
+    ];
+
+    // Act
+    $result = (new PlexApiService)->extractExternalIdentifiers($metadata);
+
+    // Assert
+    expect($result['imdb'] ?? null)->toBe('tt_episode');
+});
+
+it('does not coerce a malformed tmdb:// or tvdb:// guid to a zero identifier', function (): void {
+    // Arrange
+    $metadata = [
+        'Guid' => [
+            ['id' => 'tmdb://'],
+            ['id' => 'tvdb://abc'],
+        ],
+    ];
+
+    // Act
+    $result = (new PlexApiService)->extractExternalIdentifiers($metadata);
+
+    // Assert
+    expect($result)->not->toHaveKey('tmdb')
+        ->and($result)->not->toHaveKey('tvdb');
+});
+
 it('ignores empty, non-string and unknown-scheme identifiers', function (): void {
     // Arrange
     $metadata = [
