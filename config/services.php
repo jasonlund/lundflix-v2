@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
 
     /*
@@ -33,6 +35,24 @@ return [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
+    ],
+
+    'tmdb' => [
+        'token' => env('TMDB_TOKEN'),
+        'concurrency' => env('TMDB_CONCURRENCY', 20),
+    ],
+
+    'tvdb' => [
+        'key' => env('TVDB_KEY'),
+        'concurrency' => env('TVDB_CONCURRENCY', 10),
+    ],
+
+    // Per-retry backoff multiplier for the global guzzle-retry middleware (escalating
+    // semantics in HttpClientServiceProvider::retryOptions). Per-environment because
+    // guzzle-retry sleeps via its own usleep and bypasses Sleep::fake() — phpunit.xml
+    // pins this to 0 so retry tests don't really sleep.
+    'http_retry' => [
+        'retry_multiplier' => env('HTTP_RETRY_MULTIPLIER', 1.0),
     ],
 
 ];

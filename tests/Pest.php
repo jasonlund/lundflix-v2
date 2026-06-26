@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /*
@@ -15,7 +18,10 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)
- // ->use(RefreshDatabase::class)
+    ->use(RefreshDatabase::class)
+    ->beforeEach(function (): void {
+        Http::preventStrayRequests();
+    })
     ->in('Feature');
 
 /*
@@ -29,9 +35,7 @@ pest()->extend(TestCase::class)
 |
 */
 
-expect()->extend('toBeOne', function () {
-    return $this->toBe(1);
-});
+expect()->extend('toBeOne', fn () => $this->toBe(1));
 
 /*
 |--------------------------------------------------------------------------
@@ -44,7 +48,14 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Read a test fixture's raw bytes (Pest's built-in fixture() resolves the path
+ * under tests/Fixtures/ and asserts it exists).
+ *
+ * Fixtures are byte-exact copies of real API responses in the API's native
+ * wire format, domained under tests/Fixtures/{Domain}/{source}/.
+ */
+function fixtureBytes(string $path): string
 {
-    // ..
+    return file_get_contents(fixture($path));
 }
