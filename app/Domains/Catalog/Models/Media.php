@@ -6,26 +6,11 @@ namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Database\Factories\MediaFactory;
 use App\Domains\Catalog\Enums\ArtworkType;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
-#[Fillable([
-    'mediable_type',
-    'mediable_id',
-    'type',
-    'is_active',
-    '_tmdb_file_path',
-    '_tmdb_iso_639_1',
-    '_tmdb_iso_3166_1',
-    '_tmdb_vote_average',
-    '_tmdb_vote_count',
-    '_tmdb_width',
-    '_tmdb_height',
-    '_tmdb_aspect_ratio',
-])]
 class Media extends Model
 {
     /** @use HasFactory<MediaFactory> */
