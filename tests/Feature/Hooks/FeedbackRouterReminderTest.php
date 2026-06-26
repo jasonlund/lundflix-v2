@@ -27,7 +27,7 @@ function freshHookCwd(): string
     return $dir;
 }
 
-it('fires on a reviewer reporting broken work', function () {
+it('fires on a reviewer reporting broken work', function (): void {
     // Arrange
     $cwd = freshHookCwd();
 
@@ -38,7 +38,7 @@ it('fires on a reviewer reporting broken work', function () {
     expect($output)->toContain('[feedback-router]');
 });
 
-it('fires on a bug-fix request against existing work', function () {
+it('fires on a bug-fix request against existing work', function (): void {
     // Arrange
     $cwd = freshHookCwd();
 
@@ -49,7 +49,7 @@ it('fires on a bug-fix request against existing work', function () {
     expect($output)->toContain('[feedback-router]');
 });
 
-it('fires on a request to remove an unused helper', function () {
+it('fires on a request to remove an unused helper', function (): void {
     // Arrange
     $cwd = freshHookCwd();
 
@@ -60,7 +60,7 @@ it('fires on a request to remove an unused helper', function () {
     expect($output)->toContain('[feedback-router]');
 });
 
-it('fires when a comment attachment landed recently even with a trivial prompt', function () {
+it('fires when a comment attachment landed recently even with a trivial prompt', function (): void {
     // Arrange
     $cwd = freshHookCwd();
     $commentsDir = $cwd.'/.context/attachments/comments';
@@ -74,7 +74,7 @@ it('fires when a comment attachment landed recently even with a trivial prompt',
     expect($output)->toContain('[feedback-router]');
 });
 
-it('stays silent on a new feature request', function () {
+it('stays silent on a new feature request', function (): void {
     // Arrange
     $cwd = freshHookCwd();
 
@@ -85,7 +85,7 @@ it('stays silent on a new feature request', function () {
     expect(trim($output))->toBe('');
 });
 
-it('stays silent on an unrelated question', function () {
+it('stays silent on an unrelated question', function (): void {
     // Arrange
     $cwd = freshHookCwd();
 
