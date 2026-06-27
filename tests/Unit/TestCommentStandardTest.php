@@ -24,24 +24,33 @@ $scanAaaLabelLines = function (): array {
     // from this file's location rather than base_path().
     $root = dirname(__DIR__, 2);
 
-    $finder = (new Finder)
-        ->files()
-        ->in([$root.'/tests', $root.'/resources/js'])
-        ->name(['*.php', '*.ts', '*.tsx']);
+    // A single `->name()` applies to every `->in()` path, so it can't be
+    // path-specific. The standard governs *test* comments only — scope the
+    // frontend pass to colocated `*.test.ts(x)` so production TS/TSX (which may
+    // legitimately carry an `// Act as a proxy`-style comment) is never scanned.
+    $finders = [
+        (new Finder)->files()->in($root.'/tests')->name('*.php'),
+        (new Finder)->files()->in($root.'/resources/js')->name(['*.test.ts', '*.test.tsx']),
+    ];
 
     $labelLines = [];
 
-    foreach ($finder as $file) {
-        $relative = str_replace($root.DIRECTORY_SEPARATOR, '', $file->getRealPath());
-        $lines = preg_split('/\R/', (string) file_get_contents($file->getRealPath()));
+    foreach ($finders as $finder) {
+        foreach ($finder as $file) {
+            $relative = str_replace($root.DIRECTORY_SEPARATOR, '', $file->getRealPath());
+            $lines = preg_split('/\R/', (string) file_get_contents($file->getRealPath()));
 
-        foreach ($lines as $index => $text) {
-            if (preg_match('#^\s*//\s*(Arrange|Act|Assert)\b#', $text) === 1) {
-                $labelLines[] = [
-                    'file' => $relative,
-                    'line' => $index + 1,
-                    'text' => $text,
-                ];
+            foreach ($lines as $index => $text) {
+                // Collect case-INSENSITIVELY so wrong-case labels (`// arrange`,
+                // `// ACT`) are gathered here, then flagged as offenders by the
+                // case-SENSITIVE conforming regex below.
+                if (preg_match('#^\s*//\s*(Arrange|Act|Assert)\b#i', $text) === 1) {
+                    $labelLines[] = [
+                        'file' => $relative,
+                        'line' => $index + 1,
+                        'text' => $text,
+                    ];
+                }
             }
         }
     }
@@ -62,7 +71,10 @@ $report = (fn (array $offenders): array => array_map(
 
 it('has no AAA label line that uses "/" or collapses labels without " & "', function () use ($scanAaaLabelLines, $report): void {
     // Arrange
-    $conforming = '#^\s*//\s*(Arrange|Act|Assert)( & (Arrange|Act|Assert))*\s*$#';
+    // Require exactly ONE space after `//` (case-SENSITIVE): `//Arrange` (no
+    // space) and wrong-case labels collected above are thus reported as
+    // offenders. `// Arrange` / `// Act & Assert` remain the only valid forms.
+    $conforming = '#^\s*// (Arrange|Act|Assert|Arrange & Act|Act & Assert)\s*$#';
 
     // Act
     $offenders = array_values(array_filter(
@@ -86,7 +98,10 @@ it('has no AAA label line that uses "/" or collapses labels without " & "', func
 
 it('has no AAA label line whose "&" join is anything but exactly " & "', function () use ($scanAaaLabelLines, $report): void {
     // Arrange
-    $conforming = '#^\s*//\s*(Arrange|Act|Assert)( & (Arrange|Act|Assert))*\s*$#';
+    // Require exactly ONE space after `//` (case-SENSITIVE): `//Arrange` (no
+    // space) and wrong-case labels collected above are thus reported as
+    // offenders. `// Arrange` / `// Act & Assert` remain the only valid forms.
+    $conforming = '#^\s*// (Arrange|Act|Assert|Arrange & Act|Act & Assert)\s*$#';
 
     // Act
     $offenders = array_values(array_filter(
@@ -104,7 +119,10 @@ it('has no AAA label line whose "&" join is anything but exactly " & "', functio
 
 it('has no AAA label line carrying prose after the label', function () use ($scanAaaLabelLines, $report): void {
     // Arrange
-    $conforming = '#^\s*//\s*(Arrange|Act|Assert)( & (Arrange|Act|Assert))*\s*$#';
+    // Require exactly ONE space after `//` (case-SENSITIVE): `//Arrange` (no
+    // space) and wrong-case labels collected above are thus reported as
+    // offenders. `// Arrange` / `// Act & Assert` remain the only valid forms.
+    $conforming = '#^\s*// (Arrange|Act|Assert|Arrange & Act|Act & Assert)\s*$#';
 
     // Act
     $offenders = array_values(array_filter(
