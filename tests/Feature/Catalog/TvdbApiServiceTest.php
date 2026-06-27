@@ -178,6 +178,48 @@ describe('series() JWT auth', function (): void {
         expect(Cache::get('tvdb.jwt'))->toBeNull();
     });
 
+    it('surfaces a failed /login as TvdbRequestFailed, not an auth failure', function (): void {
+        // Arrange
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response('', 500),
+            '*api4.thetvdb.com/v4/series/*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
+        ]);
+
+        // Act
+        $call = fn () => resolve(TvdbApiService::class)->series(81189);
+
+        // Assert
+        expect($call)->toThrow(TvdbRequestFailed::class);
+    });
+
+    it('surfaces a /login connection failure as TvdbRequestFailed', function (): void {
+        // Arrange
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => fn () => throw new ConnectionException('Connection timed out'),
+            '*api4.thetvdb.com/v4/series/*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
+        ]);
+
+        // Act
+        $call = fn () => resolve(TvdbApiService::class)->series(81189);
+
+        // Assert
+        expect($call)->toThrow(TvdbRequestFailed::class);
+    });
+
+    it('surfaces a /login connection failure as TvdbRequestFailed on the pooled path', function (): void {
+        // Arrange — empty JWT cache forces login inside the pool's token resolution
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => fn () => throw new ConnectionException('Connection timed out'),
+            '*api4.thetvdb.com/v4/series/*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
+        ]);
+
+        // Act
+        $call = fn () => resolve(TvdbApiService::class)->seriesMany([81189]);
+
+        // Assert
+        expect($call)->toThrow(TvdbRequestFailed::class);
+    });
+
     it('re-attempts login rather than presenting a null bearer after a malformed login body', function (): void {
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => Http::sequence()

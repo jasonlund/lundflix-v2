@@ -264,12 +264,27 @@ final class TvdbApiService
      * Exchange the configured apikey for a JWT via POST /login, returning the
      * token from the response. Sent without a bearer (we have none yet), so it
      * bypasses {@see configure} to avoid recursing through {@see token}.
+     *
+     * A transport failure or a failed (e.g. 5xx) /login response is a request
+     * failure, not a credential failure: it surfaces as {@see TvdbRequestFailed}
+     * for the /login URI. {@see TvdbAuthenticationFailed::noUsableToken} is
+     * reserved for a successful response whose body carries no usable token —
+     * the only case that genuinely implicates services.tvdb.key.
      */
     private function login(): string
     {
-        $token = Http::asJson()
-            ->post(self::BASE_URL.'/login', ['apikey' => config('services.tvdb.key')])
-            ->json('data.token');
+        try {
+            $response = Http::asJson()
+                ->post(self::BASE_URL.'/login', ['apikey' => config('services.tvdb.key')]);
+        } catch (ConnectionException) {
+            throw TvdbRequestFailed::for(self::BASE_URL.'/login');
+        }
+
+        if ($response->failed()) {
+            throw TvdbRequestFailed::for(self::BASE_URL.'/login');
+        }
+
+        $token = $response->json('data.token');
 
         if (! is_string($token) || $token === '') {
             throw TvdbAuthenticationFailed::noUsableToken();
