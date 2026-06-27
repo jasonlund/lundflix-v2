@@ -312,16 +312,16 @@ describe('retry policy & backoff', function (): void {
 
 /*
 |--------------------------------------------------------------------------
-| series() / episode() single fetch — extended endpoints
+| series() single fetch — extended endpoint
 |--------------------------------------------------------------------------
-| Each single-resource fetch GETs its `…/extended` endpoint with the cached
-| JWT as Bearer and returns the raw decoded payload unchanged, mapping a 404
-| to null. Fixtures are byte-exact captures: series_extended.json (id 81189)
-| and episode_extended.json (id 3859781). Every fake map answers BOTH /login
-| and the resource path, since Http::preventStrayRequests() is global.
+| series() GETs its `…/extended` endpoint with the cached JWT as Bearer and
+| returns the raw decoded payload unchanged, mapping a 404 to null. Fixture is
+| a byte-exact capture: series_extended.json (id 81189). Every fake map answers
+| BOTH /login and the resource path, since Http::preventStrayRequests() is
+| global.
 */
 
-describe('series() / episode() single fetch', function (): void {
+describe('series() single fetch', function (): void {
     beforeEach(function (): void {
         Cache::flush();
         config(['services.tvdb.key' => 'test-key']);
@@ -348,29 +348,5 @@ describe('series() / episode() single fetch', function (): void {
         $result = resolve(TvdbApiService::class)->series(81189);
 
         expect($result)->toBe(json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true));
-    });
-
-    it('GETs /episodes/{id}/extended and returns the raw payload', function (): void {
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*api4.thetvdb.com/v4/episodes/*' => Http::response(fixtureBytes('Catalog/tvdb/episode_extended.json')),
-        ]);
-
-        $result = resolve(TvdbApiService::class)->episode(3859781);
-
-        Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/episodes/3859781/extended')
-            && $request->hasHeader('Authorization', 'Bearer test.jwt.token'));
-        expect($result)->toBe(json_decode(fixtureBytes('Catalog/tvdb/episode_extended.json'), true));
-    });
-
-    it('returns null when the episode 404s', function (): void {
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*api4.thetvdb.com/v4/episodes/*' => Http::response('', 404),
-        ]);
-
-        $result = resolve(TvdbApiService::class)->episode(3859781);
-
-        expect($result)->toBeNull();
     });
 });
