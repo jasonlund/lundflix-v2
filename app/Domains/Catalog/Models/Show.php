@@ -7,14 +7,12 @@ namespace App\Domains\Catalog\Models;
 use App\Domains\Catalog\Database\Factories\ShowFactory;
 use App\Domains\Catalog\Enums\Genre;
 use App\Domains\Catalog\Enums\TitleType;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Laravel\Scout\Searchable;
 
-#[Fillable(['imdb_id', 'title', 'title_type', 'start_year', 'end_year', 'runtime', 'genres', 'num_votes', 'average_rating'])]
 class Show extends Model
 {
     /** @use HasFactory<ShowFactory> */
