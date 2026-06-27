@@ -170,9 +170,17 @@ the API returned it**:
 - **Group columns by source, order sources `imdb → tmdb → tvdb`** in migrations
   and model definitions, so each source's fields sit together in a predictable
   order.
-- **App-owned bookkeeping columns are NOT prefixed** — `id`, foreign/morph keys,
-  `*_synced_at`, `is_active`, `created_at`/`updated_at`, and any column the app
-  computes or owns.
+- **Source identity & discriminators ARE prefixed** — they are source-owned, not
+  app bookkeeping. The unique source identifier is the one **naming exception**:
+  always `_{source}_id` (e.g. `_imdb_id`, even though IMDb's raw attribute is
+  `tconst`), and **listed first** in that source's block. A source-provided
+  discriminator is prefixed too — e.g. `_imdb_title_type` (still cast to
+  `TitleType`, still the movie/show discriminator; the import routing reads the
+  raw row `$row['titleType']`, not the column, so the rename doesn't touch it).
+- **App-owned bookkeeping columns are NOT prefixed** — the surrogate PK `id`,
+  foreign/morph keys, `*_synced_at`, `is_active`, `created_at`/`updated_at`, and
+  any column the app computes or owns. (The *source* identity key is **not** one of
+  these — it is `_{source}_id`, above.)
 
 This is deliberate: each source owns its own namespaced columns, so there are no
 cross-source value "conflicts" to resolve at ingest (e.g. `_imdb_runtime` and
