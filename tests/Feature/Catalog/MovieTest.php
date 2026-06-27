@@ -26,6 +26,8 @@ it('exposes the imdb descriptive columns under the _imdb_ prefix only', function
         Schema::hasColumn('movies', '_imdb_title_type'),
         Schema::hasColumn('movies', '_imdb_start_year'),
         Schema::hasColumn('movies', '_imdb_runtime_minutes'),
+        Schema::hasColumn('movies', '_imdb_num_votes'),
+        Schema::hasColumn('movies', '_imdb_average_rating'),
         Schema::hasColumn('movies', '_imdb_genres'),
     ];
     $hasUnprefixed = [
@@ -33,6 +35,8 @@ it('exposes the imdb descriptive columns under the _imdb_ prefix only', function
         Schema::hasColumn('movies', 'title_type'),
         Schema::hasColumn('movies', 'year'),
         Schema::hasColumn('movies', 'runtime'),
+        Schema::hasColumn('movies', 'num_votes'),
+        Schema::hasColumn('movies', 'average_rating'),
         Schema::hasColumn('movies', 'genres'),
     ];
 

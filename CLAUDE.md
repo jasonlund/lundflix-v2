@@ -83,7 +83,7 @@ named constructor (`::at($path)`) for the message is fine.
 
 Logic over an enum's **own cases** (validating, parsing, normalizing raw values
 against the case set) lives as **static methods on the enum**, not a trait,
-helper, or action — e.g. `Genre::knownValues(array $raw): array`. Don't reach for
+helper, or action — e.g. `Genre::fromRawValues(array $raw): list<Genre>`. Don't reach for
 a shared `Concerns/` trait when a static enum method shares just as well and
 keeps the knowledge on the type.
 

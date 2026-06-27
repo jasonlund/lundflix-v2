@@ -70,23 +70,31 @@ it('casts typed attributes when fetched fresh from the database', function (): v
 
 it('has _imdb-prefixed descriptive columns and no unprefixed legacy columns', function (): void {
     // Arrange & Act
-    $prefixed = [
-        '_imdb_primary_title',
-        '_imdb_title_type',
-        '_imdb_start_year',
-        '_imdb_end_year',
-        '_imdb_runtime_minutes',
-        '_imdb_genres',
+    $hasPrefixed = [
+        Schema::hasColumn('shows', '_imdb_primary_title'),
+        Schema::hasColumn('shows', '_imdb_title_type'),
+        Schema::hasColumn('shows', '_imdb_start_year'),
+        Schema::hasColumn('shows', '_imdb_end_year'),
+        Schema::hasColumn('shows', '_imdb_runtime_minutes'),
+        Schema::hasColumn('shows', '_imdb_num_votes'),
+        Schema::hasColumn('shows', '_imdb_average_rating'),
+        Schema::hasColumn('shows', '_imdb_genres'),
     ];
-    $legacy = ['title', 'title_type', 'start_year', 'end_year', 'runtime', 'genres', 'year'];
+    $hasUnprefixed = [
+        Schema::hasColumn('shows', 'title'),
+        Schema::hasColumn('shows', 'title_type'),
+        Schema::hasColumn('shows', 'start_year'),
+        Schema::hasColumn('shows', 'end_year'),
+        Schema::hasColumn('shows', 'runtime'),
+        Schema::hasColumn('shows', 'num_votes'),
+        Schema::hasColumn('shows', 'average_rating'),
+        Schema::hasColumn('shows', 'genres'),
+        Schema::hasColumn('shows', 'year'),
+    ];
 
     // Assert
-    foreach ($prefixed as $column) {
-        expect(Schema::hasColumn('shows', $column))->toBeTrue();
-    }
-    foreach ($legacy as $column) {
-        expect(Schema::hasColumn('shows', $column))->toBeFalse();
-    }
+    expect($hasPrefixed)->each->toBeTrue()
+        ->and($hasUnprefixed)->each->toBeFalse();
 });
 
 it('exposes only the searchable keys with matching values', function (): void {
