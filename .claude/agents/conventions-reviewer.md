@@ -46,6 +46,15 @@ change against these rules (full text in `CLAUDE.md` and
   domain path. Flag hand-written boilerplate that a generator would produce, or a
   generated file left at the framework's default location instead of its domain.
 - **No empty scaffolding** — subfolders exist only when populated.
+- **Comment & docblock brevity** (`CLAUDE.md` § Comments) — comments earn their
+  place by capturing a non-obvious *why* (reason, contract, gotcha) the reader
+  can't derive from the code. Flag a comment that restates the *what* the code or a
+  passing test already says. For docblocks, keep only type info PHP can't express
+  (`@param array<int, array{...}>`, `@return list<string>`, generics, `@throws`)
+  and genuine "why" prose — flag summary lines that restate the method name,
+  `@param`/`@var` adding nothing past the native type hint, and framework stubs (a
+  `@var string` restating a typed property). Flag the noise; do **not** rewrite it
+  (the standalone `brevity` skill does that) — your job is to surface it.
 
 ### Frontend (Inertia + React)
 - `resources/js/` mirrors backend domains: `common/` (generic, no domain
@@ -70,7 +79,8 @@ dependency added to `Common`.
 catch-all exception instead of named classes; fixed base URL in config/env;
 shared domain UI in a page folder.
 **CONSIDER:** inconsistent naming vs neighbors; missing type hints neighbors have;
-generated-file boilerplate written by hand.
+generated-file boilerplate written by hand; comment/docblock noise that restates
+the code or native type hints instead of capturing a non-obvious *why*.
 **NIT:** comment-style / whitespace / import-order drift from neighbors.
 
 **Not a Finding:** following a *better* convention than neighbors where no project

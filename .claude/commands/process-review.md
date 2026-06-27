@@ -173,58 +173,46 @@ approval you apply it **directly in your own context** — do NOT spawn a `revie
 End each presented item's message by asking the user to reply **Approve**, **Modify**
 (with their adjustments), or **Skip**, and wait for their response before continuing.
 
-### CRITICAL — only an explicit user reply advances an issue
+### The two kinds of turn — and the one hard rule
 
-An issue is acted on (approved/modified/skipped, dispatched, and the next issue
-presented) **only** when the **user themselves** sends a message saying so. Nothing
-else counts.
+Every turn in this loop is one of two kinds. Decide which BEFORE writing anything:
 
-A **background fixer completion notification is NOT a user reply.** When you are
-re-invoked by a fixer finishing (or any system/tool notification) while you are
-waiting on the user's Approve/Modify/Skip for the current issue, you must:
-- **Never** interpret it as approval or any decision on the current (or any) issue.
-- **Never** dispatch a fixer, mark an issue approved, or move to the next issue
-  because of it.
-- Do the silent bookkeeping from Phase 3 and then **END YOUR TURN WITH NO
-  USER-FACING TEXT AT ALL** — empty output. Keep waiting for the user's actual reply.
+1. **User-reply turn** — the last message is the **user** sending Approve / Modify /
+   Skip. This is the *only* turn that acts on an issue: record the decision, drain any
+   queued fixers (Phase 3), dispatch this item's fixer, then present the **next**
+   issue. Prose belongs here, and only here.
+2. **Wake-up turn** — the last event is a **fixer finishing** or any other
+   system/tool notification. This turn does **internal bookkeeping only and emits zero
+   prose**: free the finished fixer's files and record its report (Phase 3), then
+   **end the turn** — no tool call needed, no text, empty output. It does **not**
+   dispatch anything, does **not** drain `pending`, does **not** touch any issue.
 
-### Each issue is presented exactly ONCE — never re-prompt
+**The hard rule: a wake-up turn never produces a user-facing token.** Not a status,
+not an acknowledgement, not "draining", not "moving to item 5", not a re-prompt of the
+pending issue, not a meta-note that the silence feels odd. The empty turn is always
+correct — if it ever feels "confusing" or like it "needs explaining," that feeling is
+the bug, not a reason to override it. A wake-up carries no decision, so you have
+nothing to say.
 
-Send a message about an issue **one time**: its single presentation. After that you
-are silent until the **user** replies. When a background wake-up arrives while you
-wait, do **not** send a second message about that issue in any form — no restating
-it, no "still waiting on your call for Item N", no re-asking Approve/Modify/Skip, no
-status, no acknowledgement. Even though such a line correctly avoids approving, it is
-still forbidden: it produces a duplicate message and reads as the orchestrator talking
-over itself. The screenshots show both bugs to eliminate:
-- "Issue N approved. Dispatching now." (false approval from a wake-up), and
-- "Still waiting on your call for Item N… Approve / Modify / Skip?" (re-prompting the
-  same pending issue after a wake-up).
+Why this holds: the wake-up turn has **no action to narrate** because dispatch and
+queue-draining are deferred to the next user-reply turn (Phase 3). Nothing happens on
+a wake-up except freeing a file — so write nothing.
 
-If you cannot point to a literal user message containing Approve / Modify / Skip for
-the current issue, you have **no** decision and **nothing to say** — do the silent
-bookkeeping and end the turn with empty output.
+### Each issue is presented exactly ONCE
 
-**Keep the flow clean — present only the next issue.** While walking the list, every
-message you send the user contains **nothing but the next issue** (or a blocker that
-needs their feedback, per Phase 3). Track all fixer state **internally and silently**.
+Send a message about an issue **one time**: its single presentation, in a user-reply
+turn. Never restate it, re-ask Approve/Modify/Skip, or give a "still waiting" status
+on a later turn.
 
-Until **every** issue has been processed, you must **never** emit any line about an
-approved issue's fixer state — not its completion, not its progress, not which files
-it released, not "no blocker", not a running tally. Concretely, lines like these are
-**forbidden** during the loop:
-- "Item 1 fixer done (config/services.php released). No blocker."
-- "Dispatching the second fixer…", "still waiting on item 3", "2 of 5 fixed"
+**Present only the next issue.** A user-reply turn's message contains **nothing but
+the next issue** (or a fixer blocker, per Phase 3). All fixer state — completions,
+progress, files released, tallies — is tracked **internally and silently** and
+surfaced once, together, in the Phase 6 summary. Never mid-loop.
 
-The example above is the exact bug to avoid: while the user is on Issue 2, do not say
-anything about Issue 1's fixer. The **only** reason to send the user anything other
-than the next issue is a fixer **blocker** that needs their feedback — and even then,
-only after the current issue is fully resolved (Phase 3). Successful completions are
-surfaced **once, all together, in the Phase 6 summary** — never mid-loop.
-
-- **Approve** → dispatch immediately (Phase 3), then move to the next item.
+- **Approve** → on this same user-reply turn, run the Phase 3 steps (drain, then
+  dispatch this item), then present the next item.
 - **Modify** → user adjusts scope/instructions; record as approved-with-edited-
-  instructions, then dispatch (Phase 3).
+  instructions, then dispatch via the Phase 3 steps.
 - **Skip** → record the reason for Phase 5.
 
 Do **not** wait for any fixer to finish before presenting the next item.
@@ -237,34 +225,43 @@ Maintain two structures across the Phase 2 loop:
 - `claimedFiles` — files currently held by an in-flight fixer.
 - `pending` — approved items blocked on a busy file.
 
-On each **approve/modify**, determine the item's target file set (the files its
-comments point at, plus any obvious sibling it will touch):
+Dispatch and queue-draining both happen **only on a user-reply turn** — never on a
+wake-up (see Phase 2's two-turn rule). This is what makes wake-ups silent: a finishing
+fixer just frees its files; nothing is dispatched or narrated until the user next
+speaks.
 
-- **No overlap** with `claimedFiles` → spawn a `review-fixer` for it with the Agent
-  tool, **`run_in_background: true`**, add its files to `claimedFiles`, and continue
-  presenting.
-- **Overlaps** an in-flight fixer's files → push to `pending` (never let two agents
-  edit the same file), and continue presenting.
+**On a fixer-completion wake-up (silent turn):** release that fixer's files from
+`claimedFiles`, record its report, and — if it returned a **blocker** — append it to a
+`blockers` queue. Then end the turn. Do **not** dispatch, drain, or surface anything.
 
-When a **fixer completion notification** arrives, handle it **silently** — it is a
-system event, **not** a user reply, so it never approves, advances, or speaks for any
-issue (see the CRITICAL rule in Phase 2). Do not report it and do not break the
-issue-by-issue flow:
-1. Release that fixer's files from `claimedFiles` and record its report.
-2. **Drain `pending`** — spawn any queued item whose files are now all free.
-   (Draining `pending` is the dispatch of items the user **already** approved earlier;
-   it is not, and never triggers, a decision on the issue currently being presented.)
-3. **Exception — the one allowed interruption, and never mid-issue:** if the fixer
-   returned a **blocker** (couldn't complete as specified), do **not** cut into the
-   issue currently in front of the user. **Finish the current issue first** — wait
-   for the user's Approve/Modify/Skip and act on it. Only then present the blocker as
-   plain text, and stay on it until fully resolved (re-approve with new guidance and
-   re-dispatch, or skip — looping until done). Then **resume** presenting the
-   remaining issues exactly where you left off. If several blockers arrive, queue
-   them and present them one at a time the same way.
+**Terminal exception (the loop is over, so silence no longer applies).** Once **every
+issue has already been presented and decided**, there is no pending user decision to
+talk over — the presentation loop is done. From that point a wake-up **may** drain
+`pending` and dispatch queued fixers (still without narrating), so the queue finishes
+even though no further user turn will come. When the **last** in-flight fixer reports
+and `pending` is empty, that wake-up proceeds straight into Phase 3.5 / Phase 4 (which
+do speak — that is the end of the run, not mid-loop chatter).
 
-A successful (non-blocker) completion is never surfaced — it only updates
-`claimedFiles`/`pending` behind the scenes.
+**On each user-reply turn, before presenting the next issue**, run these steps in
+order (all silent — no narration of any of them):
+1. **Drain `pending`** — for every queued item whose files are now all free (thanks to
+   completions recorded on intervening wake-ups), spawn its `review-fixer` and move its
+   files into `claimedFiles`. These are items the user approved earlier.
+2. **Dispatch the just-decided item** (if Approve/Modify): compute its target file set
+   (files its comments point at, plus any obvious sibling it will touch). **No overlap**
+   with `claimedFiles` → spawn a `review-fixer` with the Agent tool,
+   **`run_in_background: true`**, add its files to `claimedFiles`. **Overlaps** an
+   in-flight fixer's files → push to `pending` (never let two agents edit the same
+   file).
+3. **Surface blockers — after the current issue is fully resolved, never mid-issue.**
+   If `blockers` is non-empty, finish acting on the current issue first, then present
+   the queued blockers as plain text one at a time, staying on each until resolved
+   (re-approve with new guidance and re-dispatch, or skip). Then resume presenting the
+   remaining issues where you left off.
+4. **Present the next issue.**
+
+A successful (non-blocker) completion is never surfaced — it only frees files behind
+the scenes, consumed silently by the next user-reply turn's drain.
 
 Each `review-fixer` gets: the item/group (with any modified instructions), the
 target files, the resolution it must reach, and a reminder that it runs **in

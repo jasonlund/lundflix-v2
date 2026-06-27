@@ -96,6 +96,12 @@ When reviewing, check changes against these standards (full detail in `CLAUDE.md
   (domain path passed in the name). Hand-written boilerplate where a generator
   exists is a smell.
 
+**Comments & docblocks** (owned by `conventions-reviewer`)
+- Comments capture a non-obvious *why*; flag ones that restate the *what* the
+  code or a passing test already says. Docblocks keep only type info PHP can't
+  express (generics, `@throws`) and genuine "why" prose — flag summary lines
+  restating the method name, redundant `@param`/`@var`, and framework type stubs.
+
 **Frontend (Inertia + React)**
 - `resources/js/` mirrors the backend domains: `common/` (generic, no domain
   knowledge), `modules/{domain}/` (reusable domain UI/logic), `pages/` (Inertia

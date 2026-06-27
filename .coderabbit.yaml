@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+language: en-US
+reviews:
+  # Fewer nitpicks; comment only where it matters.
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  collapse_walkthrough: true
+  # Keep review scoped to source we own. Excludes vendored, generated, and
+  # build artifacts so CodeRabbit stops commenting on files outside our work.
+  path_filters:
+    - "!vendor/**"
+    - "!node_modules/**"
+    - "!bootstrap/cache/**"
+    - "!public/build/**"
+    - "!storage/**"
+    - "!**/*.lock"
+    # CLAUDE.md / AGENTS.md are generated from .ai/guidelines — never reviewed.
+    - "!CLAUDE.md"
+    - "!AGENTS.md"
+  auto_review:
+    enabled: true
+    # Only auto-review PRs targeting main, so branch-to-branch diffs don't
+    # drag in commits outside the PR's actual scope.
+    base_branches:
+      - "main"
