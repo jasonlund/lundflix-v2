@@ -122,7 +122,9 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
 
 - **AAA, always.** Three blocks in order — arrange, **one** act, assert —
   separated by blank lines. One Act per test; need a second action → second test.
-  Keep Arrange minimal (factories/props).
+  Keep Arrange minimal (factories/props). Label form is a **strict, enforced
+  standard** (mandatory label-only lines, ` & ` collapse only, protected
+  banners) — see the testing skills; guarded by `tests/Unit/TestCommentStandardTest.php`.
 - **Test behavior through public interfaces**, not implementation — tests survive
   refactoring. A slice = one behavior + its obvious variants.
 - **Tests mirror the domain tree:** `tests/Feature/{Domain}/` and

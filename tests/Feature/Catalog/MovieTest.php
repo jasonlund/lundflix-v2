@@ -26,7 +26,7 @@ it('rejects a duplicate imdb_id', function (): void {
     // Arrange
     Movie::factory()->create(['imdb_id' => 'tt1234567']);
 
-    // Act / Assert
+    // Act & Assert
     expect(fn () => Movie::factory()->create(['imdb_id' => 'tt1234567']))
         ->toThrow(QueryException::class);
 });

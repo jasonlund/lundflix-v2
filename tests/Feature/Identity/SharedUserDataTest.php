@@ -10,7 +10,8 @@ use Inertia\Testing\AssertableInertia as Assert;
 uses(RefreshDatabase::class);
 
 it('shares a null user for guests', function (): void {
-    // Arrange — no authenticated user.
+    // Arrange
+    // no authenticated user
 
     // Act
     $response = $this->get('/');

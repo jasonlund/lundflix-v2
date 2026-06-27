@@ -56,11 +56,12 @@ it('skips an imdb_id with no matching title', function (): void {
 });
 
 it('appends CASE bindings to pre-existing join bindings instead of replacing them', function (): void {
-    // Arrange: a query that already carries a parameterised join, so the 'join'
-    // binding slot is non-empty before the action assigns the CASE bindings. The
-    // old code did `bindings['join'] = array_merge($case...)`, dropping the join
-    // binding entirely; a future join/global-scope on Movie would then have its
-    // binding silently swallowed. The fix must keep the existing join binding.
+    // A query that already carries a parameterised join, so the 'join' binding
+    // slot is non-empty before the action assigns the CASE bindings. The old code
+    // did `bindings['join'] = array_merge($case...)`, dropping the join binding
+    // entirely; a future join/global-scope on Movie would then have its binding
+    // silently swallowed. The fix must keep the existing join binding.
+    // Arrange
     $movie = Movie::factory()->create(['num_votes' => 100, 'average_rating' => 1.0]);
     $scopedQuery = Movie::query()->joinSub(
         DB::table('movies')->select('id as scoped_id')->where('num_votes', '>', -98765),
@@ -78,7 +79,8 @@ it('appends CASE bindings to pre-existing join bindings instead of replacing the
         [$movie->imdb_id => ['num_votes' => 2252453, 'average_rating' => 8.7]],
     );
 
-    // Assert: the join's own binding (-98765) survives in the executed update.
+    // The join's own binding (-98765) survives in the executed update.
+    // Assert
     $updateLog = collect(DB::getQueryLog())->firstWhere(fn (array $entry): bool => str_starts_with((string) $entry['query'], 'update'));
     expect($updateLog['bindings'])->toContain(-98765);
 });
