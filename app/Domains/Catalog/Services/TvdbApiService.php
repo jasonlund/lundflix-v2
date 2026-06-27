@@ -122,34 +122,6 @@ final class TvdbApiService
     }
 
     /**
-     * Batch-resolve IMDb ids through {@see pooled} (one /search/remoteid/{tt}
-     * each) to a map of imdbId → series entry|null, input order preserved. Each
-     * value is the filtered entry {@see resolveByImdbId} returns, not the raw
-     * search envelope.
-     *
-     * @param  array<int, string>  $imdbIds
-     * @return array<string, array<string, mixed>|null>
-     */
-    public function resolveManyByImdbId(array $imdbIds): array
-    {
-        $envelopes = $this->pooled($imdbIds, fn (PendingRequest $request, string $imdbId) => $request
-            ->get("/search/remoteid/{$imdbId}"));
-
-        return array_map(
-            fn (?array $envelope): ?array => $envelope === null ? null : $this->seriesResult($envelope['data'] ?? []),
-            $envelopes,
-        );
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    public function episode(int $id): ?array
-    {
-        return $this->detail('episodes', $id);
-    }
-
-    /**
      * List a series' episodes for a season type, walking TheTVDB's top-level
      * `links.next` cursor until it is null and flattening every page's
      * `data.episodes` records in page order.
@@ -192,35 +164,16 @@ final class TvdbApiService
     }
 
     /**
-     * Resolve an IMDb id to its TheTVDB series via GET /search/remoteid/{tt},
-     * returning the raw `data[]` element whose member is `series`, or null when
-     * no element carries a `series` key (and on 404, where decode() yields null).
+     * Fetch one page of TheTVDB's `/series` listing — the page's `data[]` of
+     * BASE series records (not extended), or [] past the end. Deliberately
+     * page-at-a-time: unlike {@see episodes}/{@see updates} it does NOT walk
+     * `links.next`; the caller advances the page.
      *
-     * @return array<string, mixed>|null
+     * @return array<int, array<string, mixed>>
      */
-    public function resolveByImdbId(string $imdbId): ?array
+    public function allSeries(int $page = 0): array
     {
-        $body = $this->decode($this->get("/search/remoteid/{$imdbId}"));
-
-        return $this->seriesResult($body['data'] ?? []);
-    }
-
-    /**
-     * Select the series member out of a search remote-id result set: the first
-     * `data[]` entry carrying a `series` key, or null when none do.
-     *
-     * @param  array<int, array<string, mixed>>  $results
-     * @return array<string, mixed>|null
-     */
-    private function seriesResult(array $results): ?array
-    {
-        foreach ($results as $result) {
-            if (array_key_exists('series', $result)) {
-                return $result;
-            }
-        }
-
-        return null;
+        return ($this->decode($this->get("/series?page={$page}")) ?? [])['data'] ?? [];
     }
 
     /**
@@ -311,12 +264,27 @@ final class TvdbApiService
      * Exchange the configured apikey for a JWT via POST /login, returning the
      * token from the response. Sent without a bearer (we have none yet), so it
      * bypasses {@see configure} to avoid recursing through {@see token}.
+     *
+     * A transport failure or a failed (e.g. 5xx) /login response is a request
+     * failure, not a credential failure: it surfaces as {@see TvdbRequestFailed}
+     * for the /login URI. {@see TvdbAuthenticationFailed::noUsableToken} is
+     * reserved for a successful response whose body carries no usable token —
+     * the only case that genuinely implicates services.tvdb.key.
      */
     private function login(): string
     {
-        $token = Http::asJson()
-            ->post(self::BASE_URL.'/login', ['apikey' => config('services.tvdb.key')])
-            ->json('data.token');
+        try {
+            $response = Http::asJson()
+                ->post(self::BASE_URL.'/login', ['apikey' => config('services.tvdb.key')]);
+        } catch (ConnectionException) {
+            throw TvdbRequestFailed::for(self::BASE_URL.'/login');
+        }
+
+        if ($response->failed()) {
+            throw TvdbRequestFailed::for(self::BASE_URL.'/login');
+        }
+
+        $token = $response->json('data.token');
 
         if (! is_string($token) || $token === '') {
             throw TvdbAuthenticationFailed::noUsableToken();

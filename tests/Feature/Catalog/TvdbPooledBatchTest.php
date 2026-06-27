@@ -33,17 +33,6 @@ use Illuminate\Support\Sleep;
 | the login call is a stray request and the test fails for the wrong reason.
 | Cache::flush() in beforeEach prevents the long-lived JWT bleeding across
 | tests; config() sets the apikey the login exchanges.
-|
-| Slice 2 — resolveManyByImdbId() (pooled batch /search/remoteid/{tt}):
-|   Fires one /search/remoteid/{tt} per UNIQUE imdb id through the same pooled()
-|   seam and returns [imdbId => array|null] keyed in input order. Each per-id
-|   result is narrowed by FLIX-159's seriesResult() filter, so each value equals
-|   what single-id resolveByImdbId() returns — the `series`-keyed data[] entry,
-|   NOT the raw /search/remoteid envelope (which carries top-level status/data).
-|   Fixture: search_remoteid.json (byte-exact GoT tt0944947; data[0] has a
-|   `series` key). Per-id 404 -> null; all-failed -> TvdbRequestFailed::forIds;
-|   one 401 -> TvdbAuthenticationFailed. beforeEach pre-seeds a warm JWT so the
-|   strict request-count assertions aren't inflated by a recorded /login.
 */
 
 describe('seriesMany()', function (): void {
@@ -182,102 +171,5 @@ describe('seriesMany()', function (): void {
         }
 
         expect(Cache::get('tvdb.jwt'))->toBeNull();
-    });
-});
-
-describe('resolveManyByImdbId()', function (): void {
-    beforeEach(function (): void {
-        Cache::flush();
-        config(['services.tvdb.key' => 'test-key']);
-        Cache::put('tvdb.jwt', 'test.jwt.token', now()->addDay());
-    });
-
-    it('returns a map keyed by the input imdb ids hitting /search/remoteid/{tt}', function (): void {
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*/search/remoteid/tt0944947*' => Http::response(fixtureBytes('Catalog/tvdb/search_remoteid.json')),
-            '*/search/remoteid/tt0903747*' => Http::response(fixtureBytes('Catalog/tvdb/search_remoteid.json')),
-        ]);
-
-        $result = resolve(TvdbApiService::class)->resolveManyByImdbId(['tt0944947', 'tt0903747']);
-
-        expect(array_keys($result))->toBe(['tt0944947', 'tt0903747']);
-        Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/search/remoteid/tt0944947'));
-    });
-
-    it('applies the single-id series resolution filter to each batched result', function (): void {
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*/search/remoteid/tt0944947*' => Http::response(fixtureBytes('Catalog/tvdb/search_remoteid.json')),
-        ]);
-
-        $result = resolve(TvdbApiService::class)->resolveManyByImdbId(['tt0944947']);
-
-        $envelope = json_decode(fixtureBytes('Catalog/tvdb/search_remoteid.json'), true);
-        $seriesEntry = collect($envelope['data'])->first(fn (array $entry): bool => array_key_exists('series', $entry));
-        expect($result['tt0944947'])->toBe($seriesEntry)
-            ->and($result['tt0944947'])->not->toBe($envelope);
-    });
-
-    it('yields null for a 404 imdb id while others still resolve', function (): void {
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*/search/remoteid/tt0944947*' => Http::response(fixtureBytes('Catalog/tvdb/search_remoteid.json')),
-            '*/search/remoteid/tt9999999*' => Http::response('', 404),
-        ]);
-
-        $result = resolve(TvdbApiService::class)->resolveManyByImdbId(['tt0944947', 'tt9999999']);
-
-        $envelope = json_decode(fixtureBytes('Catalog/tvdb/search_remoteid.json'), true);
-        $seriesEntry = collect($envelope['data'])->first(fn (array $entry): bool => array_key_exists('series', $entry));
-        expect($result['tt0944947'])->toBe($seriesEntry)
-            ->and($result['tt9999999'])->toBeNull();
-    });
-
-    it('de-duplicates repeated imdb ids, firing one request per unique id and keying first-seen', function (): void {
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*/search/remoteid/tt0944947*' => Http::response(fixtureBytes('Catalog/tvdb/search_remoteid.json')),
-            '*/search/remoteid/tt0903747*' => Http::response(fixtureBytes('Catalog/tvdb/search_remoteid.json')),
-        ]);
-
-        $result = resolve(TvdbApiService::class)->resolveManyByImdbId(['tt0944947', 'tt0944947', 'tt0903747']);
-
-        $remoteidSent = collect(Http::recorded())->filter(
-            fn ($pair): bool => str_contains((string) $pair[0]->url(), '/search/remoteid/')
-        );
-        expect($remoteidSent)->toHaveCount(2)
-            ->and(array_keys($result))->toBe(['tt0944947', 'tt0903747']);
-    });
-
-    it('reports every failed imdb id when multiple lookups fail past retries', function (): void {
-        Sleep::fake();
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*/search/remoteid/tt0944947*' => Http::response('', 500),
-            '*/search/remoteid/tt0903747*' => Http::response(fixtureBytes('Catalog/tvdb/search_remoteid.json')),
-            '*/search/remoteid/tt0424242*' => Http::response('', 500),
-        ]);
-
-        $msg = '';
-        try {
-            resolve(TvdbApiService::class)->resolveManyByImdbId(['tt0944947', 'tt0903747', 'tt0424242']);
-        } catch (TvdbRequestFailed $e) {
-            $msg = $e->getMessage();
-        }
-
-        expect($msg)->toContain('tt0944947')->toContain('tt0424242');
-    });
-
-    it('throws TvdbAuthenticationFailed when one imdb lookup in the batch returns 401', function (): void {
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*/search/remoteid/tt0944947*' => Http::response('', 401),
-            '*/search/remoteid/tt0903747*' => Http::response(fixtureBytes('Catalog/tvdb/search_remoteid.json')),
-        ]);
-
-        $call = fn () => resolve(TvdbApiService::class)->resolveManyByImdbId(['tt0944947', 'tt0903747']);
-
-        expect($call)->toThrow(TvdbAuthenticationFailed::class);
     });
 });
