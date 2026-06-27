@@ -192,6 +192,21 @@ cross-source value "conflicts" to resolve at ingest (e.g. `_imdb_runtime` and
 `_tmdb_runtime` coexist rather than fighting over one `runtime` column). The
 source of truth is chosen per read, not baked into the schema.
 
+## Persistence: Eloquent is globally unguarded
+
+Eloquent runs **unguarded application-wide** by deliberate decision (FLIX-153):
+`Model::unguard()` in `AppServiceProvider::boot()`, and models intentionally
+carry **no** `#[Fillable]` / `$fillable` / `$guarded`. Every column is
+mass-assignable; write paths whitelist attributes **explicitly at the callsite**
+(e.g. Fortify actions pass keyed arrays; ingest actions pass fixed column lists).
+
+- **Do not** re-add per-model `#[Fillable]`/`$guarded`, and do not "scope" the
+  unguard to one flow — global is the chosen design.
+- This is **not** a mass-assignment vulnerability to flag: no `$request->all()`
+  / `->validated()` is ever spread into a model. A reviewer raising "unguard
+  removes mass-assignment protection" or "model is missing `$fillable`" is a
+  known false positive — the protection lives at the callsite by convention.
+
 ## Linting & formatting (finalize gates)
 
 Before finalizing **any** change, run every linter/formatter for the files you

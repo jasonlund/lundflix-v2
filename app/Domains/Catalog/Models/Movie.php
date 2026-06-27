@@ -8,7 +8,6 @@ use App\Domains\Catalog\Casts\NullableDate;
 use App\Domains\Catalog\Database\Factories\MovieFactory;
 use App\Domains\Catalog\Enums\Genre;
 use App\Domains\Catalog\Enums\TitleType;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -16,43 +15,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Laravel\Scout\Searchable;
 
-#[Fillable([
-    'imdb_id',
-    'title',
-    'title_type',
-    'year',
-    'runtime',
-    'genres',
-    'num_votes',
-    'average_rating',
-    '_tmdb_id',
-    '_tmdb_imdb_id',
-    '_tmdb_title',
-    '_tmdb_original_title',
-    '_tmdb_original_language',
-    '_tmdb_overview',
-    '_tmdb_tagline',
-    '_tmdb_homepage',
-    '_tmdb_status',
-    '_tmdb_release_date',
-    '_tmdb_runtime',
-    '_tmdb_budget',
-    '_tmdb_revenue',
-    '_tmdb_popularity',
-    '_tmdb_vote_average',
-    '_tmdb_vote_count',
-    '_tmdb_video',
-    '_tmdb_genres',
-    '_tmdb_origin_country',
-    '_tmdb_production_companies',
-    '_tmdb_production_countries',
-    '_tmdb_spoken_languages',
-    '_tmdb_belongs_to_collection',
-    '_tmdb_release_dates',
-    '_tmdb_poster_path',
-    '_tmdb_backdrop_path',
-    'tmdb_synced_at',
-])]
 class Movie extends Model
 {
     /** @use HasFactory<MovieFactory> */
