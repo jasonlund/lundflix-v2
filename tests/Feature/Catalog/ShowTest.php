@@ -27,7 +27,7 @@ it('rejects a duplicate imdb_id', function (): void {
     // Arrange
     Show::factory()->create(['imdb_id' => 'tt1234567']);
 
-    // Act / Assert
+    // Act & Assert
     expect(fn () => Show::factory()->create(['imdb_id' => 'tt1234567']))
         ->toThrow(QueryException::class);
 });
@@ -57,7 +57,7 @@ it('casts typed attributes when fetched fresh from the database', function (): v
 });
 
 it('has start_year and end_year columns but no year column', function (): void {
-    // Arrange / Act
+    // Arrange & Act
     $hasStartYear = Schema::hasColumn('shows', 'start_year');
     $hasEndYear = Schema::hasColumn('shows', 'end_year');
     $hasYear = Schema::hasColumn('shows', 'year');
