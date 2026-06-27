@@ -207,7 +207,8 @@ describe('series() JWT auth', function (): void {
     });
 
     it('surfaces a /login connection failure as TvdbRequestFailed on the pooled path', function (): void {
-        // Arrange — empty JWT cache forces login inside the pool's token resolution
+        // Arrange
+        // empty JWT cache forces login inside the pool's token resolution, where pooled() has no try/catch
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => fn () => throw new ConnectionException('Connection timed out'),
             '*api4.thetvdb.com/v4/series/*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
