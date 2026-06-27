@@ -122,7 +122,9 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
 
 - **AAA, always.** Three blocks in order — arrange, **one** act, assert —
   separated by blank lines. One Act per test; need a second action → second test.
-  Keep Arrange minimal (factories/props).
+  Keep Arrange minimal (factories/props). Label form is a **strict, enforced
+  standard** (mandatory label-only lines, ` & ` collapse only, protected
+  banners) — see the testing skills; guarded by `tests/Unit/TestCommentStandardTest.php`.
 - **Test behavior through public interfaces**, not implementation — tests survive
   refactoring. A slice = one behavior + its obvious variants.
 - **Tests mirror the domain tree:** `tests/Feature/{Domain}/` and
@@ -189,6 +191,21 @@ This is deliberate: each source owns its own namespaced columns, so there are no
 cross-source value "conflicts" to resolve at ingest (e.g. `_imdb_runtime` and
 `_tmdb_runtime` coexist rather than fighting over one `runtime` column). The
 source of truth is chosen per read, not baked into the schema.
+
+## Persistence: Eloquent is globally unguarded
+
+Eloquent runs **unguarded application-wide** by deliberate decision (FLIX-153):
+`Model::unguard()` in `AppServiceProvider::boot()`, and models intentionally
+carry **no** `#[Fillable]` / `$fillable` / `$guarded`. Every column is
+mass-assignable; write paths whitelist attributes **explicitly at the callsite**
+(e.g. Fortify actions pass keyed arrays; ingest actions pass fixed column lists).
+
+- **Do not** re-add per-model `#[Fillable]`/`$guarded`, and do not "scope" the
+  unguard to one flow — global is the chosen design.
+- This is **not** a mass-assignment vulnerability to flag: no `$request->all()`
+  / `->validated()` is ever spread into a model. A reviewer raising "unguard
+  removes mass-assignment protection" or "model is missing `$fillable`" is a
+  known false positive — the protection lives at the callsite by convention.
 
 ## Linting & formatting (finalize gates)
 
@@ -355,6 +372,13 @@ This application is a Laravel application and its main Laravel ecosystems packag
 # Deployment
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
+
+=== herd rules ===
+
+# Laravel Herd
+
+- The application is served by Laravel Herd at `https?://[kebab-case-project-dir].test`. Use the `get-absolute-url` tool to generate valid URLs. Never run commands to serve the site. It is always available.
+- Use the `herd` CLI to manage services, PHP versions, and sites (e.g. `herd sites`, `herd services:start <service>`, `herd php:list`). Run `herd list` to discover all available commands.
 
 === tests rules ===
 

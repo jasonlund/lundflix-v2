@@ -54,7 +54,7 @@ it('rejects duplicate artwork for the same parent and file path', function (): v
     $movie = Movie::factory()->create();
     Media::factory()->for($movie, 'mediable')->create(['_tmdb_file_path' => '/dup.jpg']);
 
-    // Act / Assert
+    // Act & Assert
     expect(fn () => Media::factory()->for($movie, 'mediable')->create(['_tmdb_file_path' => '/dup.jpg']))
         ->toThrow(QueryException::class);
 });

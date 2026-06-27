@@ -94,7 +94,7 @@ it('reads a valid _tmdb_release_date back as a Carbon date', function (): void {
 });
 
 it('creates a movie with a null imdb_id', function (): void {
-    // Arrange / Act
+    // Arrange & Act
     $movie = Movie::factory()->create([
         'imdb_id' => null,
         '_tmdb_id' => 12345,
@@ -111,7 +111,7 @@ it('rejects a duplicate non-null _tmdb_id', function (): void {
     // Arrange
     Movie::factory()->create(['_tmdb_id' => 999]);
 
-    // Act / Assert
+    // Act & Assert
     expect(fn () => Movie::factory()->create(['_tmdb_id' => 999]))
         ->toThrow(QueryException::class);
 });
