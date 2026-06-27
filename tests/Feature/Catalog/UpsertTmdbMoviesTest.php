@@ -105,10 +105,10 @@ function tmdbPayload(array $overrides = []): array
 
 it('merges a tmdb payload onto an existing imdb row without clobbering imdb columns', function (): void {
     // Arrange
-    $existing = Movie::factory()->create(['imdb_id' => 'tt0133093']);
-    $originalTitle = $existing->title;
-    $originalGenres = $existing->genres->all();
-    $originalVotes = $existing->num_votes;
+    $existing = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    $originalTitle = $existing->_imdb_primary_title;
+    $originalGenres = $existing->_imdb_genres->all();
+    $originalVotes = $existing->_imdb_num_votes;
 
     // Act
     resolve(UpsertTmdbMovies::class)->handle([
@@ -116,13 +116,13 @@ it('merges a tmdb payload onto an existing imdb row without clobbering imdb colu
     ]);
 
     // Assert
-    $fresh = Movie::query()->where('imdb_id', 'tt0133093')->firstOrFail();
+    $fresh = Movie::query()->where('_imdb_id', 'tt0133093')->firstOrFail();
     expect(Movie::query()->count())->toBe(1)
         ->and($fresh->_tmdb_id)->toBe(603)
         ->and($fresh->_tmdb_title)->toBe('TMDB Title')
-        ->and($fresh->title)->toBe($originalTitle)
-        ->and($fresh->genres->all())->toEqual($originalGenres)
-        ->and($fresh->num_votes)->toBe($originalVotes);
+        ->and($fresh->_imdb_primary_title)->toBe($originalTitle)
+        ->and($fresh->_imdb_genres->all())->toEqual($originalGenres)
+        ->and($fresh->_imdb_num_votes)->toBe($originalVotes);
 });
 
 it('inserts a tmdb-only row with null imdb_id when no existing imdb row matches', function (): void {
@@ -134,7 +134,7 @@ it('inserts a tmdb-only row with null imdb_id when no existing imdb row matches'
 
     // Assert
     $movie = Movie::query()->where('_tmdb_id', 700)->firstOrFail();
-    expect($movie->imdb_id)->toBeNull()
+    expect($movie->_imdb_id)->toBeNull()
         ->and($movie->_tmdb_id)->toBe(700);
 });
 
@@ -148,7 +148,7 @@ it('inserts a tmdb-only row when the payload has no imdb_id key', function (): v
 
     // Assert
     $movie = Movie::query()->where('_tmdb_id', 701)->firstOrFail();
-    expect($movie->imdb_id)->toBeNull()
+    expect($movie->_imdb_id)->toBeNull()
         ->and($movie->_tmdb_id)->toBe(701);
 });
 

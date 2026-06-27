@@ -74,15 +74,15 @@ it('exits SUCCESS and deletes the export temp file', function (): void {
 
 it('merges onto an existing IMDb row instead of creating a duplicate', function (): void {
     // Arrange
-    Movie::factory()->create(['imdb_id' => 'tt0133093']);
+    Movie::factory()->create(['_imdb_id' => 'tt0133093']);
     fakeTmdbSync();
 
     // Act
     $this->artisan('tmdb:sync-movies');
 
     // Assert
-    expect(Movie::where('imdb_id', 'tt0133093')->count())->toBe(1);
-    expect(Movie::where('imdb_id', 'tt0133093')->first()->_tmdb_id)->toBe(603);
+    expect(Movie::where('_imdb_id', 'tt0133093')->count())->toBe(1);
+    expect(Movie::where('_imdb_id', 'tt0133093')->first()->_tmdb_id)->toBe(603);
 });
 
 it('caps processed ids with --limit', function (): void {

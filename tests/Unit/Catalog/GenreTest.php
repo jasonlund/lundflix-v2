@@ -37,3 +37,14 @@ it('resolves a known IMDb genre and returns null for an unknown one', function (
     // Assert
     expect($resolved)->toBe([Genre::Action, null]);
 });
+
+it('maps raw values to Genre cases, dropping unknowns and preserving order', function (): void {
+    // Arrange
+    // (enum is the subject under test; no state to set up)
+
+    // Act
+    $cases = Genre::fromRawValues(['Action', 'NotAGenre', 'Sci-Fi']);
+
+    // Assert
+    expect($cases)->toBe([Genre::Action, Genre::SciFi]);
+});

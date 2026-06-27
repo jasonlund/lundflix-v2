@@ -31,19 +31,19 @@ it('splits movies vs shows from the fixture', function (): void {
     $this->artisan('imdb:import-titles');
 
     expect(Movie::count())->toBe(10);
-    expect(Movie::pluck('imdb_id')->all())->toContain('tt0133093', 'tt0137523', 'tt0816692');
+    expect(Movie::pluck('_imdb_id')->all())->toContain('tt0133093', 'tt0137523', 'tt0816692');
     expect(Show::count())->toBe(3);
-    expect(Show::pluck('imdb_id')->all())->toContain('tt0030138', 'tt0047766', 'tt0038276');
+    expect(Show::pluck('_imdb_id')->all())->toContain('tt0030138', 'tt0047766', 'tt0038276');
 });
 
 it('maps genres to Genre cases', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
     $this->artisan('imdb:import-titles');
 
-    $movie = Movie::where('imdb_id', 'tt0133093')->first();
+    $movie = Movie::where('_imdb_id', 'tt0133093')->first();
 
     expect($movie)->not->toBeNull();
-    expect($movie->genres->all())->toBe([Genre::Action, Genre::SciFi]);
+    expect($movie->_imdb_genres->all())->toBe([Genre::Action, Genre::SciFi]);
 });
 
 it('preserves the specific originating title type per table', function (): void {
@@ -51,8 +51,8 @@ it('preserves the specific originating title type per table', function (): void 
 
     $this->artisan('imdb:import-titles');
 
-    expect(Movie::where('imdb_id', 'tt0030298')->firstOrFail()->title_type)->toBe(TitleType::TvMovie);
-    expect(Show::where('imdb_id', 'tt0047766')->firstOrFail()->title_type)->toBe(TitleType::TvMiniSeries);
+    expect(Movie::where('_imdb_id', 'tt0030298')->firstOrFail()->_imdb_title_type)->toBe(TitleType::TvMovie);
+    expect(Show::where('_imdb_id', 'tt0047766')->firstOrFail()->_imdb_title_type)->toBe(TitleType::TvMiniSeries);
 });
 
 it('exits SUCCESS', function (): void {

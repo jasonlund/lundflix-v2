@@ -36,8 +36,10 @@ verbatim; derive/normalize downstream, not on ingest.
 
 ## Enums filter raw rows
 
-Enum filters (`ImdbDataset`, `Genre::knownValues`) run on the **raw string row
-before casting** — drop unrecognized values there, not after hydration.
+`ImdbDataset` filters the **raw string row before casting** — drop unrecognized
+values there, not after hydration. Genres are the exception: stored raw at ingest
+and mapped to known `Genre` cases at **read time** by the `ImdbGenres` cast (via
+`Genre::fromRawValues`), per the raw-source-column convention.
 
 ## Ratings update (`UpdateImdbRatings`)
 
