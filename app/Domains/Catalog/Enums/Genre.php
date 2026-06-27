@@ -38,17 +38,16 @@ enum Genre: string
     case Western = 'Western';
 
     /**
-     * Filter raw IMDb genre strings to known backing values, dropping unrecognized ones.
+     * Map raw IMDb genre strings to known Genre cases, dropping unrecognized ones (order preserved).
      *
      * @param  array<int, string>  $genres
-     * @return list<string>
+     * @return list<self>
      */
-    public static function knownValues(array $genres): array
+    public static function fromRawValues(array $genres): array
     {
         return Collection::make($genres)
             ->map(fn (string $genre): ?self => self::tryFrom($genre))
             ->filter()
-            ->map(fn (self $genre): string => $genre->value)
             ->values()
             ->all();
     }

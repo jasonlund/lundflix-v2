@@ -93,17 +93,17 @@ it('reads a valid _tmdb_release_date back as a Carbon date', function (): void {
         ->and($fresh->_tmdb_release_date->toDateString())->toBe('2024-05-01');
 });
 
-it('creates a movie with a null imdb_id', function (): void {
+it('creates a movie with a null _imdb_id', function (): void {
     // Arrange & Act
     $movie = Movie::factory()->create([
-        'imdb_id' => null,
+        '_imdb_id' => null,
         '_tmdb_id' => 12345,
     ]);
 
     // Assert
     $this->assertDatabaseHas('movies', [
         'id' => $movie->id,
-        'imdb_id' => null,
+        '_imdb_id' => null,
     ]);
 });
 

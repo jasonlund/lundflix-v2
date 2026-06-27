@@ -23,9 +23,9 @@ uses(RefreshDatabase::class);
 
 it('populates ratings on pre-seeded titles', function (): void {
     // Arrange
-    $matrix = Movie::factory()->create(['imdb_id' => 'tt0133093', 'num_votes' => 1, 'average_rating' => 1.0]);
-    $interstellar = Movie::factory()->create(['imdb_id' => 'tt0816692', 'num_votes' => 1, 'average_rating' => 1.0]);
-    $fightClub = Show::factory()->create(['imdb_id' => 'tt0137523', 'num_votes' => 1, 'average_rating' => 1.0]);
+    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093', '_imdb_num_votes' => 1, '_imdb_average_rating' => 1.0]);
+    $interstellar = Movie::factory()->create(['_imdb_id' => 'tt0816692', '_imdb_num_votes' => 1, '_imdb_average_rating' => 1.0]);
+    $fightClub = Show::factory()->create(['_imdb_id' => 'tt0137523', '_imdb_num_votes' => 1, '_imdb_average_rating' => 1.0]);
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
 
     // Act
@@ -33,16 +33,16 @@ it('populates ratings on pre-seeded titles', function (): void {
 
     // Assert
     $matrix->refresh();
-    expect($matrix->num_votes)->toBe(2252453);
-    expect($matrix->average_rating)->toBe(8.7);
+    expect($matrix->_imdb_num_votes)->toBe(2252453);
+    expect($matrix->_imdb_average_rating)->toBe(8.7);
 
     $interstellar->refresh();
-    expect($interstellar->num_votes)->toBe(2541567);
-    expect($interstellar->average_rating)->toBe(8.7);
+    expect($interstellar->_imdb_num_votes)->toBe(2541567);
+    expect($interstellar->_imdb_average_rating)->toBe(8.7);
 
     $fightClub->refresh();
-    expect($fightClub->num_votes)->toBe(2615814);
-    expect($fightClub->average_rating)->toBe(8.8);
+    expect($fightClub->_imdb_num_votes)->toBe(2615814);
+    expect($fightClub->_imdb_average_rating)->toBe(8.8);
 });
 
 it('exits SUCCESS', function (): void {

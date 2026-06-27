@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Actions;
 
-use App\Domains\Catalog\Enums\Genre;
 use App\Domains\Catalog\Models\Movie;
 
 final class UpsertMovies
@@ -19,19 +18,19 @@ final class UpsertMovies
         }
 
         $payloads = array_map(fn (array $row): array => [
-            'imdb_id' => $row['tconst'],
-            'title' => $row['primaryTitle'],
-            'title_type' => $row['titleType'],
-            'year' => $row['startYear'],
-            'runtime' => $row['runtimeMinutes'],
-            'genres' => $row['genres'] === null ? null : json_encode(Genre::knownValues($row['genres'])),
+            '_imdb_id' => $row['tconst'],
+            '_imdb_primary_title' => $row['primaryTitle'],
+            '_imdb_title_type' => $row['titleType'],
+            '_imdb_start_year' => $row['startYear'],
+            '_imdb_runtime_minutes' => $row['runtimeMinutes'],
+            '_imdb_genres' => $row['genres'] === null ? null : json_encode($row['genres']),
         ], $rows);
 
-        Movie::upsert($payloads, ['imdb_id'], ['title', 'title_type', 'year', 'runtime', 'genres']);
+        Movie::upsert($payloads, ['_imdb_id'], ['_imdb_primary_title', '_imdb_title_type', '_imdb_start_year', '_imdb_runtime_minutes', '_imdb_genres']);
 
-        $imdbIds = array_column($payloads, 'imdb_id');
+        $imdbIds = array_column($payloads, '_imdb_id');
 
-        Movie::whereIn('imdb_id', $imdbIds)->searchable();
+        Movie::whereIn('_imdb_id', $imdbIds)->searchable();
 
         return count($payloads);
     }

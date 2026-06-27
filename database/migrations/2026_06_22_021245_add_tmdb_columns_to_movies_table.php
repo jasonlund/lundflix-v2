@@ -14,10 +14,6 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('movies', function (Blueprint $table): void {
-            $table->string('imdb_id')->nullable()->change();
-            $table->text('title')->nullable()->change();
-            $table->string('title_type')->nullable()->change();
-
             $tmdb = fn (string $column): string => "_tmdb_{$column}";
 
             $table->unsignedInteger($tmdb('id'))->nullable()->unique();
@@ -70,10 +66,6 @@ return new class extends Migration
                 ]),
                 'tmdb_synced_at',
             ]);
-
-            $table->string('imdb_id')->nullable(false)->change();
-            $table->text('title')->nullable(false)->change();
-            $table->string('title_type')->nullable(false)->change();
         });
     }
 };

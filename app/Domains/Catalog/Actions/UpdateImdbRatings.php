@@ -33,8 +33,8 @@ final class UpdateImdbRatings
     private function updateTable(Builder $query, array $ratings): int
     {
         $matchedIds = (clone $query)
-            ->whereIn('imdb_id', array_keys($ratings))
-            ->pluck('imdb_id')
+            ->whereIn('_imdb_id', array_keys($ratings))
+            ->pluck('_imdb_id')
             ->all();
 
         if ($matchedIds === []) {
@@ -44,13 +44,13 @@ final class UpdateImdbRatings
         $numVotes = $this->buildCase($matchedIds, fn (string $imdbId): int => $ratings[$imdbId]['num_votes']);
         $averageRating = $this->buildCase($matchedIds, fn (string $imdbId): float => $ratings[$imdbId]['average_rating']);
 
-        $update = (clone $query)->getQuery()->whereIn('imdb_id', $matchedIds);
+        $update = (clone $query)->getQuery()->whereIn('_imdb_id', $matchedIds);
 
         // The CASE placeholders sit in the SET clause, which the grammar renders
         // *before* the WHERE clause; Expression SET values carry no bindings of
         // their own. prepareBindingsForUpdate() prepends the 'join' binding slot
         // ahead of the where bindings, so the CASE bindings must live there — in
-        // SET-clause column order (num_votes then average_rating) — to line up
+        // SET-clause column order (_imdb_num_votes then _imdb_average_rating) — to line up
         // with their placeholders. Append to (never replace) any existing join
         // bindings: a future join/global-scope on the model would otherwise be
         // silently dropped, shifting every placeholder and corrupting the update.
@@ -60,17 +60,17 @@ final class UpdateImdbRatings
             $averageRating['bindings'],
         );
         $update->update([
-            'num_votes' => new Expression($numVotes['sql']),
-            'average_rating' => new Expression($averageRating['sql']),
+            '_imdb_num_votes' => new Expression($numVotes['sql']),
+            '_imdb_average_rating' => new Expression($averageRating['sql']),
         ]);
 
-        (clone $query)->whereIn('imdb_id', $matchedIds)->searchable();
+        (clone $query)->whereIn('_imdb_id', $matchedIds)->searchable();
 
         return count($matchedIds);
     }
 
     /**
-     * Build a `CASE imdb_id WHEN ? THEN ? ... END` expression for the matched
+     * Build a `CASE _imdb_id WHEN ? THEN ? ... END` expression for the matched
      * ids, with bindings in placeholder order (id, value, id, value, ...).
      *
      * @param  list<string>  $matchedIds
@@ -79,7 +79,7 @@ final class UpdateImdbRatings
      */
     private function buildCase(array $matchedIds, callable $valueFor): array
     {
-        $sql = 'CASE imdb_id';
+        $sql = 'CASE _imdb_id';
         $bindings = [];
 
         foreach ($matchedIds as $imdbId) {
