@@ -52,3 +52,14 @@ it('does not treat single-work title types as shows', function (): void {
     // Assert
     expect($results)->toBe([false, false, false, false, false]);
 });
+
+it('returns the 7 IMDb backing strings in case-declaration order', function (): void {
+    // Arrange
+    // enum under test, no state to set up
+
+    // Act
+    $values = TitleType::values();
+
+    // Assert
+    expect($values)->toBe(['movie', 'tvMovie', 'short', 'tvSpecial', 'video', 'tvSeries', 'tvMiniSeries']);
+});

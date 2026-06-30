@@ -35,7 +35,7 @@ enum ImdbDataset: string
     public function includes(array $row): bool
     {
         return match ($this) {
-            self::TitleBasics => in_array($row['titleType'] ?? null, array_map(fn (TitleType $type): string => $type->value, TitleType::cases()), true) && ($row['isAdult'] ?? null) !== '1',
+            self::TitleBasics => in_array($row['titleType'] ?? null, TitleType::values(), true) && ($row['isAdult'] ?? null) !== '1',
             self::TitleRatings => true,
         };
     }
