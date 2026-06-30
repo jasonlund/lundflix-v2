@@ -6,6 +6,7 @@ namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Enums\ArtworkType;
 use App\Domains\Catalog\Models\Movie;
+use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
 use Illuminate\Support\Facades\DB;
 
@@ -31,9 +32,9 @@ class UpsertTmdbImages
     ];
 
     /**
-     * Persist a movie's TMDB artwork into the polymorphic media table.
+     * Persist a movie's or show's TMDB artwork into the polymorphic media table.
      *
-     * Deactivates every managed-type row for the movie, then upserts each
+     * Deactivates every managed-type row for the title, then upserts each
      * incoming image as active — so art no longer in the payload goes stale
      * while reappearing art is reactivated. Returns the active row count.
      *
@@ -43,7 +44,7 @@ class UpsertTmdbImages
      *     logos?: list<array<string, mixed>>,
      * }  $images
      */
-    public function handle(Movie $movie, array $images): int
+    public function handle(Movie|Show $movie, array $images): int
     {
         return DB::transaction(function () use ($movie, $images): int {
             $movie->media()

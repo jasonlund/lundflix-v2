@@ -6,6 +6,7 @@ use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Enums\ArtworkType;
 use App\Domains\Catalog\Models\Media;
 use App\Domains\Catalog\Models\Movie;
+use App\Domains\Catalog\Models\Show;
 
 it('maps each image to a typed active media row with raw attrs', function (): void {
     // Arrange
@@ -141,4 +142,27 @@ it('reactivates a previously-inactive file_path that reappears in the payload', 
         'is_active' => true,
     ]);
     expect($movie->media()->where('_tmdb_file_path', '/aOIuZAjPaRIE6CMzbazvcHuHXDc.jpg')->count())->toBe(1);
+});
+
+it('persists tmdb images against a show into active media rows', function (): void {
+    // Arrange
+    $show = Show::factory()->create();
+    $images = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true)['images'];
+
+    // Act
+    $count = (new UpsertTmdbImages)->handle($show, $images);
+
+    // Assert
+    expect($show->media()->where('type', ArtworkType::Poster)->count())->toBe(207)
+        ->and($show->media()->where('type', ArtworkType::Backdrop)->count())->toBe(423)
+        ->and($show->media()->where('type', ArtworkType::Logo)->count())->toBe(13)
+        ->and($count)->toBe(643);
+
+    $this->assertDatabaseHas('media', [
+        'mediable_type' => $show->getMorphClass(),
+        'mediable_id' => $show->id,
+        'type' => 'poster',
+        'is_active' => true,
+        '_tmdb_file_path' => '/1XS1oqL89opfnbLl8WnZY1O1uJx.jpg',
+    ]);
 });
