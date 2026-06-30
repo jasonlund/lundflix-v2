@@ -20,6 +20,11 @@ class Media extends Model
 
     public function url(?string $size = null): ?string
     {
+        // _tvdb_image is already an absolute TVDB artwork URL; $size does not apply
+        if ($this->_tvdb_image !== null) {
+            return $this->_tvdb_image;
+        }
+
         if ($this->_tmdb_file_path === null) {
             return null;
         }
@@ -54,6 +59,10 @@ class Media extends Model
             '_tmdb_width' => 'integer',
             '_tmdb_height' => 'integer',
             '_tmdb_aspect_ratio' => 'float',
+            '_tvdb_score' => 'float',
+            '_tvdb_type' => 'integer',
+            '_tvdb_width' => 'integer',
+            '_tvdb_height' => 'integer',
         ];
     }
 }

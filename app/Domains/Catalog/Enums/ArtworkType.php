@@ -10,6 +10,16 @@ enum ArtworkType: string
     case Backdrop = 'backdrop';
     case Logo = 'logo';
 
+    public static function fromTvdb(int $code): ?self
+    {
+        return match ($code) {
+            2 => self::Poster,
+            3 => self::Backdrop,
+            23 => self::Logo,
+            default => null,
+        };
+    }
+
     public function defaultSize(): string
     {
         return match ($this) {

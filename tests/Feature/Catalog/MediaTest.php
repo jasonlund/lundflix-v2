@@ -92,3 +92,57 @@ it('overrides the size segment when a size is passed to url()', function (): voi
     // Assert
     expect($url)->toBe('https://image.tmdb.org/t/p/original/abc.jpg');
 });
+
+it('returns the tvdb absolute image verbatim from url()', function (): void {
+    // Arrange
+    $media = Media::factory()->withTvdb()->create([
+        '_tvdb_image' => 'https://artworks.thetvdb.com/banners/posters/81189-10.jpg',
+    ]);
+
+    // Act
+    $url = $media->url();
+
+    // Assert
+    expect($url)->toBe('https://artworks.thetvdb.com/banners/posters/81189-10.jpg');
+});
+
+it('ignores a passed size for a tvdb row in url()', function (): void {
+    // Arrange
+    $media = Media::factory()->withTvdb()->create([
+        '_tvdb_image' => 'https://artworks.thetvdb.com/banners/posters/81189-10.jpg',
+    ]);
+
+    // Act
+    $url = $media->url('original');
+
+    // Assert
+    expect($url)->toBe('https://artworks.thetvdb.com/banners/posters/81189-10.jpg');
+});
+
+it('still builds the tmdb CDN url when tvdb image is null', function (): void {
+    // Arrange
+    $media = Media::factory()->create([
+        'type' => ArtworkType::Poster,
+        '_tmdb_file_path' => '/abc.jpg',
+        '_tvdb_image' => null,
+    ]);
+
+    // Act
+    $url = $media->url();
+
+    // Assert
+    expect($url)->toBe('https://image.tmdb.org/t/p/w500/abc.jpg');
+});
+
+it('returns null from url() when both tvdb image and tmdb file path are null', function (): void {
+    // Arrange
+    $media = Media::factory()->withTvdb()->create([
+        '_tvdb_image' => null,
+    ]);
+
+    // Act
+    $url = $media->url();
+
+    // Assert
+    expect($url)->toBeNull();
+});

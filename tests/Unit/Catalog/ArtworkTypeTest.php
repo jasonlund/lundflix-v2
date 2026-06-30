@@ -56,3 +56,36 @@ it('returns a default size within the valid TMDB size set for that image kind', 
         expect($validSizes[$name])->toContain($size);
     }
 });
+
+it('maps a known TVDB artwork-type code to its case', function (int $code, ArtworkType $expected): void {
+    // Arrange
+    // dataset supplies the code and expected case
+
+    // Act
+    $actual = ArtworkType::fromTvdb($code);
+
+    // Assert
+    expect($actual)->toBe($expected);
+})->with([
+    'poster code 2' => [2, ArtworkType::Poster],
+    'backdrop code 3' => [3, ArtworkType::Backdrop],
+    'logo code 23' => [23, ArtworkType::Logo],
+]);
+
+it('returns null for an unmapped TVDB artwork-type code', function (int $code): void {
+    // Arrange
+    // dataset supplies the unmapped code
+
+    // Act
+    $actual = ArtworkType::fromTvdb($code);
+
+    // Assert
+    expect($actual)->toBeNull();
+})->with([
+    'banner 1' => 1,
+    'icon 5' => 5,
+    'seasonswide 6' => 6,
+    'seasons 7' => 7,
+    'clearart 22' => 22,
+    'unknown 999' => 999,
+]);
