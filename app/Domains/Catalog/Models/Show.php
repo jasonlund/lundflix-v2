@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Models;
 
+use App\Domains\Catalog\Casts\ImdbGenres;
 use App\Domains\Catalog\Casts\NullableDate;
 use App\Domains\Catalog\Database\Factories\ShowFactory;
-use App\Domains\Catalog\Enums\Genre;
 use App\Domains\Catalog\Enums\TitleType;
-use Illuminate\Database\Eloquent\Casts\AsEnumCollection;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -37,10 +36,10 @@ class Show extends Model
     {
         return [
             'id' => $this->id,
-            'imdb_id' => $this->imdb_id,
-            'title' => $this->title,
-            'start_year' => $this->start_year,
-            'num_votes' => $this->num_votes,
+            'imdb_id' => $this->_imdb_id,
+            'title' => $this->_imdb_primary_title,
+            'start_year' => $this->_imdb_start_year,
+            'num_votes' => $this->_imdb_num_votes,
         ];
     }
 
@@ -56,13 +55,13 @@ class Show extends Model
     protected function casts(): array
     {
         return [
-            'start_year' => 'integer',
-            'end_year' => 'integer',
-            'runtime' => 'integer',
-            'num_votes' => 'integer',
-            'average_rating' => 'float',
-            'genres' => AsEnumCollection::of(Genre::class),
-            'title_type' => TitleType::class,
+            '_imdb_start_year' => 'integer',
+            '_imdb_end_year' => 'integer',
+            '_imdb_runtime_minutes' => 'integer',
+            '_imdb_num_votes' => 'integer',
+            '_imdb_average_rating' => 'float',
+            '_imdb_genres' => ImdbGenres::class,
+            '_imdb_title_type' => TitleType::class,
             '_tmdb_id' => 'integer',
             '_tmdb_first_air_date' => NullableDate::class,
             '_tmdb_popularity' => 'float',

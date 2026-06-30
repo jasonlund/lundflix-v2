@@ -55,7 +55,7 @@ final class UpsertTmdbShows
 
         $existingByImdbId = $imdbIds === []
             ? collect()
-            : Show::query()->whereIn('imdb_id', $imdbIds)->get()->keyBy('imdb_id');
+            : Show::query()->whereIn('_imdb_id', $imdbIds)->get()->keyBy('_imdb_id');
 
         $touchedIds = [];
         $tmdbOnlyRows = [];

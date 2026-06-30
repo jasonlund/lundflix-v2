@@ -81,10 +81,10 @@ function tvdbSeries(array $overrides = []): array
 
 it('merges onto an existing imdb show, pulling imdb_id from the remoteIds IMDB entry, without clobbering imdb columns', function (): void {
     // Arrange
-    $existing = Show::factory()->create(['imdb_id' => 'tt0903747']);
-    $originalTitle = $existing->title;
-    $originalGenres = $existing->genres->all();
-    $originalVotes = $existing->num_votes;
+    $existing = Show::factory()->create(['_imdb_id' => 'tt0903747']);
+    $originalTitle = $existing->_imdb_primary_title;
+    $originalGenres = $existing->_imdb_genres->all();
+    $originalVotes = $existing->_imdb_num_votes;
 
     // Act
     resolve(UpsertTvdbShows::class)->handle([
@@ -92,12 +92,12 @@ it('merges onto an existing imdb show, pulling imdb_id from the remoteIds IMDB e
     ]);
 
     // Assert
-    $fresh = Show::query()->where('imdb_id', 'tt0903747')->firstOrFail();
+    $fresh = Show::query()->where('_imdb_id', 'tt0903747')->firstOrFail();
     expect(Show::query()->count())->toBe(1)
         ->and($fresh->_tvdb_id)->toBe(81189)
-        ->and($fresh->title)->toBe($originalTitle)
-        ->and($fresh->genres->all())->toEqual($originalGenres)
-        ->and($fresh->num_votes)->toBe($originalVotes);
+        ->and($fresh->_imdb_primary_title)->toBe($originalTitle)
+        ->and($fresh->_imdb_genres->all())->toEqual($originalGenres)
+        ->and($fresh->_imdb_num_votes)->toBe($originalVotes);
 });
 
 it('inserts a tvdb-only show with null imdb_id when no existing imdb show matches the remoteIds IMDB entry', function (): void {
@@ -109,7 +109,7 @@ it('inserts a tvdb-only show with null imdb_id when no existing imdb show matche
 
     // Assert
     $show = Show::query()->where('_tvdb_id', 700)->firstOrFail();
-    expect($show->imdb_id)->toBeNull()
+    expect($show->_imdb_id)->toBeNull()
         ->and($show->_tvdb_id)->toBe(700);
 });
 

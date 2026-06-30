@@ -65,14 +65,14 @@ it('casts json _tmdb_* columns to arrays when fetched fresh', function (): void 
 it('creates a show with a null imdb_id', function (): void {
     // Arrange & Act
     $show = Show::factory()->create([
-        'imdb_id' => null,
+        '_imdb_id' => null,
         '_tmdb_id' => 12345,
     ]);
 
     // Assert
     $this->assertDatabaseHas('shows', [
         'id' => $show->id,
-        'imdb_id' => null,
+        '_imdb_id' => null,
     ]);
 });
 

@@ -15,15 +15,15 @@ return new class extends Migration
     {
         Schema::create('shows', function (Blueprint $table): void {
             $table->id();
-            $table->string('imdb_id')->unique();
-            $table->text('title');
-            $table->string('title_type');
-            $table->unsignedSmallInteger('start_year')->nullable()->index();
-            $table->unsignedSmallInteger('end_year')->nullable();
-            $table->unsignedInteger('runtime')->nullable();
-            $table->json('genres')->nullable();
-            $table->unsignedInteger('num_votes')->nullable();
-            $table->decimal('average_rating', 3, 1)->nullable();
+            $table->string('_imdb_id')->unique();
+            $table->text('_imdb_primary_title');
+            $table->string('_imdb_title_type');
+            $table->unsignedSmallInteger('_imdb_start_year')->nullable()->index();
+            $table->unsignedSmallInteger('_imdb_end_year')->nullable();
+            $table->unsignedInteger('_imdb_runtime_minutes')->nullable();
+            $table->json('_imdb_genres')->nullable();
+            $table->unsignedInteger('_imdb_num_votes')->nullable();
+            $table->decimal('_imdb_average_rating', 3, 1)->nullable();
             $table->timestamps();
         });
     }

@@ -53,11 +53,11 @@ it('runs titles then ratings end-to-end', function (): void {
     // Assert
     expect(Movie::count())->toBe(10);
     expect(Show::count())->toBe(3);
-    expect(Movie::pluck('imdb_id')->all())->toContain('tt0133093', 'tt0137523', 'tt0816692');
+    expect(Movie::pluck('_imdb_id')->all())->toContain('tt0133093', 'tt0137523', 'tt0816692');
 
-    $matrix = Movie::where('imdb_id', 'tt0133093')->firstOrFail();
-    expect($matrix->num_votes)->toBe(2252453);
-    expect($matrix->average_rating)->toBe(8.7);
+    $matrix = Movie::where('_imdb_id', 'tt0133093')->firstOrFail();
+    expect($matrix->_imdb_num_votes)->toBe(2252453);
+    expect($matrix->_imdb_average_rating)->toBe(8.7);
 });
 
 it('continues to ratings when titles fails, exits FAILURE and reports the exception', function (): void {
@@ -95,6 +95,6 @@ it('syncs TMDB data onto IMDb movies after the IMDb imports', function (): void 
     $this->artisan('sync:catalog');
 
     // Assert
-    $matrix = Movie::where('imdb_id', 'tt0133093')->firstOrFail();
+    $matrix = Movie::where('_imdb_id', 'tt0133093')->firstOrFail();
     expect($matrix->_tmdb_id)->toBe(603);
 });

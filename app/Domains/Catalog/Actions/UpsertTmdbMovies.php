@@ -60,7 +60,7 @@ final class UpsertTmdbMovies
 
         $existingByImdbId = $imdbIds === []
             ? collect()
-            : Movie::query()->whereIn('imdb_id', $imdbIds)->get()->keyBy('imdb_id');
+            : Movie::query()->whereIn('_imdb_id', $imdbIds)->get()->keyBy('_imdb_id');
 
         $touchedIds = [];
         $tmdbOnlyRows = [];
