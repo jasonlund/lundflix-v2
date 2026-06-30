@@ -14,6 +14,14 @@ enum TitleType: string
     case TvSeries = 'tvSeries';
     case TvMiniSeries = 'tvMiniSeries';
 
+    /**
+     * @return list<string>
+     */
+    public static function values(): array
+    {
+        return array_map(fn (self $type): string => $type->value, self::cases());
+    }
+
     public function isShow(): bool
     {
         return match ($this) {
