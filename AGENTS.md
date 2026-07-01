@@ -158,6 +158,23 @@ them in the DDD structure by passing the domain path, e.g.
 target the domain path, generate then move the file and fix its namespace. Never
 break the DDD layout to satisfy a generator's default location.
 
+### Filament pages
+
+**Never hand-write a page's Blade view for a standard form/table page.** Every
+Filament page renders through its `content(Schema $schema)` method, not a bespoke
+template — override `content()` and drop the `$view` property entirely. The base
+`Page` already renders `{{ $this->content }}` via `filament-panels::pages.page`,
+so a custom `.blade.php` under `resources/views/filament/` is templated
+boilerplate that duplicates what the schema gives for free.
+
+- Embed the page's form in `content()` the way Filament's own auth pages do:
+  `Form::make([EmbeddedSchema::make('form')])->livewireSubmitHandler('save')`
+  with the submit button as an `Actions`/`Action` in the form `->footer([...])`.
+  (`EditProfile`/`Login` in `filament/filament` are the reference.)
+- A custom Blade view is justified **only** for genuinely non-schema markup a
+  `content()` schema can't express — and even then prefer `getHeader()`/
+  `getFooter()` view slots over replacing the whole page view.
+
 ### Comments
 
 - **Comment the *why*, let tests pin the *what*.** A comment earns its place by
