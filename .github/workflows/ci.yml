@@ -18,7 +18,7 @@ jobs:
     name: Backend tests (Pest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -28,7 +28,7 @@ jobs:
           tools: composer:v2
 
       - name: Install Composer dependencies
-        uses: ramsey/composer-install@v3
+        uses: ramsey/composer-install@v4
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -53,7 +53,7 @@ jobs:
     name: PHP code quality (Pint, audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -63,7 +63,7 @@ jobs:
           tools: composer:v2
 
       - name: Install Composer dependencies
-        uses: ramsey/composer-install@v3
+        uses: ramsey/composer-install@v4
 
       - name: Rector (refactor check)
         run: vendor/bin/rector --dry-run
@@ -78,7 +78,7 @@ jobs:
     name: Frontend code quality (ESLint, Prettier, types, audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -105,7 +105,7 @@ jobs:
     name: Frontend tests (Vitest, build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup Node
         uses: actions/setup-node@v6
