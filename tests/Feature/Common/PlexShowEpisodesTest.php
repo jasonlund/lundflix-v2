@@ -67,7 +67,8 @@ it('returns each hosting server with the show and its episodes', function (): vo
 });
 
 it('returns an empty collection when the show is not found', function (): void {
-    // Arrange — only the metadata provider is faked; reaching any server host is a stray-request failure.
+    // Only the metadata provider is faked; reaching any server host is a stray-request failure.
+    // Arrange
     Http::fake([
         '*metadata.provider.plex.tv*' => Http::response(fixtureBytes('Common/plex/matches_empty.json')),
     ]);
