@@ -1,0 +1,380 @@
+{
+  "MediaContainer": {
+    "size": 3,
+    "allowSync": true,
+    "art": "/library/metadata/35497/art/1782294811",
+    "identifier": "com.plexapp.plugins.library",
+    "key": "35497",
+    "librarySectionID": 2,
+    "librarySectionTitle": "TV Shows",
+    "librarySectionUUID": "0be8114b-46ad-4ca1-872d-bb587e638350",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1777730215,
+    "mixedParents": true,
+    "nocache": true,
+    "parentIndex": 1,
+    "parentTitle": "Rick and Morty",
+    "parentYear": 2013,
+    "theme": "/library/metadata/35497/theme/1782294811",
+    "title1": "TV Shows",
+    "title2": "Rick and Morty",
+    "viewGroup": "episode",
+    "viewMode": 65592,
+    "Metadata": [
+      {
+        "ratingKey": "35499",
+        "key": "/library/metadata/35499",
+        "parentRatingKey": "35498",
+        "grandparentRatingKey": "35497",
+        "guid": "plex://episode/673f4901db44b375d686edb8",
+        "parentGuid": "plex://season/69f60561711168541d1074b2",
+        "grandparentGuid": "plex://show/5d9c08382192ba001f30a9c7",
+        "grandparentSlug": "rick-and-morty",
+        "studio": "Williams Street",
+        "type": "episode",
+        "title": "There's Something About Morty",
+        "grandparentKey": "/library/metadata/35497",
+        "parentKey": "/library/metadata/35498",
+        "grandparentTitle": "Rick and Morty",
+        "parentTitle": "Season 9",
+        "contentRating": "TV-14",
+        "summary": "Rick's been lonely, broh. Morty's worried bout side pieces.",
+        "index": 1,
+        "parentIndex": 9,
+        "audienceRating": 8.7,
+        "year": 2026,
+        "thumb": "/library/metadata/35499/thumb/1781859745",
+        "art": "/library/metadata/35497/art/1779687394",
+        "parentThumb": "/library/metadata/35498/thumb/1779788926",
+        "grandparentThumb": "/library/metadata/35497/thumb/1779687394",
+        "grandparentArt": "/library/metadata/35497/art/1779687394",
+        "grandparentTheme": "/library/metadata/35497/theme/1779687394",
+        "duration": 1333088,
+        "originallyAvailableAt": "2026-05-24",
+        "addedAt": 1779687394,
+        "updatedAt": 1781859745,
+        "audienceRatingImage": "themoviedb://image.rating",
+        "Media": [
+          {
+            "id": 49801,
+            "duration": 1333088,
+            "bitrate": 2255,
+            "width": 1280,
+            "height": 720,
+            "aspectRatio": 1.78,
+            "audioChannels": 6,
+            "audioCodec": "eac3",
+            "videoCodec": "hevc",
+            "videoResolution": "720",
+            "container": "mkv",
+            "videoFrameRate": "24p",
+            "videoProfile": "main 10",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 93005,
+                "key": "/library/parts/93005/1779687365/file.mkv",
+                "duration": 1333088,
+                "file": "/data/media/TV Shows/Rick and Morty/Season 09/Rick and Morty - S09E01 - There's Something About Morty.mkv",
+                "size": 375700576,
+                "container": "mkv",
+                "videoProfile": "main 10"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "There's Something About Morty",
+            "type": "coverPoster",
+            "url": "/library/metadata/35497/thumb/1779687394"
+          },
+          {
+            "alt": "There's Something About Morty",
+            "type": "snapshot",
+            "url": "/library/metadata/35499/thumb/1781859745"
+          },
+          {
+            "alt": "There's Something About Morty",
+            "type": "background",
+            "url": "/library/metadata/35497/art/1779687394"
+          },
+          {
+            "alt": "There's Something About Morty",
+            "type": "clearLogo",
+            "url": "/library/metadata/35497/clearLogo/1779687394"
+          },
+          {
+            "alt": "There's Something About Morty",
+            "type": "backgroundSquare",
+            "url": "/library/metadata/35497/squareArt/1779687394"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "103240",
+          "topRight": "a22f27",
+          "bottomRight": "28667e",
+          "bottomLeft": "316a57"
+        },
+        "Director": [
+          {
+            "tag": "Douglas Einar Olsen"
+          }
+        ],
+        "Writer": [
+          {
+            "tag": "Albro Lundy"
+          }
+        ],
+        "Role": [
+          {
+            "tag": "Chris Parnell"
+          },
+          {
+            "tag": "Spencer Grammer"
+          },
+          {
+            "tag": "Sarah Chalke"
+          }
+        ]
+      },
+      {
+        "ratingKey": "35583",
+        "key": "/library/metadata/35583",
+        "parentRatingKey": "35498",
+        "grandparentRatingKey": "35497",
+        "guid": "plex://episode/69b80ee65cf3b4ce23af1959",
+        "parentGuid": "plex://season/69f60561711168541d1074b2",
+        "grandparentGuid": "plex://show/5d9c08382192ba001f30a9c7",
+        "grandparentSlug": "rick-and-morty",
+        "studio": "Williams Street",
+        "type": "episode",
+        "title": "Ricks Days, Seven Nights",
+        "grandparentKey": "/library/metadata/35497",
+        "parentKey": "/library/metadata/35498",
+        "grandparentTitle": "Rick and Morty",
+        "parentTitle": "Season 9",
+        "contentRating": "TV-14",
+        "summary": "Every year, Rick goes on a two-week vacation to another planet as his alternate persona Ted, a version of himself with no memory of Rick's life, to escape the stress and emptiness that haunt him. This time, however, Ted discovers the truth about his existence as Rick and is forced to confront the same unhappiness Rick has spent years trying to escape.",
+        "index": 2,
+        "parentIndex": 9,
+        "audienceRating": 8.2,
+        "year": 2026,
+        "thumb": "/library/metadata/35583/thumb/1782204680",
+        "art": "/library/metadata/35497/art/1780304755",
+        "parentThumb": "/library/metadata/35498/thumb/1779788926",
+        "grandparentThumb": "/library/metadata/35497/thumb/1780304755",
+        "grandparentArt": "/library/metadata/35497/art/1780304755",
+        "grandparentTheme": "/library/metadata/35497/theme/1780304755",
+        "duration": 1330688,
+        "originallyAvailableAt": "2026-05-31",
+        "addedAt": 1780304755,
+        "updatedAt": 1782204680,
+        "audienceRatingImage": "themoviedb://image.rating",
+        "Media": [
+          {
+            "id": 49972,
+            "duration": 1330688,
+            "bitrate": 2262,
+            "width": 1920,
+            "height": 1080,
+            "aspectRatio": 1.78,
+            "audioChannels": 6,
+            "audioCodec": "eac3",
+            "videoCodec": "hevc",
+            "videoResolution": "1080",
+            "container": "mkv",
+            "videoFrameRate": "24p",
+            "videoProfile": "main 10",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 93176,
+                "key": "/library/parts/93176/1780304724/file.mkv",
+                "duration": 1330688,
+                "file": "/data/media/TV Shows/Rick and Morty/Season 09/Rick and Morty - S09E02 - Ricks Days, Seven Nights.mkv",
+                "size": 376334283,
+                "container": "mkv",
+                "videoProfile": "main 10"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Ricks Days, Seven Nights",
+            "type": "coverPoster",
+            "url": "/library/metadata/35497/thumb/1780304755"
+          },
+          {
+            "alt": "Ricks Days, Seven Nights",
+            "type": "snapshot",
+            "url": "/library/metadata/35583/thumb/1782204680"
+          },
+          {
+            "alt": "Ricks Days, Seven Nights",
+            "type": "background",
+            "url": "/library/metadata/35497/art/1780304755"
+          },
+          {
+            "alt": "Ricks Days, Seven Nights",
+            "type": "clearLogo",
+            "url": "/library/metadata/35497/clearLogo/1780304755"
+          },
+          {
+            "alt": "Ricks Days, Seven Nights",
+            "type": "backgroundSquare",
+            "url": "/library/metadata/35497/squareArt/1780304755"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "551018",
+          "topRight": "a91f2f",
+          "bottomRight": "790c23",
+          "bottomLeft": "7c1223"
+        },
+        "Director": [
+          {
+            "tag": "Brian Kaufman"
+          }
+        ],
+        "Writer": [
+          {
+            "tag": "Jess Lacher"
+          }
+        ],
+        "Role": [
+          {
+            "tag": "Chris Parnell"
+          },
+          {
+            "tag": "Spencer Grammer"
+          },
+          {
+            "tag": "Sarah Chalke"
+          }
+        ]
+      },
+      {
+        "ratingKey": "35652",
+        "key": "/library/metadata/35652",
+        "parentRatingKey": "35498",
+        "grandparentRatingKey": "35497",
+        "guid": "plex://episode/69b80ee55cf3b4ce23af1953",
+        "parentGuid": "plex://season/69f60561711168541d1074b2",
+        "grandparentGuid": "plex://show/5d9c08382192ba001f30a9c7",
+        "grandparentSlug": "rick-and-morty",
+        "studio": "Williams Street",
+        "type": "episode",
+        "title": "Rick Fu Hustle",
+        "grandparentKey": "/library/metadata/35497",
+        "parentKey": "/library/metadata/35498",
+        "grandparentTitle": "Rick and Morty",
+        "parentTitle": "Season 9",
+        "contentRating": "TV-14",
+        "summary": "You haven't lived till you've chested up at Trader Joe's, broh.",
+        "index": 3,
+        "parentIndex": 9,
+        "audienceRating": 8.4,
+        "year": 2026,
+        "thumb": "/library/metadata/35652/thumb/1782294804",
+        "art": "/library/metadata/35497/art/1780890657",
+        "parentThumb": "/library/metadata/35498/thumb/1779788926",
+        "grandparentThumb": "/library/metadata/35497/thumb/1780890657",
+        "grandparentArt": "/library/metadata/35497/art/1780890657",
+        "grandparentTheme": "/library/metadata/35497/theme/1780890657",
+        "duration": 1355296,
+        "originallyAvailableAt": "2026-06-07",
+        "addedAt": 1780890657,
+        "updatedAt": 1782294804,
+        "audienceRatingImage": "themoviedb://image.rating",
+        "Media": [
+          {
+            "id": 50122,
+            "duration": 1355296,
+            "bitrate": 1836,
+            "width": 1280,
+            "height": 720,
+            "aspectRatio": 1.78,
+            "audioChannels": 6,
+            "audioCodec": "eac3",
+            "videoCodec": "hevc",
+            "videoResolution": "720",
+            "container": "mkv",
+            "videoFrameRate": "24p",
+            "videoProfile": "main 10",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 93326,
+                "key": "/library/parts/93326/1780890629/file.mkv",
+                "duration": 1355296,
+                "file": "/data/media/TV Shows/Rick and Morty/Season 09/Rick and Morty - S09E03 - Rick Fu Hustle.mkv",
+                "size": 311000333,
+                "container": "mkv",
+                "videoProfile": "main 10"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Rick Fu Hustle",
+            "type": "coverPoster",
+            "url": "/library/metadata/35497/thumb/1780890657"
+          },
+          {
+            "alt": "Rick Fu Hustle",
+            "type": "snapshot",
+            "url": "/library/metadata/35652/thumb/1782294804"
+          },
+          {
+            "alt": "Rick Fu Hustle",
+            "type": "background",
+            "url": "/library/metadata/35497/art/1780890657"
+          },
+          {
+            "alt": "Rick Fu Hustle",
+            "type": "clearLogo",
+            "url": "/library/metadata/35497/clearLogo/1780890657"
+          },
+          {
+            "alt": "Rick Fu Hustle",
+            "type": "backgroundSquare",
+            "url": "/library/metadata/35497/squareArt/1780890657"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "203413",
+          "topRight": "5f2624",
+          "bottomRight": "1a3b29",
+          "bottomLeft": "495928"
+        },
+        "Director": [
+          {
+            "tag": "Fill Marc Sagadraca"
+          },
+          {
+            "tag": "Daniel Cole"
+          }
+        ],
+        "Writer": [
+          {
+            "tag": "Rob Schrab"
+          }
+        ],
+        "Role": [
+          {
+            "tag": "Chris Parnell"
+          },
+          {
+            "tag": "Spencer Grammer"
+          },
+          {
+            "tag": "Sarah Chalke"
+          }
+        ]
+      }
+    ]
+  }
+}
