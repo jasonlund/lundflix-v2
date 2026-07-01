@@ -70,6 +70,41 @@ it('merges a tv payload onto an existing imdb show via nested external_ids.imdb_
         ->and($fresh->_imdb_num_votes)->toBe($originalVotes);
 });
 
+it('merges a tv payload onto an existing tvdb-only row via external_ids.tvdb_id when imdb matches nothing', function (): void {
+    // Arrange
+    $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    unset($payload['external_ids']['imdb_id']);
+    $existing = Show::factory()->withTvdb()->create(['_imdb_id' => null, '_tvdb_id' => 121361]);
+    $originalTvdbName = $existing->_tvdb_name;
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+    // Assert
+    $fresh = Show::query()->where('_tvdb_id', 121361)->firstOrFail();
+    expect(Show::query()->count())->toBe(1)
+        ->and($fresh->_tmdb_id)->toBe(1399)
+        ->and($fresh->_tvdb_id)->toBe(121361)
+        ->and($fresh->_tvdb_name)->toBe($originalTvdbName);
+});
+
+it('inserts a source-only row rather than false-matching an unrelated row when all three ids miss', function (): void {
+    // Arrange
+    $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $payload['id'] = 9876543;
+    unset($payload['external_ids']['imdb_id']);
+    $payload['external_ids']['tvdb_id'] = 8888888;
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+    // Assert
+    $show = Show::query()->where('_tmdb_id', 9876543)->firstOrFail();
+    expect(Show::query()->count())->toBe(1)
+        ->and($show->_tmdb_id)->toBe(9876543)
+        ->and($show->_imdb_id)->toBeNull();
+});
+
 it('inserts a tmdb-only show with null imdb_id when no existing imdb show matches', function (): void {
     // Arrange
     $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);

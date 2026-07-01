@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Show;
+use App\Domains\Catalog\Support\ExistingShowResolver;
 use App\Domains\Catalog\Support\RawSourceColumns;
+use App\Domains\Catalog\Support\SourceIds;
 use Illuminate\Support\Carbon;
 
-final class UpsertTvdbShows
+final readonly class UpsertTvdbShows
 {
     private const string SOURCE = 'tvdb';
 
@@ -35,6 +37,8 @@ final class UpsertTvdbShows
         '_tvdb_remoteIds',
     ];
 
+    public function __construct(private ExistingShowResolver $resolver = new ExistingShowResolver) {}
+
     /**
      * @param  array<int, array<string, mixed>>  $payloads  decoded TVDB /series/{id}/extended responses
      */
@@ -48,21 +52,13 @@ final class UpsertTvdbShows
 
         $payloads = $this->dedupeByImdbId($payloads);
 
-        $imdbIds = array_values(array_filter(array_map(
-            $this->imdbIdFrom(...),
-            $payloads,
-        )));
-
-        $existingByImdbId = $imdbIds === []
-            ? collect()
-            : Show::query()->whereIn('_imdb_id', $imdbIds)->get()->keyBy('_imdb_id');
+        $candidates = $this->resolver->loadCandidates(array_map($this->sourceIdsFor(...), $payloads));
 
         $touchedIds = [];
         $tvdbOnlyRows = [];
 
         foreach ($payloads as $payload) {
-            $imdbId = $this->imdbIdFrom($payload);
-            $existing = $imdbId === null ? null : $existingByImdbId->get($imdbId);
+            $existing = $this->resolver->match($this->sourceIdsFor($payload), $candidates);
 
             if ($existing instanceof Show) {
                 $existing->fill($this->tvdbColumnsFor($payload, $now));
@@ -83,6 +79,20 @@ final class UpsertTvdbShows
     }
 
     /**
+     * Extract the three cross-source ids out of a TVDB /series/extended payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function sourceIdsFor(array $payload): SourceIds
+    {
+        return new SourceIds(
+            $this->imdbIdFrom($payload),
+            $this->tmdbIdFrom($payload),
+            $this->tvdbIdFrom($payload),
+        );
+    }
+
+    /**
      * Pull the IMDb anchor out of the nested `remoteIds[]`: the entry whose
      * `sourceName` is "IMDB". Returns null when there is no such entry.
      *
@@ -100,11 +110,37 @@ final class UpsertTvdbShows
     }
 
     /**
+     * Pull the TMDB id out of the nested `remoteIds[]`: the entry whose
+     * `sourceName` is "TheMovieDB.com", cast to int. Null when absent.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function tmdbIdFrom(array $payload): ?int
+    {
+        foreach ($payload['remoteIds'] ?? [] as $remoteId) {
+            if (($remoteId['sourceName'] ?? null) === 'TheMovieDB.com') {
+                return isset($remoteId['id']) ? (int) $remoteId['id'] : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function tvdbIdFrom(array $payload): ?int
+    {
+        return isset($payload['id']) ? (int) $payload['id'] : null;
+    }
+
+    /**
      * Collapse payloads that share an IMDb id down to the last one (last-wins),
      * so a single `imdb_id` is written exactly once per batch and a later payload
      * never leaves an earlier same-id write half-applied. Payloads with no IMDb id
-     * are distinct tvdb-only shows and pass through untouched. (Cross-batch dedup
-     * of prior source-only rows by `_tvdb_id` is deferred to FLIX-180.)
+     * are distinct tvdb-only shows and pass through untouched; matching them to an
+     * existing row (including a prior source-only row, by any source id) is handled
+     * downstream by {@see ExistingShowResolver}.
      *
      * @param  array<int, array<string, mixed>>  $payloads
      * @return list<array<string, mixed>>

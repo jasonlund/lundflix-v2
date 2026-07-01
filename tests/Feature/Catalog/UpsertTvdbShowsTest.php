@@ -120,6 +120,23 @@ it('coalesces sequential tvdb-then-tmdb upserts onto one imdb-anchored row carry
         ->and($fresh->_tmdb_name)->toBe('Game of Thrones');
 });
 
+it('merges the extended series onto an existing tmdb-only row via the TheMovieDB.com remoteId when imdb matches nothing', function (): void {
+    // Arrange
+    $series = json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)['data'];
+    $existing = Show::factory()->withTmdb()->create(['_imdb_id' => null, '_tmdb_id' => 1396]);
+    $originalTmdbName = $existing->_tmdb_name;
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([$series]);
+
+    // Assert
+    $fresh = Show::query()->where('_tmdb_id', 1396)->firstOrFail();
+    expect(Show::query()->count())->toBe(1)
+        ->and($fresh->_tvdb_id)->toBe(81189)
+        ->and($fresh->_tmdb_id)->toBe(1396)
+        ->and($fresh->_tmdb_name)->toBe($originalTmdbName);
+});
+
 it('inserts a tvdb-only show with null imdb_id when no existing imdb show matches the remoteIds IMDB entry', function (): void {
     // Arrange
     $payloads = [tvdbSeries(['id' => 700, 'remoteIds' => [['id' => 'tt9999999', 'type' => 2, 'sourceName' => 'IMDB']]])];
