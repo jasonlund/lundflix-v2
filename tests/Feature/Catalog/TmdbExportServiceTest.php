@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Enums\TmdbExport;
 use App\Domains\Catalog\Exceptions\CorruptTmdbExportArchive;
 use App\Domains\Catalog\Services\TmdbExportService;
 use Illuminate\Http\Client\RequestException;
@@ -10,6 +11,41 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
 
 afterEach(fn () => Date::setTestNow());
+
+it('requests the daily tv-series-ids export when asked', function (): void {
+    // Arrange
+    Date::setTestNow('2026-06-21');
+    Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
+    $expectedFilename = 'tv_series_ids_'.now()->format('m_d_Y').'.json.gz';
+
+    // Act
+    $path = resolve(TmdbExportService::class)->download(TmdbExport::TvSeriesIds);
+
+    // Assert
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $expectedFilename));
+
+    @unlink($path);
+});
+
+it('falls back to the prior day for tv-series-ids when today returns a 404', function (): void {
+    // Arrange
+    Date::setTestNow('2026-06-21');
+    $todayFilename = 'tv_series_ids_'.now()->format('m_d_Y').'.json.gz';
+    $yesterdayFilename = 'tv_series_ids_'.now()->subDay()->format('m_d_Y').'.json.gz';
+    Http::fake([
+        '*'.$todayFilename => Http::response('', 404),
+        '*'.$yesterdayFilename => Http::response(gzencode('{"id":1}')),
+    ]);
+
+    // Act
+    $path = resolve(TmdbExportService::class)->download(TmdbExport::TvSeriesIds);
+
+    // Assert
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $yesterdayFilename));
+    expect($path)->not->toBe('');
+
+    @unlink($path);
+});
 
 it('requests the daily movie-ids export for today', function (): void {
     Date::setTestNow('2026-06-21');

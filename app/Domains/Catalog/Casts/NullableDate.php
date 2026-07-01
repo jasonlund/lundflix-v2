@@ -43,7 +43,7 @@ class NullableDate implements CastsAttributes
      */
     public function set(Model $model, string $key, mixed $value, array $attributes): ?string
     {
-        if ($value === null) {
+        if (in_array($value, [null, '', '0000-00-00'], true)) {
             return null;
         }
 

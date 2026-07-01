@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Domains\Catalog\Models\Movie;
+use App\Domains\Catalog\Models\Show;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
@@ -29,6 +30,7 @@ class AppServiceProvider extends ServiceProvider
 
         Relation::enforceMorphMap([
             'movie' => Movie::class,
+            'show' => Show::class,
         ]);
     }
 }

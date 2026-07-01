@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services;
 
+use App\Domains\Catalog\Enums\TmdbExport;
 use App\Domains\Catalog\Exceptions\CannotCreateTmdbTempFile;
 use App\Domains\Catalog\Exceptions\CannotOpenTmdbExportArchive;
 use App\Domains\Catalog\Exceptions\CorruptTmdbExportArchive;
@@ -17,7 +18,8 @@ final class TmdbExportService
     private const string BASE_URL = 'https://files.tmdb.org/p/exports';
 
     /**
-     * Download today's daily movie-ids export to a temp file, returning its path.
+     * Download today's daily export for the given kind to a temp file, returning
+     * its path; the kind defaults to the movie-ids export.
      *
      * TMDB publishes the export under a date-stamped URL and the current day's
      * file may not exist yet, so a 404 on today falls back to the prior day; any
@@ -25,15 +27,15 @@ final class TmdbExportService
      * is the caller's to consume and delete; it only survives a successful
      * download — a failed attempt unlinks its own temp file before throwing.
      */
-    public function download(): string
+    public function download(TmdbExport $kind = TmdbExport::MovieIds): string
     {
-        $today = $this->attempt(now()->format('m_d_Y'), allow404: true);
+        $today = $this->attempt($kind, now()->format('m_d_Y'), allow404: true);
 
         if ($today !== null) {
             return $today;
         }
 
-        return $this->attempt(now()->subDay()->format('m_d_Y'), allow404: false);
+        return $this->attempt($kind, now()->subDay()->format('m_d_Y'), allow404: false);
     }
 
     /**
@@ -43,7 +45,7 @@ final class TmdbExportService
      * as "not published yet": the temp file is removed and null returned so the
      * caller can fall back. Any other failure unlinks the temp file and rethrows.
      */
-    private function attempt(string $date, bool $allow404): ?string
+    private function attempt(TmdbExport $kind, string $date, bool $allow404): ?string
     {
         $path = tempnam(sys_get_temp_dir(), 'tmdb_');
 
@@ -55,7 +57,7 @@ final class TmdbExportService
             $response = Http::sink($path)
                 ->timeout(600)
                 ->retry(3, 1000, throw: false)
-                ->get(self::BASE_URL.'/movie_ids_'.$date.'.json.gz');
+                ->get(self::BASE_URL.'/'.$kind->filename($date));
 
             if ($allow404 && $response->status() === 404) {
                 @unlink($path);
