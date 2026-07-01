@@ -1,0 +1,44 @@
+[
+  {
+    "status": "accepted",
+    "sharedServers": [],
+    "sharedSources": [],
+    "id": 1002,
+    "uuid": "0000000000000002",
+    "title": "plexuser2",
+    "username": "plexuser2",
+    "restricted": false,
+    "email": "user2@example.com",
+    "friendlyName": null,
+    "thumb": "https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1",
+    "home": false
+  },
+  {
+    "status": "accepted",
+    "sharedServers": [],
+    "sharedSources": [],
+    "id": 1003,
+    "uuid": "0000000000000003",
+    "title": "plexuser3",
+    "username": "plexuser3",
+    "restricted": false,
+    "email": "user3@example.com",
+    "friendlyName": null,
+    "thumb": "https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1",
+    "home": false
+  },
+  {
+    "status": "accepted",
+    "sharedServers": [],
+    "sharedSources": [],
+    "id": 1004,
+    "uuid": "0000000000000004",
+    "title": "plexuser4",
+    "username": "plexuser4",
+    "restricted": false,
+    "email": "user4@example.com",
+    "friendlyName": "Plex User 4",
+    "thumb": "https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1",
+    "home": false
+  }
+]
