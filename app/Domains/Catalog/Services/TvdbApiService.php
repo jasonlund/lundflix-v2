@@ -6,15 +6,19 @@ namespace App\Domains\Catalog\Services;
 
 use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
+use App\Domains\Catalog\Services\Concerns\PooledIdFailed;
+use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 final class TvdbApiService
 {
+    use PoolsIdBatches;
+
     private const string BASE_URL = 'https://api4.thetvdb.com/v4';
 
     private const string JWT_CACHE_KEY = 'tvdb.jwt';
@@ -40,85 +44,46 @@ final class TvdbApiService
             ->get("/series/{$id}/extended"));
     }
 
-    /**
-     * Batch one request per id via {@see Http::pool}, fanned out in {@see chunkIds}
-     * chunks so at most `concurrency` are in flight; responses decode in input
-     * order. A 404 decodes to null (per-id miss). A 401 throws immediately — auth
-     * is fatal for the whole batch. Connection failures, post-retry response
-     * failures (e.g. persistent 5xx), and undecodable 200s don't short-circuit:
-     * collected per-id and surfaced together as one {@see TvdbRequestFailed::forIds}.
-     *
-     * @template TKey of int|string
-     *
-     * @param  array<int, TKey>  $ids
-     * @param  callable(PendingRequest, TKey): Response  $build
-     * @return array<TKey, array<string, mixed>|null>
-     */
-    private function pooled(array $ids, callable $build): array
+    private function poolConcurrency(): int
     {
-        $ids = array_values(array_unique($ids));
-
-        $responses = [];
-
-        foreach ($this->chunkIds($ids) as $chunk) {
-            $responses += Http::pool(fn (Pool $pool): array => array_map(
-                fn (int|string $id) => $build($this->configure($pool->as((string) $id)), $id),
-                $chunk,
-            ));
-        }
-
-        $results = [];
-        $failedIds = [];
-
-        foreach ($ids as $id) {
-            $response = $responses[(string) $id];
-
-            if (! $response instanceof Response) {
-                $failedIds[] = $id;
-
-                continue;
-            }
-
-            if ($response->status() === 401) {
-                Cache::forget(self::JWT_CACHE_KEY);
-
-                throw TvdbAuthenticationFailed::invalidToken();
-            }
-
-            if ($response->failed() && ! $response->notFound()) {
-                $failedIds[] = $id;
-
-                continue;
-            }
-
-            try {
-                $results[$id] = $this->decode($response);
-            } catch (TvdbRequestFailed) {
-                $failedIds[] = $id;
-            }
-        }
-
-        if ($failedIds !== []) {
-            throw TvdbRequestFailed::forIds($failedIds);
-        }
-
-        return $results;
+        return (int) config('services.tvdb.concurrency');
     }
 
     /**
-     * Split ids into ordered chunks of `concurrency` (min 1), so each
-     * {@see pooled} fan-out dispatches at most one chunk concurrently.
+     * Per-id pooled decision for TheTVDB: a 401 forgets the cached JWT and throws
+     * {@see TvdbAuthenticationFailed} immediately — auth is fatal for the whole
+     * batch. A persistent non-404 failure is collected per-id (signalled via
+     * {@see PooledIdFailed}). An undecodable 200 makes {@see decode} throw
+     * {@see TvdbRequestFailed}, which is caught and re-signalled as a per-id
+     * failure so it aggregates rather than sinking the batch.
      *
-     * @template TKey of int|string
-     *
-     * @param  array<int, TKey>  $ids
-     * @return array<int, array<int, TKey>>
+     * @return array<string, mixed>|null
      */
-    private function chunkIds(array $ids): array
+    private function resolvePooled(Response $response): ?array
     {
-        $size = (int) config('services.tvdb.concurrency');
+        if ($response->status() === 401) {
+            Cache::forget(self::JWT_CACHE_KEY);
 
-        return array_chunk($ids, max(1, $size));
+            throw TvdbAuthenticationFailed::invalidToken();
+        }
+
+        if ($response->failed() && ! $response->notFound()) {
+            throw new PooledIdFailed;
+        }
+
+        try {
+            return $this->decode($response);
+        } catch (TvdbRequestFailed) {
+            throw new PooledIdFailed;
+        }
+    }
+
+    /**
+     * @param  array<int, int|string>  $failedIds
+     */
+    private function pooledFailure(array $failedIds): Throwable
+    {
+        return TvdbRequestFailed::forIds($failedIds);
     }
 
     /**
