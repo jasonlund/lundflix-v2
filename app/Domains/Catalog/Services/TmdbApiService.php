@@ -6,14 +6,18 @@ namespace App\Domains\Catalog\Services;
 
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
+use App\Domains\Catalog\Services\Concerns\PooledIdFailed;
+use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 final class TmdbApiService
 {
+    use PoolsIdBatches;
+
     private const string BASE_URL = 'https://api.themoviedb.org/3';
 
     private const string MOVIE_APPEND = 'release_dates,images';
@@ -114,85 +118,36 @@ final class TmdbApiService
             ?? throw TmdbRequestFailed::for((string) $response->effectiveUri());
     }
 
-    /**
-     * Batch-fetch one request per id, fanning out one {@see Http::pool} per
-     * chunk from {@see chunkIds} so at most `concurrency` requests are in flight
-     * at once; responses accumulate across chunks (each named after its id via
-     * {@see configure}'s shared auth/retry), then decode in input order. A
-     * single id's 404 decodes to null without sinking its siblings.
-     *
-     * Request failures don't short-circuit the batch: both a connection-level
-     * failure (a pool entry that comes back as a {@see Throwable} instead of a
-     * {@see Response}) and a response that stays failed after retries (e.g. a
-     * persistent 5xx) are collected per-id, the rest are still decoded, and once
-     * the loop completes any failed ids are surfaced together as a single
-     * aggregate {@see TmdbRequestFailed::forIds}. A 404 still decodes to null (a
-     * per-id miss, not a failure); a 401 still throws immediately, since auth is
-     * fatal for the whole batch rather than a per-id condition.
-     *
-     * @template TKey of int|string
-     *
-     * @param  array<int, TKey>  $ids
-     * @param  callable(PendingRequest, TKey): Response  $build
-     * @return array<TKey, array<string, mixed>|null>
-     */
-    private function pooled(array $ids, callable $build): array
+    private function poolConcurrency(): int
     {
-        $ids = array_values(array_unique($ids));
-
-        $responses = [];
-
-        foreach ($this->chunkIds($ids) as $chunk) {
-            $responses += Http::pool(fn (Pool $pool): array => array_map(
-                fn (int|string $id) => $build($this->configure($pool->as((string) $id)), $id),
-                $chunk,
-            ));
-        }
-
-        $results = [];
-        $failedIds = [];
-
-        foreach ($ids as $id) {
-            $response = $responses[(string) $id];
-
-            if (! $response instanceof Response) {
-                $failedIds[] = $id;
-
-                continue;
-            }
-
-            if ($response->failed() && ! $response->notFound() && $response->status() !== 401) {
-                $failedIds[] = $id;
-
-                continue;
-            }
-
-            $results[$id] = $this->decode($response);
-        }
-
-        if ($failedIds !== []) {
-            throw TmdbRequestFailed::forIds($failedIds);
-        }
-
-        return $results;
+        return (int) config('services.tmdb.concurrency');
     }
 
     /**
-     * Split the input ids into ordered chunks sized by the configured
-     * concurrency, so each {@see pooled} fan-out dispatches at most one
-     * chunk's worth of concurrent requests. Order is preserved and the final
-     * chunk holds the remainder.
+     * Per-id pooled decision for TMDB: a persistent non-404, non-401 failure is
+     * collected per-id (signalled via {@see PooledIdFailed}); a 401 flows to
+     * {@see decode}, which throws {@see TmdbAuthenticationFailed} immediately
+     * (auth is fatal for the whole batch); an undecodable 200 flows to
+     * {@see decode}, which throws {@see TmdbRequestFailed} immediately — a
+     * decode error is not aggregated.
      *
-     * @template TKey of int|string
-     *
-     * @param  array<int, TKey>  $ids
-     * @return array<int, array<int, TKey>>
+     * @return array<string, mixed>|null
      */
-    private function chunkIds(array $ids): array
+    private function resolvePooled(Response $response): ?array
     {
-        $size = (int) config('services.tmdb.concurrency');
+        if ($response->failed() && ! $response->notFound() && $response->status() !== 401) {
+            throw new PooledIdFailed;
+        }
 
-        return array_chunk($ids, max(1, $size));
+        return $this->decode($response);
+    }
+
+    /**
+     * @param  array<int, int|string>  $failedIds
+     */
+    private function pooledFailure(array $failedIds): Throwable
+    {
+        return TmdbRequestFailed::forIds($failedIds);
     }
 
     /**
