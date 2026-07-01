@@ -7,11 +7,17 @@ use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Symfony\Component\Console\Command\Command;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function (): void {
+    Cache::flush();
+    config(['services.tvdb.key' => 'test-key']);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -29,7 +35,10 @@ uses(RefreshDatabase::class);
 
 /**
  * Fake every host sync:catalog touches with the happy-path fixtures: both IMDb
- * datasets, the TMDB export, and the TMDB API (The Matrix for id 603, 404 else).
+ * datasets, the TMDB movie + tv exports, the shared TMDB API (The Matrix for
+ * id 603, Game of Thrones for id 1399, 404 else), and TheTVDB's /updates path
+ * (login JWT, the chained updates feed, Breaking Bad's extended payload for the
+ * one discovered recordId 434847).
  */
 function fakeCatalogSync(): void
 {
@@ -37,8 +46,24 @@ function fakeCatalogSync(): void
         '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),
         '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
-        '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/movie/603')
-            ? Http::response(fixtureBytes('Catalog/tmdb/movie.json'))
+        '*tv_series_ids*' => Http::response(fixtureBytes('Catalog/tmdb/tv_series_ids.json.gz')),
+        '*api.themoviedb.org*' => function (Request $request) {
+            if (str_contains($request->url(), '/movie/603')) {
+                return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));
+            }
+
+            if (str_contains($request->url(), '/tv/1399')) {
+                return Http::response(fixtureBytes('Catalog/tmdb/tv.json'));
+            }
+
+            return Http::response('', 404);
+        },
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => str_contains($request->url(), 'page=1')
+            ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
+            : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/434847/extended')
+            ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
             : Http::response('', 404),
     ]);
 }
@@ -52,7 +77,7 @@ it('runs titles then ratings end-to-end', function (): void {
 
     // Assert
     expect(Movie::count())->toBe(10);
-    expect(Show::count())->toBe(3);
+    expect(Show::count())->toBe(5);
     expect(Movie::pluck('_imdb_id')->all())->toContain('tt0133093', 'tt0137523', 'tt0816692');
 
     $matrix = Movie::where('_imdb_id', 'tt0133093')->firstOrFail();
@@ -97,4 +122,64 @@ it('syncs TMDB data onto IMDb movies after the IMDb imports', function (): void 
     // Assert
     $matrix = Movie::where('_imdb_id', 'tt0133093')->firstOrFail();
     expect($matrix->_tmdb_id)->toBe(603);
+});
+
+it('syncs TMDB show data after the imports', function (): void {
+    // Arrange
+    fakeCatalogSync();
+
+    // Act
+    $this->artisan('sync:catalog');
+
+    // Assert
+    $show = Show::where('_tmdb_id', 1399)->firstOrFail();
+    expect($show->_tmdb_name)->toBe('Game of Thrones');
+});
+
+it('syncs TVDB show data after the imports', function (): void {
+    // Arrange
+    fakeCatalogSync();
+
+    // Act
+    $this->artisan('sync:catalog');
+
+    // Assert
+    $show = Show::where('_tvdb_id', 81189)->firstOrFail();
+    expect($show->_tvdb_name)->toBe('Breaking Bad');
+});
+
+it('continues past a failing show command, exits FAILURE and reports', function (): void {
+    // Arrange
+    Exceptions::fake();
+    Http::fake([
+        '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),
+        '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
+        '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
+        '*tv_series_ids*' => Http::response('', 500),
+        '*api.themoviedb.org*' => function (Request $request) {
+            if (str_contains($request->url(), '/movie/603')) {
+                return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));
+            }
+
+            if (str_contains($request->url(), '/tv/1399')) {
+                return Http::response(fixtureBytes('Catalog/tmdb/tv.json'));
+            }
+
+            return Http::response('', 404);
+        },
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => str_contains($request->url(), 'page=1')
+            ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
+            : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/434847/extended')
+            ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
+            : Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('sync:catalog')->assertExitCode(Command::FAILURE);
+
+    // Assert
+    Exceptions::assertReported(fn (RequestException $e): bool => true);
+    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
 });
