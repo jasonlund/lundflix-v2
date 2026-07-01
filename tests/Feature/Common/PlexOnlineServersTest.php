@@ -61,8 +61,9 @@ it('prefers IPv4 over IPv6 over relay when choosing the best connection', functi
 });
 
 it('skips local connections and prefers an https uri over an earlier http one in the same class', function (): void {
-    // Arrange — the lundflix server lists an http:// direct connection BEFORE a
+    // the lundflix server lists an http:// direct connection BEFORE a
     // non-local https:// direct one; secure transport must win within the class.
+    // Arrange
     Http::fake([
         '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
     ]);
@@ -75,9 +76,10 @@ it('skips local connections and prefers an https uri over an earlier http one in
 });
 
 it('treats an unflagged plex.direct host with a stray hex letter as a direct (IPv4-class) connection', function (): void {
-    // Arrange — the only non-local direct connections carry no explicit IPv6
+    // the only non-local direct connections carry no explicit IPv6
     // flag; "deadbox" has hex letters but is not a dash-encoded IPv6 label, so
     // it must be classed direct (IPv4) and, being first, win the direct slot.
+    // Arrange
     Http::fake([
         '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources_unflagged_direct.json')),
     ]);

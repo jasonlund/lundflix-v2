@@ -41,7 +41,8 @@ it('returns the raw detail array for a rating key', function (): void {
 });
 
 it('returns null detail for an empty uri', function (): void {
-    // Arrange — no fakes; any HTTP would stray-error.
+    // no fakes; any HTTP would stray-error.
+    // Arrange
 
     // Act
     $result = resolve(PlexApiService::class)->fetchLibraryMetadata('', 'tok', '34277');
@@ -77,7 +78,8 @@ it('returns the raw episode array for a show rating key', function (): void {
 });
 
 it('returns an empty episode array for an empty uri', function (): void {
-    // Arrange — no fakes; any HTTP would stray-error.
+    // no fakes; any HTTP would stray-error.
+    // Arrange
 
     // Act
     $result = resolve(PlexApiService::class)->fetchEpisodesForShow('', 'tok', '34277');
