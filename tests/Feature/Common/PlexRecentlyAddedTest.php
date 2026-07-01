@@ -30,7 +30,8 @@ use Illuminate\Support\Facades\Http;
 */
 
 it('merges recently added items from every movie and show section', function (): void {
-    // Arrange — section-specific feeds listed before the bare sections pattern (first match wins).
+    // Section-specific feeds listed before the bare sections pattern (first match wins).
+    // Arrange
     $uri = 'https://srv.plex.direct:32400';
     Http::fake([
         '*srv.plex.direct*/library/sections/1/recentlyAdded*' => Http::response(fixtureBytes('Common/plex/recently_added_movie.json')),
@@ -60,7 +61,8 @@ it('requests type=4 for show sections and no type for movie sections', function 
     // Act
     resolve(PlexApiService::class)->getRecentlyAdded($uri, 'tok', 50);
 
-    // Assert — inspect the exact parsed query params, not URL substrings.
+    // Inspect the exact parsed query params, not URL substrings.
+    // Assert
     Http::assertSent(function ($r): bool {
         parse_str((string) parse_url((string) $r->url(), PHP_URL_QUERY), $query);
 
@@ -76,7 +78,8 @@ it('requests type=4 for show sections and no type for movie sections', function 
 });
 
 it('skips sections that are not movie or show', function (): void {
-    // Arrange — section 3 (music) is deliberately not faked; reaching it would stray-error.
+    // Section 3 (music) is deliberately not faked; reaching it would stray-error.
+    // Arrange
     $uri = 'https://srv.plex.direct:32400';
     Http::fake([
         '*srv.plex.direct*/library/sections/1/recentlyAdded*' => Http::response(fixtureBytes('Common/plex/recently_added_movie.json')),
@@ -92,7 +95,8 @@ it('skips sections that are not movie or show', function (): void {
 });
 
 it('returns an empty array for an empty uri', function (): void {
-    // Arrange — no fakes; any HTTP would stray-error.
+    // Arrange
+    // no fakes; any HTTP would stray-error.
 
     // Act
     $result = resolve(PlexApiService::class)->getRecentlyAdded('', 'tok');
