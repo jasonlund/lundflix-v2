@@ -41,7 +41,7 @@
     },
     "dependencies": {
         "@headlessui/react": "^2.2.10",
-        "@inertiajs/react": "^3.4.0",
+        "@inertiajs/react": "^3.5.0",
         "react": "^19.2.7",
         "react-dom": "^19.2.7"
     }
