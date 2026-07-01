@@ -64,7 +64,8 @@ it('returns null when the external id has no match', function (): void {
 });
 
 it('returns an empty collection when the guid does not resolve', function (): void {
-    // Arrange — only the metadata provider is faked; reaching any server host is a stray-request failure.
+    // Only the metadata provider is faked; reaching any server host is a stray-request failure.
+    // Arrange
     Http::fake([
         'https://metadata.provider.plex.tv/library/metadata/matches*' => Http::response(fixtureBytes('Common/plex/matches_empty.json')),
     ]);
