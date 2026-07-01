@@ -1,0 +1,26 @@
+{
+  "id": 538114995,
+  "code": "m6mijjn177ut0qaz02b9iedof",
+  "product": "lundflix",
+  "trusted": false,
+  "qr": "https://plex.tv/api/v2/pins/qr/m6mijjn177ut0qaz02b9iedof",
+  "clientIdentifier": "lundflix-fixture-capture",
+  "location": {
+    "code": "US",
+    "european_union_member": false,
+    "continent_code": "NA",
+    "country": "United States",
+    "city": "Gillett",
+    "time_zone": "Etc/UTC",
+    "postal_code": "54124",
+    "in_privacy_restricted_country": false,
+    "in_privacy_restricted_region": false,
+    "subdivisions": "Wisconsin",
+    "coordinates": "44.889991760253906, -88.30731964111328"
+  },
+  "expiresIn": 10,
+  "createdAt": "2026-06-24T16:13:31Z",
+  "expiresAt": "2026-06-24T16:14:12Z",
+  "authToken": "REDACTED-authToken",
+  "newRegistration": false
+}

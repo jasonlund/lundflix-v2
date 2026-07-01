@@ -47,6 +47,11 @@ return [
         'concurrency' => env('TVDB_CONCURRENCY', 10),
     ],
 
+    'plex' => [
+        'client_identifier' => env('PLEX_CLIENT_IDENTIFIER', 'lundflix'),
+        'server_identifier' => env('PLEX_SERVER_IDENTIFIER'),
+    ],
+
     'downloads' => [
         'uid' => env('DOWNLOADS_UID'),
         'pass' => env('DOWNLOADS_PASS'),

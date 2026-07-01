@@ -1,0 +1,375 @@
+{
+  "MediaContainer": {
+    "size": 3,
+    "totalSize": 97,
+    "offset": 0,
+    "allowSync": true,
+    "art": "/:/resources/movie-fanart.jpg",
+    "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 1,
+    "librarySectionTitle": "Movies",
+    "librarySectionUUID": "5f4d87a0-f71f-4428-8e0a-ddc49c759b47",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1777730215,
+    "thumb": "/:/resources/movie.png",
+    "title1": "Movies",
+    "title2": "Recently Added",
+    "viewGroup": "movie",
+    "viewMode": 65592,
+    "Metadata": [
+      {
+        "ratingKey": "35830",
+        "key": "/library/metadata/35830",
+        "guid": "plex://movie/5d77683f54c0f0001f304905",
+        "slug": "the-best-little-whorehouse-in-texas",
+        "studio": "Miller-Milkis-Boyett Productions",
+        "type": "movie",
+        "title": "The Best Little Whorehouse in Texas",
+        "titleSort": "Best Little Whorehouse in Texas",
+        "contentRating": "R",
+        "summary": "A town's Sheriff and regular patron of a historical whorehouse fights to keep it running when a television reporter targets it as the Devil's playhouse.",
+        "rating": 5.2,
+        "audienceRating": 6.8,
+        "year": 1982,
+        "tagline": "With Burt and Dolly, this much fun just couldn't be legal!",
+        "thumb": "/library/metadata/35830/thumb/1782225873",
+        "art": "/library/metadata/35830/art/1782225873",
+        "duration": 6857259,
+        "originallyAvailableAt": "1982-07-23",
+        "addedAt": 1782225867,
+        "updatedAt": 1782225873,
+        "audienceRatingImage": "rottentomatoes://image.rating.upright",
+        "chapterSource": "media",
+        "primaryExtraKey": "/library/metadata/35831",
+        "ratingImage": "rottentomatoes://image.rating.rotten",
+        "Media": [
+          {
+            "id": 50531,
+            "duration": 6857259,
+            "bitrate": 12527,
+            "width": 1920,
+            "height": 816,
+            "aspectRatio": 2.35,
+            "audioChannels": 2,
+            "audioCodec": "dca",
+            "videoCodec": "h264",
+            "videoResolution": "1080",
+            "container": "mkv",
+            "videoFrameRate": "24p",
+            "audioProfile": "dts",
+            "videoProfile": "high",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 93735,
+                "key": "/library/parts/93735/1782225828/file.mkv",
+                "duration": 6857259,
+                "file": "/data/media/Movies/The Best Little Whorehouse in Texas (1982)/The Best Little Whorehouse in Texas (1982).mkv",
+                "size": 10737304428,
+                "audioProfile": "dts",
+                "container": "mkv",
+                "videoProfile": "high"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "The Best Little Whorehouse in Texas",
+            "type": "coverPoster",
+            "url": "/library/metadata/35830/thumb/1782225873"
+          },
+          {
+            "alt": "The Best Little Whorehouse in Texas",
+            "type": "background",
+            "url": "/library/metadata/35830/art/1782225873"
+          },
+          {
+            "alt": "The Best Little Whorehouse in Texas",
+            "type": "clearLogo",
+            "url": "/library/metadata/35830/clearLogo/1782225873"
+          },
+          {
+            "alt": "The Best Little Whorehouse in Texas",
+            "type": "backgroundSquare",
+            "url": "/library/metadata/35830/squareArt/1782225873"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "56100c",
+          "topRight": "0b224b",
+          "bottomRight": "2d5487",
+          "bottomLeft": "993b25"
+        },
+        "Genre": [
+          {
+            "tag": "Musical"
+          },
+          {
+            "tag": "Comedy"
+          }
+        ],
+        "Country": [
+          {
+            "tag": "United States of America"
+          }
+        ],
+        "Director": [
+          {
+            "tag": "Colin Higgins"
+          }
+        ],
+        "Writer": [
+          {
+            "tag": "Larry L. King"
+          },
+          {
+            "tag": "Peter Masterson"
+          }
+        ],
+        "Role": [
+          {
+            "tag": "Burt Reynolds"
+          },
+          {
+            "tag": "Dolly Parton"
+          },
+          {
+            "tag": "Dom DeLuise"
+          }
+        ]
+      },
+      {
+        "ratingKey": "35827",
+        "key": "/library/metadata/35827",
+        "guid": "plex://movie/5d776832103a2d001f567096",
+        "slug": "the-american-president",
+        "studio": "Castle Rock Entertainment",
+        "type": "movie",
+        "title": "The American President",
+        "titleSort": "American President",
+        "contentRating": "PG-13",
+        "contentRatingAge": 13,
+        "summary": "Widowed U.S. president Andrew Shepherd, one of the world's most powerful men, can have anything he wants -- and what he covets most is Sydney Ellen Wade, a Washington lobbyist. But Shepherd's attempts at courting her spark wild rumors and decimate his approval ratings.",
+        "rating": 9.0,
+        "audienceRating": 7.7,
+        "year": 1995,
+        "tagline": "Why can't the most powerful man in the world have the one thing he wants most?",
+        "thumb": "/library/metadata/35827/thumb/1782195259",
+        "art": "/library/metadata/35827/art/1782195259",
+        "duration": 6798816,
+        "originallyAvailableAt": "1995-11-17",
+        "addedAt": 1782195253,
+        "updatedAt": 1782195259,
+        "audienceRatingImage": "rottentomatoes://image.rating.upright",
+        "primaryExtraKey": "/library/metadata/35828",
+        "ratingImage": "rottentomatoes://image.rating.ripe",
+        "Media": [
+          {
+            "id": 50526,
+            "duration": 6798816,
+            "bitrate": 8090,
+            "width": 1920,
+            "height": 800,
+            "aspectRatio": 2.35,
+            "audioChannels": 6,
+            "audioCodec": "eac3",
+            "videoCodec": "hevc",
+            "videoResolution": "1080",
+            "container": "mkv",
+            "videoFrameRate": "24p",
+            "videoProfile": "main 10",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 93730,
+                "key": "/library/parts/93730/1782195221/file.mkv",
+                "duration": 6798816,
+                "file": "/data/media/Movies/The American President (1995)/The American President (1995).mkv",
+                "size": 6875051985,
+                "container": "mkv",
+                "videoProfile": "main 10"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "The American President",
+            "type": "coverPoster",
+            "url": "/library/metadata/35827/thumb/1782195259"
+          },
+          {
+            "alt": "The American President",
+            "type": "background",
+            "url": "/library/metadata/35827/art/1782195259"
+          },
+          {
+            "alt": "The American President",
+            "type": "clearLogo",
+            "url": "/library/metadata/35827/clearLogo/1782195259"
+          },
+          {
+            "alt": "The American President",
+            "type": "backgroundSquare",
+            "url": "/library/metadata/35827/squareArt/1782195259"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "262658",
+          "topRight": "652817",
+          "bottomRight": "91423b",
+          "bottomLeft": "8f2f2a"
+        },
+        "Genre": [
+          {
+            "tag": "Comedy"
+          },
+          {
+            "tag": "Drama"
+          }
+        ],
+        "Country": [
+          {
+            "tag": "United States of America"
+          }
+        ],
+        "Director": [
+          {
+            "tag": "Rob Reiner"
+          }
+        ],
+        "Writer": [
+          {
+            "tag": "Aaron Sorkin"
+          }
+        ],
+        "Role": [
+          {
+            "tag": "Michael Douglas"
+          },
+          {
+            "tag": "Annette Bening"
+          },
+          {
+            "tag": "Martin Sheen"
+          }
+        ]
+      },
+      {
+        "ratingKey": "35821",
+        "key": "/library/metadata/35821",
+        "guid": "plex://movie/6a11276bf73cbc6319d11a47",
+        "slug": "maternal-instinct-2026-1",
+        "studio": "Story Syndicate",
+        "type": "movie",
+        "title": "Maternal Instinct",
+        "contentRating": "R",
+        "contentRatingAge": 14,
+        "summary": "When a Texas state trooper pulled over a woman driving erratically on the highway in 2020, she claimed she had just given birth, but her story didn't add up.",
+        "audienceRating": 8.1,
+        "year": 2026,
+        "thumb": "/library/metadata/35821/thumb/1782294809",
+        "art": "/library/metadata/35821/art/1782294809",
+        "duration": 5801546,
+        "originallyAvailableAt": "2026-06-12",
+        "addedAt": 1782168935,
+        "updatedAt": 1782294809,
+        "audienceRatingImage": "rottentomatoes://image.rating.upright",
+        "primaryExtraKey": "/library/metadata/35822",
+        "Media": [
+          {
+            "id": 50512,
+            "duration": 5801546,
+            "bitrate": 2392,
+            "width": 1920,
+            "height": 1080,
+            "aspectRatio": 1.78,
+            "audioChannels": 6,
+            "audioCodec": "aac",
+            "videoCodec": "hevc",
+            "videoResolution": "1080",
+            "container": "mp4",
+            "videoFrameRate": "24p",
+            "optimizedForStreaming": 1,
+            "audioProfile": "lc",
+            "has64bitOffsets": false,
+            "videoProfile": "main 10",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 93716,
+                "key": "/library/parts/93716/1782168892/file.mp4",
+                "duration": 5801546,
+                "file": "/data/media/Movies/Maternal Instinct (2026)/Maternal Instinct (2026).mp4",
+                "size": 1734615002,
+                "audioProfile": "lc",
+                "container": "mp4",
+                "has64bitOffsets": false,
+                "optimizedForStreaming": true,
+                "videoProfile": "main 10"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Maternal Instinct",
+            "type": "coverPoster",
+            "url": "/library/metadata/35821/thumb/1782294809"
+          },
+          {
+            "alt": "Maternal Instinct",
+            "type": "background",
+            "url": "/library/metadata/35821/art/1782294809"
+          },
+          {
+            "alt": "Maternal Instinct",
+            "type": "clearLogo",
+            "url": "/library/metadata/35821/clearLogo/1782294809"
+          },
+          {
+            "alt": "Maternal Instinct",
+            "type": "backgroundSquare",
+            "url": "/library/metadata/35821/squareArt/1782294809"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "4d182a",
+          "topRight": "6c2943",
+          "bottomRight": "5d2449",
+          "bottomLeft": "913c5b"
+        },
+        "Genre": [
+          {
+            "tag": "Documentary"
+          },
+          {
+            "tag": "Crime"
+          }
+        ],
+        "Country": [
+          {
+            "tag": "United States of America"
+          }
+        ],
+        "Director": [
+          {
+            "tag": "Jessica Dimmock"
+          }
+        ],
+        "Role": [
+          {
+            "tag": "Jessica Brookes"
+          },
+          {
+            "tag": "Wade Griffin"
+          },
+          {
+            "tag": "Taylor Parker"
+          }
+        ]
+      }
+    ]
+  }
+}

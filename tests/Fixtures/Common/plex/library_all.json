@@ -1,0 +1,105 @@
+{
+  "MediaContainer": {
+    "size": 1,
+    "allowSync": false,
+    "identifier": "com.plexapp.plugins.library",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1777730215,
+    "Metadata": [
+      {
+        "ratingKey": "34277",
+        "key": "/library/metadata/34277",
+        "guid": "plex://movie/5d77685333f255001e852e11",
+        "slug": "inception",
+        "studio": "Legendary Pictures",
+        "type": "movie",
+        "title": "Inception",
+        "librarySectionTitle": "Movies",
+        "librarySectionID": 1,
+        "librarySectionKey": "/library/sections/1",
+        "contentRating": "PG-13",
+        "contentRatingAge": 14,
+        "summary": "A burglar specializing in extracting company secrets via dream-sharing methods faces a reverse challenge: to implant an idea within a CEO's mind. However, his sorrowful history threatens to derail the endeavor and put his group at risk.",
+        "rating": 8.7,
+        "audienceRating": 9.1,
+        "year": 2010,
+        "tagline": "Your mind is the scene of the crime.",
+        "thumb": "/library/metadata/34277/thumb/1780910162",
+        "art": "/library/metadata/34277/art/1780910162",
+        "duration": 8880000,
+        "originallyAvailableAt": "2010-07-14",
+        "addedAt": 1775696844,
+        "updatedAt": 1780910162,
+        "audienceRatingImage": "rottentomatoes://image.rating.upright",
+        "chapterSource": "media",
+        "primaryExtraKey": "/library/metadata/34278",
+        "ratingImage": "rottentomatoes://image.rating.ripe",
+        "Image": [
+          {
+            "alt": "Inception",
+            "type": "coverPoster",
+            "url": "/library/metadata/34277/thumb/1780910162"
+          },
+          {
+            "alt": "Inception",
+            "type": "background",
+            "url": "/library/metadata/34277/art/1780910162"
+          },
+          {
+            "alt": "Inception",
+            "type": "clearLogo",
+            "url": "/library/metadata/34277/clearLogo/1780910162"
+          },
+          {
+            "alt": "Inception",
+            "type": "backgroundSquare",
+            "url": "/library/metadata/34277/squareArt/1780910162"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "113339",
+          "topRight": "1b4850",
+          "bottomRight": "0c2631",
+          "bottomLeft": "133344"
+        },
+        "Genre": [
+          {
+            "tag": "Adventure"
+          },
+          {
+            "tag": "Action"
+          }
+        ],
+        "Country": [
+          {
+            "tag": "United Kingdom"
+          },
+          {
+            "tag": "United States of America"
+          }
+        ],
+        "Director": [
+          {
+            "tag": "Christopher Nolan"
+          }
+        ],
+        "Writer": [
+          {
+            "tag": "Christopher Nolan"
+          }
+        ],
+        "Role": [
+          {
+            "tag": "Leonardo DiCaprio"
+          },
+          {
+            "tag": "Joseph Gordon-Levitt"
+          },
+          {
+            "tag": "Ken Watanabe"
+          }
+        ]
+      }
+    ]
+  }
+}
