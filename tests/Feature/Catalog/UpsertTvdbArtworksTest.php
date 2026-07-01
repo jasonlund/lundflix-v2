@@ -103,6 +103,46 @@ it('deactivates stale tvdb art and reactivates returning art on re-run', functio
     expect($show->media()->where('_tvdb_image', 'https://artworks.thetvdb.com/banners/posters/81189-10.jpg')->count())->toBe(1);
 });
 
+it('active count ignores tmdb-sourced active media on the mediable', function (): void {
+    // Arrange
+    $show = Show::factory()->create();
+    Media::factory()->create([
+        'mediable_id' => $show->id,
+        'mediable_type' => $show->getMorphClass(),
+        'is_active' => true,
+    ]);
+    $artworks = json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)['data']['artworks'];
+
+    // Act
+    $count = (new UpsertTvdbArtworks)->handle($show, $artworks);
+
+    // Assert
+    expect($count)->toBe(109);
+});
+
+it('skips a payload row missing the type key without aborting the batch', function (): void {
+    // Arrange
+    $show = Show::factory()->create();
+    $artworks = [
+        ['image' => 'https://artworks.thetvdb.com/no-type.jpg'],
+        ['type' => 2, 'image' => 'https://artworks.thetvdb.com/banners/posters/valid.jpg'],
+    ];
+
+    // Act
+    $count = (new UpsertTvdbArtworks)->handle($show, $artworks);
+
+    // Assert
+    expect($count)->toBe(1);
+    $this->assertDatabaseHas('media', [
+        'mediable_id' => $show->id,
+        '_tvdb_image' => 'https://artworks.thetvdb.com/banners/posters/valid.jpg',
+        'is_active' => true,
+    ]);
+    $this->assertDatabaseMissing('media', [
+        '_tvdb_image' => 'https://artworks.thetvdb.com/no-type.jpg',
+    ]);
+});
+
 it('is idempotent on re-run — no duplicate rows and a stable active set', function (): void {
     // Arrange
     $show = Show::factory()->create();

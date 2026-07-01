@@ -59,9 +59,9 @@ return new class extends Migration
                 'tmdb_synced_at',
             ]);
 
-            $table->string('_imdb_id')->nullable(false)->change();
-            $table->text('_imdb_primary_title')->nullable(false)->change();
-            $table->string('_imdb_title_type')->nullable(false)->change();
+            // Leave the _imdb_* columns nullable on rollback: TMDB/TVDB-only rows
+            // created after up() may legitimately hold NULL IMDb values, so a
+            // strict ->nullable(false) restore would fail. No data backfill.
         });
     }
 };

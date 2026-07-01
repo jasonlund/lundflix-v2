@@ -46,6 +46,8 @@ final class UpsertTvdbShows
 
         $now = now();
 
+        $payloads = $this->dedupeByImdbId($payloads);
+
         $imdbIds = array_values(array_filter(array_map(
             $this->imdbIdFrom(...),
             $payloads,
@@ -95,6 +97,36 @@ final class UpsertTvdbShows
         }
 
         return null;
+    }
+
+    /**
+     * Collapse payloads that share an IMDb id down to the last one (last-wins),
+     * so a single `imdb_id` is written exactly once per batch and a later payload
+     * never leaves an earlier same-id write half-applied. Payloads with no IMDb id
+     * are distinct tvdb-only shows and pass through untouched. (Cross-batch dedup
+     * of prior source-only rows by `_tvdb_id` is deferred to FLIX-180.)
+     *
+     * @param  array<int, array<string, mixed>>  $payloads
+     * @return list<array<string, mixed>>
+     */
+    private function dedupeByImdbId(array $payloads): array
+    {
+        $withoutImdbId = [];
+        $byImdbId = [];
+
+        foreach ($payloads as $payload) {
+            $imdbId = $this->imdbIdFrom($payload);
+
+            if ($imdbId === null) {
+                $withoutImdbId[] = $payload;
+
+                continue;
+            }
+
+            $byImdbId[$imdbId] = $payload;
+        }
+
+        return array_values([...$withoutImdbId, ...$byImdbId]);
     }
 
     /**

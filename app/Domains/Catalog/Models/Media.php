@@ -52,6 +52,7 @@ class Media extends Model
     protected function casts(): array
     {
         return [
+            // `type` is our derived ArtworkType (source-agnostic); `_tvdb_type` is TVDB's raw source code, kept separate so no source owns the app's own dimension
             'type' => ArtworkType::class,
             'is_active' => 'boolean',
             '_tmdb_vote_average' => 'float',

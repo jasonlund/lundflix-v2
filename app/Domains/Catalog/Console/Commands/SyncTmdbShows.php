@@ -93,6 +93,16 @@ class SyncTmdbShows extends Command
         $ids = [];
 
         foreach ($this->keptRows($export, $file) as $row) {
+            // Skip a malformed (non-numeric) export id rather than let (int) coerce
+            // it to 0 and waste a /tv/0 hydration call.
+            if (! is_numeric($row['id'])) {
+                if ($advance !== null) {
+                    $advance();
+                }
+
+                continue;
+            }
+
             $ids[] = (int) $row['id'];
 
             if (count($ids) >= self::BATCH_SIZE) {

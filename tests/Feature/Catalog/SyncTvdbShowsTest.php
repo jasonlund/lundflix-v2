@@ -47,6 +47,30 @@ function fakeTvdbCrawl(): void
     ]);
 }
 
+function fakeTvdbCrawlWithMalformedId(): void
+{
+    // A non-numeric export id can't occur in the real byte-exact page fixtures, so
+    // this synthetic page injects one to prove the crawl skips it rather than
+    // casting it to 0 and firing a wasted /series/0/extended hydration.
+    $malformedPage = json_encode([
+        'status' => 'success',
+        'data' => [
+            ['id' => 'not-a-number', 'name' => 'Malformed'],
+            ['id' => 70327, 'name' => 'Valid'],
+        ],
+        'links' => ['prev' => null, 'self' => null, 'next' => null, 'total_items' => 2, 'page_size' => 500],
+    ]);
+
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series?page=0*' => Http::response($malformedPage),
+        '*api4.thetvdb.com/v4/series?page=1*' => Http::response(fixtureBytes('Catalog/tvdb/series_empty.json')),
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/70327/extended')
+            ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
+            : Http::response('', 404),
+    ]);
+}
+
 function fakeTvdbUpdates(): void
 {
     Http::fake([
@@ -120,6 +144,28 @@ it('caps hydrate calls with --limit', function (): void {
         return true;
     });
     expect($hydrateCalls)->toBe(1);
+});
+
+it('stops crawling once --limit ids are gathered without paging further', function (): void {
+    // Arrange
+    fakeTvdbCrawl();
+
+    // Act
+    $this->artisan('tvdb:sync-shows', ['--fresh' => true, '--limit' => 1]);
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series?page=1'));
+});
+
+it('skips a non-numeric crawl id without hydrating it', function (): void {
+    // Arrange
+    fakeTvdbCrawlWithMalformedId();
+
+    // Act
+    $this->artisan('tvdb:sync-shows', ['--fresh' => true]);
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series/0/extended'));
 });
 
 it('skips an already-synced show on a default run', function (): void {

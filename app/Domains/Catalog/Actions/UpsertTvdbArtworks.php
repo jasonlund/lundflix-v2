@@ -39,6 +39,13 @@ final class UpsertTvdbArtworks
                 ->update(['is_active' => false]);
 
             foreach ($artworks as $artwork) {
+                // An absent or non-numeric `type` can't map to an ArtworkType;
+                // skip the row rather than let an undefined-key error abort the
+                // whole batch inside the transaction.
+                if (! is_numeric($artwork['type'] ?? null)) {
+                    continue;
+                }
+
                 $type = ArtworkType::fromTvdb((int) $artwork['type']);
 
                 if (! $type instanceof ArtworkType) {
@@ -57,7 +64,10 @@ final class UpsertTvdbArtworks
                 );
             }
 
-            return $mediable->media()->where('is_active', true)->count();
+            return $mediable->media()
+                ->whereNotNull('_tvdb_image')
+                ->where('is_active', true)
+                ->count();
         });
     }
 

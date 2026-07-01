@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Actions\UpsertTmdbShows;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Support\Facades\DB;
@@ -100,6 +101,25 @@ it('merges onto an existing imdb show, pulling imdb_id from the remoteIds IMDB e
         ->and($fresh->_imdb_num_votes)->toBe($originalVotes);
 });
 
+it('coalesces sequential tvdb-then-tmdb upserts onto one imdb-anchored row carrying both source blocks', function (): void {
+    // Arrange
+    Show::factory()->create(['_imdb_id' => 'tt0903747']);
+    $tmdbPayload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $tmdbPayload['external_ids']['imdb_id'] = 'tt0903747';
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([tvdbSeries(['id' => 81189])]);
+    resolve(UpsertTmdbShows::class)->handle([$tmdbPayload]);
+
+    // Assert
+    $fresh = Show::query()->where('_imdb_id', 'tt0903747')->firstOrFail();
+    expect(Show::query()->count())->toBe(1)
+        ->and($fresh->_tvdb_id)->toBe(81189)
+        ->and($fresh->_tvdb_name)->toBe('Breaking Bad')
+        ->and($fresh->_tmdb_id)->toBe(1399)
+        ->and($fresh->_tmdb_name)->toBe('Game of Thrones');
+});
+
 it('inserts a tvdb-only show with null imdb_id when no existing imdb show matches the remoteIds IMDB entry', function (): void {
     // Arrange
     $payloads = [tvdbSeries(['id' => 700, 'remoteIds' => [['id' => 'tt9999999', 'type' => 2, 'sourceName' => 'IMDB']]])];
@@ -123,6 +143,22 @@ it('does not duplicate a tvdb-only show when the same payload is re-run', functi
 
     // Assert
     expect(Show::query()->where('_tvdb_id', 702)->count())->toBe(1);
+});
+
+it('writes one last-wins row when two payloads in one batch share an imdb_id', function (): void {
+    // Arrange
+    $imdb = [['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB']];
+    $first = tvdbSeries(['id' => 81189, 'remoteIds' => $imdb]);
+    $last = tvdbSeries(['id' => 654321, 'name' => 'Winning Write', 'remoteIds' => $imdb]);
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([$first, $last]);
+
+    // Assert
+    $fresh = Show::query()->where('_tvdb_id', 654321)->firstOrFail();
+    expect(Show::query()->count())->toBe(1)
+        ->and($fresh->_tvdb_id)->toBe(654321)
+        ->and($fresh->_tvdb_name)->toBe('Winning Write');
 });
 
 it('returns 0 and persists nothing for empty input', function (): void {

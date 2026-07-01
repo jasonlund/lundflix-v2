@@ -35,6 +35,28 @@ function fakeTmdbShowSync(): void
     ]);
 }
 
+it('skips a non-numeric export id without hydrating it', function (): void {
+    // Arrange
+    // A non-numeric id can't occur in the byte-exact export fixture, so this
+    // synthetic gz export injects one to prove the stream skips it rather than
+    // casting it to 0 and firing a wasted /tv/0 hydration.
+    $jsonl = '{"id":"not-a-number","original_name":"Malformed","popularity":1.0}'."\n"
+        .'{"id":1399,"original_name":"Game of Thrones","popularity":1.0}'."\n";
+
+    Http::fake([
+        '*tv_series_ids*' => Http::response(gzencode($jsonl)),
+        '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/tv/1399')
+            ? Http::response(fixtureBytes('Catalog/tmdb/tv.json'))
+            : Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('tmdb:sync-shows');
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/0'));
+});
+
 it('persists hydrated shows with _tmdb_ columns', function (): void {
     // Arrange
     fakeTmdbShowSync();

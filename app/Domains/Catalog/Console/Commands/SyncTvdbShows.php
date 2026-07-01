@@ -8,6 +8,7 @@ use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TvdbApiService;
+use Generator;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\Date;
 
 #[Description('Crawl TheTVDB series and upsert shows with their artworks')]
 #[Signature('tvdb:sync-shows {--fresh} {--limit=}')]
-final class SyncTvdbShows extends Command
+class SyncTvdbShows extends Command
 {
     /**
      * Hydrate and upsert discovered ids in chunks of this size.
@@ -27,89 +28,104 @@ final class SyncTvdbShows extends Command
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
     ): int {
-        $ids = $this->keptIds($api);
+        $ids = [];
 
-        foreach (array_chunk($ids, self::BATCH_SIZE) as $chunk) {
-            $this->syncChunk($chunk, $api, $upsertShows, $upsertArtworks);
+        foreach ($this->keptIds($api) as $id) {
+            $ids[] = $id;
+
+            if (count($ids) >= self::BATCH_SIZE) {
+                $this->syncChunk($ids, $api, $upsertShows, $upsertArtworks);
+                $ids = [];
+            }
+        }
+
+        if ($ids !== []) {
+            $this->syncChunk($ids, $api, $upsertShows, $upsertArtworks);
         }
 
         return self::SUCCESS;
     }
 
     /**
-     * Discover the series ids to process: on `--fresh` crawl every `allSeries`
+     * Stream the series ids to process: on `--fresh` crawl every `allSeries`
      * page (advancing the page ourselves, since the service doesn't walk
      * `links.next`) until a page is empty; otherwise pull the `/updates` feed
-     * since the latest sync and skip ids already synced. Cap at `--limit`.
+     * since the latest sync and skip ids already synced. Cap at `--limit`,
+     * stopping mid-crawl once enough ids are yielded rather than materializing
+     * the whole crawl before slicing.
      *
-     * @return array<int, int>
+     * @return Generator<int, int>
      */
-    private function keptIds(TvdbApiService $api): array
+    private function keptIds(TvdbApiService $api): Generator
     {
-        if ($this->option('fresh')) {
-            $ids = $this->crawlIds($api);
-        } else {
-            $ids = $this->updatedIds($api);
-            $ids = $this->rejectSynced($ids);
-        }
+        $ids = $this->option('fresh')
+            ? $this->crawlIds($api)
+            : $this->updatedIds($api);
 
         $limit = $this->option('limit');
+        $limit = $limit === null ? null : (int) $limit;
+        $yielded = 0;
 
-        return $limit === null ? $ids : array_slice($ids, 0, (int) $limit);
+        foreach ($ids as $id) {
+            yield $id;
+
+            $yielded++;
+
+            if ($limit !== null && $yielded >= $limit) {
+                return;
+            }
+        }
     }
 
     /**
-     * Crawl `allSeries` from page 0, collecting each base record's `id`, until a
-     * page returns no records.
+     * Crawl `allSeries` from page 0, yielding each base record's numeric `id`,
+     * until a page returns no records. Non-numeric ids are skipped so a malformed
+     * record can't coerce to 0 and waste a `/series/0` hydration.
      *
-     * @return array<int, int>
+     * @return Generator<int, int>
      */
-    private function crawlIds(TvdbApiService $api): array
+    private function crawlIds(TvdbApiService $api): Generator
     {
-        $ids = [];
         $page = 0;
 
         while (($records = $api->allSeries($page)) !== []) {
             foreach ($records as $record) {
-                $ids[] = (int) $record['id'];
+                if (is_numeric($record['id'])) {
+                    yield (int) $record['id'];
+                }
             }
 
             $page++;
         }
-
-        return $ids;
     }
 
     /**
-     * Pull the series `/updates` feed since the latest synced show, collecting
-     * each flattened record's `recordId`.
+     * Pull the series `/updates` feed since the latest synced show, yielding each
+     * flattened record's numeric `recordId` that is not already synced. Non-numeric
+     * ids are skipped so a malformed record can't coerce to 0.
      *
-     * @return array<int, int>
+     * @return Generator<int, int>
      */
-    private function updatedIds(TvdbApiService $api): array
+    private function updatedIds(TvdbApiService $api): Generator
     {
         $latest = Show::query()->max('tvdb_synced_at');
         $since = $latest === null ? 0 : Date::parse($latest)->timestamp;
 
-        return array_map(
-            fn (array $record): int => (int) $record['recordId'],
-            $api->updates($since, 'series'),
-        );
-    }
-
-    /**
-     * Reject ids that already have a synced show, keyed on `_tvdb_id`.
-     *
-     * @param  array<int, int>  $ids
-     * @return array<int, int>
-     */
-    private function rejectSynced(array $ids): array
-    {
         $skip = array_flip(
             Show::query()->whereNotNull('tvdb_synced_at')->pluck('_tvdb_id')->filter()->all(),
         );
 
-        return array_values(array_filter($ids, fn (int $id): bool => ! isset($skip[$id])));
+        foreach ($api->updates($since, 'series') as $record) {
+            if (! is_numeric($record['recordId'])) {
+                continue;
+            }
+
+            $id = (int) $record['recordId'];
+
+            if (! isset($skip[$id])) {
+                yield $id;
+            }
+        }
     }
 
     /**

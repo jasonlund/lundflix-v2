@@ -99,6 +99,25 @@ it('does not duplicate a tmdb-only show when the same payload is re-run', functi
     expect(Show::query()->where('_tmdb_id', 1234567)->count())->toBe(1);
 });
 
+it('writes one last-wins row when two payloads in one batch share an imdb_id', function (): void {
+    // Arrange
+    $first = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $first['external_ids']['imdb_id'] = 'tt0944947';
+    $last = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $last['external_ids']['imdb_id'] = 'tt0944947';
+    $last['id'] = 7654321;
+    $last['name'] = 'Winning Write';
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$first, $last]);
+
+    // Assert
+    $fresh = Show::query()->where('_tmdb_id', 7654321)->firstOrFail();
+    expect(Show::query()->count())->toBe(1)
+        ->and($fresh->_tmdb_id)->toBe(7654321)
+        ->and($fresh->_tmdb_name)->toBe('Winning Write');
+});
+
 it('returns 0 and persists nothing for empty input', function (): void {
     // Arrange
     $payloads = [];

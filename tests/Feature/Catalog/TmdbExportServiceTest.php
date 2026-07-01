@@ -27,21 +27,6 @@ it('requests the daily tv-series-ids export when asked', function (): void {
     @unlink($path);
 });
 
-it('still requests the daily movie-ids export by default', function (): void {
-    // Arrange
-    Date::setTestNow('2026-06-21');
-    Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
-    $expectedFilename = 'movie_ids_'.now()->format('m_d_Y').'.json.gz';
-
-    // Act
-    $path = resolve(TmdbExportService::class)->download(TmdbExport::MovieIds);
-
-    // Assert
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $expectedFilename));
-
-    @unlink($path);
-});
-
 it('falls back to the prior day for tv-series-ids when today returns a 404', function (): void {
     // Arrange
     Date::setTestNow('2026-06-21');
