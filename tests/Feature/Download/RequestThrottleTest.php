@@ -5,6 +5,8 @@ declare(strict_types=1);
 use App\Domains\Download\Exceptions\RateLimitExceeded;
 use App\Domains\Download\Support\RequestThrottle;
 use Carbon\CarbonInterval;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Sleep;
 
@@ -75,6 +77,17 @@ it('spaces back-to-back awaits 6.5 seconds apart', function (): void {
 
     // Assert
     Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMilliseconds === 6500.0, times: 1);
+});
+
+it('surfaces a lock timeout as a domain rate limit failure', function (): void {
+    // Arrange
+    $lock = Mockery::mock(Lock::class);
+    $lock->shouldReceive('block')->andThrow(new LockTimeoutException);
+    Cache::shouldReceive('lock')->andReturn($lock);
+    $throttle = new RequestThrottle;
+
+    // Act & Assert
+    expect(fn () => $throttle->await())->toThrow(RateLimitExceeded::class);
 });
 
 it('does not wait when the reserved slot has already elapsed', function (): void {

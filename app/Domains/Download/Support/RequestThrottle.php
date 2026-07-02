@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Download\Support;
 
 use App\Domains\Download\Exceptions\RateLimitExceeded;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Sleep;
 
@@ -29,7 +30,7 @@ final class RequestThrottle
      */
     public function await(): void
     {
-        Cache::lock(self::LOCK_KEY, 10)->block(5, function (): void {
+        $this->underLock(function (): void {
             [$now, $nextSlot] = $this->currentSlot();
 
             $waitMs = $nextSlot - $now;
@@ -55,7 +56,7 @@ final class RequestThrottle
      */
     public function backoff(?int $retryAfterSeconds = null): void
     {
-        Cache::lock(self::LOCK_KEY, 10)->block(5, function () use ($retryAfterSeconds): void {
+        $this->underLock(function () use ($retryAfterSeconds): void {
             $retryAfterMs = $retryAfterSeconds !== null
                 ? $retryAfterSeconds * 1000
                 : self::FALLBACK_RETRY_AFTER_MS;
@@ -64,6 +65,25 @@ final class RequestThrottle
 
             Cache::forever(self::SLOT_KEY, max($currentSlot, $now + $retryAfterMs));
         });
+    }
+
+    /**
+     * Run the slot mutation under the shared lock, mapping a lock-acquisition
+     * timeout to the domain throttle failure.
+     *
+     * Under multi-worker Horizon contention block() throws the framework's
+     * LockTimeoutException; callers only catch RateLimitExceeded, and both mean
+     * "the throttle did not admit this request — back off", so it is rethrown as
+     * the domain exception (preserving the original as $previous) rather than
+     * escaping as an unhandled 500.
+     */
+    private function underLock(callable $callback): void
+    {
+        try {
+            Cache::lock(self::LOCK_KEY, 10)->block(5, $callback);
+        } catch (LockTimeoutException $e) {
+            throw RateLimitExceeded::fromLockContention($e);
+        }
     }
 
     /**

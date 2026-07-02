@@ -16,12 +16,19 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\DomCrawler\Crawler;
 
 final class DownloadSearchService
 {
     private const string BASE_URL = 'https://iptorrents.com';
+
+    /**
+     * App-owned disk dir the fetched download file is written under. Named
+     * `downloads/` (not the banned "torrent" word) per the FLIX-132 naming mandate.
+     */
+    private const string STORAGE_DIR = 'downloads/';
 
     /**
      * The download-title cell within a result row: `table#torrents` also holds a
@@ -45,7 +52,7 @@ final class DownloadSearchService
     {
         $response = $this->get('/t', ['q' => $query, 'p' => $page]);
 
-        return $this->parseResults($response->body());
+        return $this->parseResults($response->body(), $query);
     }
 
     /**
@@ -77,7 +84,7 @@ final class DownloadSearchService
 
         $response = $this->get('/t?'.$queryString);
 
-        return $this->parseResults($response->body());
+        return $this->parseResults($response->body(), $query);
     }
 
     public function fetchImdbId(int $downloadId): ?string
@@ -102,7 +109,7 @@ final class DownloadSearchService
     public function download(int $downloadId, string $filename): string
     {
         $response = $this->get('/download.php/'.$downloadId.'/'.$filename);
-        $path = 'torrents/'.$filename;
+        $path = self::STORAGE_DIR.$filename;
         Storage::put($path, $response->body());
 
         return $path;
@@ -111,32 +118,71 @@ final class DownloadSearchService
     /**
      * @return Collection<int, DownloadResult>
      */
-    private function parseResults(string $html): Collection
+    private function parseResults(string $html, string $query): Collection
     {
-        $rows = (new Crawler($html))
-            ->filter('table#torrents tr')
+        $table = (new Crawler($html))->filter('table#torrents');
+
+        // A genuine zero-result page still renders the `table#torrents` node
+        // (header row, no result rows); an ABSENT node instead means the source
+        // markup drifted / the scraper broke, which an empty Collection would
+        // otherwise hide as a legitimate no-hits search — so log it, loudly.
+        if ($table->count() === 0) {
+            Log::warning('Download search results table (table#torrents) missing — likely IPTorrents markup drift or scraper break.', ['query' => $query]);
+
+            return collect();
+        }
+
+        $rows = $table
+            ->filter('tr')
             ->reduce(fn (Crawler $row): bool => $row->filter(self::TITLE_LINK)->count() > 0);
 
-        return collect($rows->each(fn (Crawler $row): DownloadResult => $this->parseRow($row)));
+        // A single markup-drifted row (ad, pinned, short) must skip — not abort the
+        // whole parse — so parseRow nulls a bad row and we drop the nulls.
+        return collect($rows->each(fn (Crawler $row): ?DownloadResult => $this->parseRow($row)))
+            ->filter()
+            ->values();
     }
 
-    private function parseRow(Crawler $row): DownloadResult
+    private function parseRow(Crawler $row): ?DownloadResult
     {
         $anchor = $row->filter(self::TITLE_LINK)->first();
-        $name = trim($anchor->text());
         $cells = $row->filter('td');
 
-        preg_match('#/t/(\d+)#', (string) $anchor->attr('href'), $idMatch);
+        // Guard the two things a drifted row can break: an id-less `/t/` href
+        // (preg_match miss → undefined $idMatch[1]) and a short row whose size /
+        // availability cells don't exist (empty-Crawler ->text() throws).
+        if (preg_match('#/t/(\d+)#', (string) $anchor->attr('href'), $idMatch) !== 1) {
+            return null;
+        }
+
+        if ($cells->count() < 7) {
+            return null;
+        }
+
+        $name = trim($anchor->text());
 
         return new DownloadResult(
             downloadId: (int) $idMatch[1],
             name: $name,
             quality: Quality::fromName($name),
             codec: Codec::fromName($name),
-            availability: (int) trim($cells->eq(6)->text()),
+            availability: $this->availabilityFrom($cells->eq(6)->text()),
             sizeBytes: $this->bytesFromSize($cells->eq(5)->text()),
-            isRar: stripos($name, 'norar') === false,
+            isRar: preg_match('/no[\s._-]*rar/i', $name) === 0,
         );
+    }
+
+    /**
+     * Parse an availability (seeders) cell into a count. The source renders
+     * thousands with commas (`1,024`) and an unknown count as `-`; strip the
+     * separators and treat a non-numeric cell as a deliberate 0, rather than
+     * letting a naive `(int)"1,024"` silently truncate to 1.
+     */
+    private function availabilityFrom(string $raw): int
+    {
+        $digits = preg_replace('/[^\d]/', '', trim($raw));
+
+        return $digits === '' || $digits === null ? 0 : (int) $digits;
     }
 
     /**
@@ -217,7 +263,16 @@ final class DownloadSearchService
     {
         $settings = resolve(DownloadSettings::class);
 
+        // This service owns the sole 429/Retry-After backoff + RequestThrottle
+        // past-cap valve for its own calls (see get()), so the global blind-retry
+        // middleware (HttpClientServiceProvider's GuzzleRetryMiddleware) must not
+        // also retry 429/5xx/timeout on this path — stacked backoff would space
+        // requests twice and reach the throttle valve later than get() implies.
+        // caseyamcl's GuzzleRetryMiddleware reads the per-request `retry_enabled`
+        // option; false disables all its retry for this request only, leaving the
+        // global seam active for every other domain.
         return $request->baseUrl(self::BASE_URL)
+            ->withOptions(['retry_enabled' => false])
             ->withHeaders(['Cookie' => "uid={$settings->uid}; pass={$settings->pass}"]);
     }
 }

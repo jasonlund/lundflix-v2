@@ -36,9 +36,11 @@ class AppSettings extends Page implements HasForms
 
     public function mount(DownloadSettings $settings): void
     {
+        // Never fill the encrypted pass: Livewire serializes public state into the
+        // wire:snapshot in the page HTML, which would ship the credential in plaintext.
         $this->form->fill([
             'uid' => $settings->uid,
-            'pass' => $settings->pass,
+            'pass' => '',
         ]);
     }
 
@@ -48,7 +50,10 @@ class AppSettings extends Page implements HasForms
             ->components([
                 Section::make('Downloads')->schema([
                     TextInput::make('uid')->required(),
-                    TextInput::make('pass')->required(),
+                    TextInput::make('pass')
+                        ->password()
+                        ->revealable()
+                        ->placeholder('Unchanged'),
                 ]),
             ])
             ->statePath('data');
@@ -76,7 +81,13 @@ class AppSettings extends Page implements HasForms
         $data = $this->form->getState();
 
         $settings->uid = $data['uid'];
-        $settings->pass = $data['pass'];
+
+        // A blank pass means "leave the stored credential as-is" — only overwrite when
+        // the operator actually typed a new value.
+        if (($data['pass'] ?? '') !== '') {
+            $settings->pass = $data['pass'];
+        }
+
         $settings->save();
 
         Notification::make()
