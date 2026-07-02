@@ -7,7 +7,7 @@ use App\Domains\Identity\Models\User;
 use App\Filament\Pages\AppSettings;
 use Livewire\Livewire;
 
-it('loads the page with the current cookie values', function () {
+it('loads the page with the current cookie values', function (): void {
     // Arrange
     $this->actingAs(User::factory()->create());
 
@@ -21,7 +21,7 @@ it('loads the page with the current cookie values', function () {
     ]);
 });
 
-it('persists rotated cookie values', function () {
+it('persists rotated cookie values', function (): void {
     // Arrange
     $this->actingAs(User::factory()->create());
 
@@ -36,6 +36,6 @@ it('persists rotated cookie values', function () {
     // Assert
     $page->assertHasNoFormErrors();
     app()->forgetInstance(DownloadSettings::class);
-    expect(app(DownloadSettings::class)->uid)->toBe('rotated-uid');
-    expect(app(DownloadSettings::class)->pass)->toBe('rotated-pass');
+    expect(resolve(DownloadSettings::class)->uid)->toBe('rotated-uid');
+    expect(resolve(DownloadSettings::class)->pass)->toBe('rotated-pass');
 });
