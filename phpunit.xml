@@ -34,5 +34,7 @@
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="HTTP_RETRY_MULTIPLIER" value="0"/>
+        <env name="DOWNLOADS_UID" value="test-uid"/>
+        <env name="DOWNLOADS_PASS" value="test-pass"/>
     </php>
 </phpunit>

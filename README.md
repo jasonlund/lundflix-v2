@@ -122,6 +122,8 @@ they work. After `composer setup`, fill in every key below:
 | --- | --- | --- |
 | `TMDB_TOKEN` | Catalog — TMDB movie/TV metadata | A TMDB API Read Access Token from your [themoviedb.org](https://www.themoviedb.org/settings/api) account settings |
 | `TVDB_KEY` | Catalog — TheTVDB movie/TV metadata | A TheTVDB v4 apikey from the [thetvdb.com](https://thetvdb.com/api-information) API information page (free tier requires TheTVDB attribution) |
+| `DOWNLOADS_UID` | Download — provider authentication | The `uid` browser cookie value from a logged-in provider session. Seeds the initial value; rotate later in the admin panel without a redeploy |
+| `DOWNLOADS_PASS` | Download — provider authentication | The `pass` browser cookie value from a logged-in provider session. Seeds the initial value; rotate later in the admin panel without a redeploy |
 
 ### MCP servers (Claude Code)
 
