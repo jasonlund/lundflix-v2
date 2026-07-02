@@ -17,7 +17,6 @@ return new class extends Migration
             $tmdb = fn (string $column): string => "_tmdb_{$column}";
 
             $table->unsignedInteger($tmdb('id'))->nullable()->unique();
-            $table->string($tmdb('imdb_id'))->nullable()->index();
             $table->text($tmdb('title'))->nullable();
             $table->text($tmdb('original_title'))->nullable();
             $table->string($tmdb('original_language'))->nullable();
@@ -57,7 +56,7 @@ return new class extends Migration
 
             $table->dropColumn([
                 ...array_map($tmdb, [
-                    'id', 'imdb_id', 'title', 'original_title', 'original_language',
+                    'id', 'title', 'original_title', 'original_language',
                     'overview', 'tagline', 'homepage', 'status', 'release_date',
                     'runtime', 'budget', 'revenue', 'popularity', 'vote_average',
                     'vote_count', 'video', 'genres', 'origin_country', 'production_companies',

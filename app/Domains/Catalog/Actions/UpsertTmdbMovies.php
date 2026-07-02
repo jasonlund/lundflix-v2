@@ -18,7 +18,7 @@ final class UpsertTmdbMovies
      * @var list<string>
      */
     private const array RAW_COLUMNS = [
-        'id', 'imdb_id', 'title', 'original_title', 'original_language',
+        'id', 'title', 'original_title', 'original_language',
         'overview', 'tagline', 'homepage', 'status', 'release_date',
         'runtime', 'budget', 'revenue', 'popularity', 'vote_average',
         'vote_count', 'video', 'genres', 'origin_country', 'production_companies',
@@ -53,66 +53,24 @@ final class UpsertTmdbMovies
 
         $now = now();
 
-        $imdbIds = array_values(array_filter(array_map(
-            static fn (array $payload): ?string => $payload['imdb_id'] ?? null,
+        $rows = array_map(
+            fn (array $payload): array => $this->rawTmdbRow($payload, $now),
             $payloads,
-        )));
+        );
 
-        $existingByImdbId = $imdbIds === []
-            ? collect()
-            : Movie::query()->whereIn('_imdb_id', $imdbIds)->get()->keyBy('_imdb_id');
+        Movie::upsert($rows, ['_tmdb_id'], array_keys($rows[0]));
 
-        $touchedIds = [];
-        $tmdbOnlyRows = [];
-
-        foreach ($payloads as $payload) {
-            $imdbId = $payload['imdb_id'] ?? null;
-            $existing = $imdbId === null ? null : $existingByImdbId->get($imdbId);
-
-            if ($existing instanceof Movie) {
-                $existing->fill($this->tmdbColumnsFor($payload, $now));
-                $existing->save();
-                $touchedIds[] = $existing->getKey();
-
-                continue;
-            }
-
-            $tmdbOnlyRows[] = $this->rawTmdbRow($payload, $now);
-        }
-
-        $touchedIds = array_merge($touchedIds, $this->insertTmdbOnly($tmdbOnlyRows));
-
-        Movie::query()->whereIn('id', $touchedIds)->searchable();
+        Movie::query()
+            ->whereIn('_tmdb_id', array_column($rows, '_tmdb_id'))
+            ->searchable();
 
         return count($payloads);
     }
 
     /**
-     * Insert the payloads that matched no existing IMDb row via a cast-bypassing
-     * `Model::upsert()`, then return the ids of the affected movies (so they can
-     * be reindexed). Returns no ids when there are no tmdb-only rows.
-     *
-     * @param  array<int, array<string, mixed>>  $rows
-     * @return list<int|string>
-     */
-    private function insertTmdbOnly(array $rows): array
-    {
-        if ($rows === []) {
-            return [];
-        }
-
-        Movie::upsert($rows, ['_tmdb_id'], array_keys($rows[0]));
-
-        return Movie::query()
-            ->whereIn('_tmdb_id', array_column($rows, '_tmdb_id'))
-            ->pluck('id')
-            ->all();
-    }
-
-    /**
      * Map a raw TMDB payload onto the model's source-prefixed `_tmdb_*` columns
      * (plus the app-owned `tmdb_synced_at` stamp), persisting each value exactly
-     * as the API returned it. App-owned IMDb columns are never touched.
+     * as the API returned it.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
@@ -136,6 +94,10 @@ final class UpsertTmdbMovies
     private function rawTmdbRow(array $payload, Carbon $now): array
     {
         $row = $this->tmdbColumnsFor($payload, $now);
+
+        // TMDB carries IMDb's identity key on its payload; copy it raw so the
+        // `_tmdb_id` upsert also seeds `_imdb_id` (null when absent).
+        $row['_imdb_id'] = $payload['imdb_id'] ?? null;
 
         foreach (self::JSON_COLUMNS as $column) {
             $row[$column] = $row[$column] === null ? null : json_encode($row[$column]);
