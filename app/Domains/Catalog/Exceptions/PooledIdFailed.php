@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domains\Catalog\Services\Concerns;
+namespace App\Domains\Catalog\Exceptions;
 
 use Exception;
 

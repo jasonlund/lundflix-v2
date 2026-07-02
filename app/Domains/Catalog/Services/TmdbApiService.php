@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services;
 
+use App\Domains\Catalog\Exceptions\PooledIdFailed;
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
-use App\Domains\Catalog\Services\Concerns\PooledIdFailed;
 use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
