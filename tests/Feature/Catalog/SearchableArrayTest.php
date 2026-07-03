@@ -8,7 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('indexes a movie title and year from TMDB source-of-truth fields', function () {
+it('indexes a movie title and year from TMDB source-of-truth fields', function (): void {
     // Arrange
     $movie = Movie::factory()->withTmdb()->create([
         '_tmdb_title' => 'The Matrix',
@@ -23,7 +23,7 @@ it('indexes a movie title and year from TMDB source-of-truth fields', function (
     expect($array['year'])->toBe(1999);
 });
 
-it('keeps the IMDb ranking crosswalk fields when indexing a movie', function () {
+it('keeps the IMDb ranking crosswalk fields when indexing a movie', function (): void {
     // Arrange
     $movie = Movie::factory()->withTmdb()->create([
         '_imdb_id' => 'tt0133093',
@@ -40,7 +40,7 @@ it('keeps the IMDb ranking crosswalk fields when indexing a movie', function () 
     expect($array['average_rating'])->toBe(8.7);
 });
 
-it('indexes a show title and year from TVDB source-of-truth fields', function () {
+it('indexes a show title and year from TVDB source-of-truth fields', function (): void {
     // Arrange
     $show = Show::factory()->withTvdb()->create([
         '_tvdb_name' => 'Breaking Bad',
@@ -55,7 +55,7 @@ it('indexes a show title and year from TVDB source-of-truth fields', function ()
     expect($array['year'])->toBe(2008);
 });
 
-it('keeps the IMDb ranking crosswalk fields when indexing a show', function () {
+it('keeps the IMDb ranking crosswalk fields when indexing a show', function (): void {
     // Arrange
     $show = Show::factory()->withTvdb()->create([
         '_imdb_id' => 'tt0903747',
