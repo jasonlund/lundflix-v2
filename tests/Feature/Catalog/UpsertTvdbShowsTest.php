@@ -105,6 +105,22 @@ it('maps _tvdb_* raw and stamps tvdb_synced_at from the extended fixture', funct
         ->toBe(json_encode($series['remoteIds']));
 });
 
+it('sets _imdb_id from the first IMDB remoteIds entry when several are present', function (): void {
+    // Arrange
+    $remoteIds = [
+        ['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB'],
+        ['id' => 'tt9999999', 'type' => 2, 'sourceName' => 'IMDB'],
+    ];
+    $payloads = [tvdbSeries(['id' => 81189, 'remoteIds' => $remoteIds])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 81189)->firstOrFail();
+    expect($show->_imdb_id)->toBe('tt0903747');
+});
+
 it('writes one last-wins row when two payloads in one batch share an imdb id', function (): void {
     // Arrange
     $imdb = [['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB']];

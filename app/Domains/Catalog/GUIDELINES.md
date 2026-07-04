@@ -34,6 +34,12 @@ verbatim; derive/normalize downstream, not on ingest.
   `TmdbRequestFailed`, so single-request and batch callers see the same typed
   failure.
 
+## Sync ordering (`tmdb:sync-shows`)
+
+- `tmdb:sync-shows` enriches only — it matches existing shows by `_imdb_id` and
+  never creates one, so it depends on `tvdb:sync-shows` having run first; run
+  standalone or against an empty `shows` table it silently persists nothing.
+
 ## Ratings update (`UpdateImdbRatings`)
 
 Ratings apply as a **single bulk CASE update per table** (Movie, Show), returning
