@@ -14,14 +14,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('shows', function (Blueprint $table): void {
-            $table->string('_imdb_id')->nullable()->change();
-            $table->text('_imdb_primary_title')->nullable()->change();
-            $table->string('_imdb_title_type')->nullable()->change();
-
             $tmdb = fn (string $column): string => "_tmdb_{$column}";
 
             $table->unsignedInteger($tmdb('id'))->nullable()->unique();
-            $table->string($tmdb('imdb_id'))->nullable()->index();
             $table->text($tmdb('name'))->nullable();
             $table->text($tmdb('original_name'))->nullable();
             $table->string($tmdb('original_language'))->nullable();
@@ -51,17 +46,13 @@ return new class extends Migration
 
             $table->dropColumn([
                 ...array_map($tmdb, [
-                    'id', 'imdb_id', 'name', 'original_name', 'original_language',
+                    'id', 'name', 'original_name', 'original_language',
                     'overview', 'tagline', 'status', 'first_air_date', 'popularity',
                     'vote_average', 'vote_count', 'genres', 'poster_path',
                     'backdrop_path', 'external_ids',
                 ]),
                 'tmdb_synced_at',
             ]);
-
-            // Leave the _imdb_* columns nullable on rollback: TMDB/TVDB-only rows
-            // created after up() may legitimately hold NULL IMDb values, so a
-            // strict ->nullable(false) restore would fail. No data backfill.
         });
     }
 };

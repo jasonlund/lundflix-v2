@@ -10,16 +10,17 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
 use Throwable;
 
-#[Description('Run the IMDb catalog import commands in order, surviving any single failure')]
+#[Description('Sync the catalog from TMDB and TVDB, then apply IMDb ratings, surviving any single failure')]
 #[Signature('sync:catalog')]
 class SyncCatalog extends Command
 {
     /**
-     * The import commands to dispatch, in order.
+     * The import commands to dispatch, in order: TMDB and TVDB establish the
+     * source-of-truth rows first, then IMDb ratings enrich them by _imdb_id last.
      *
      * @var list<class-string<Command>>
      */
-    private const array COMMANDS = [ImportImdbTitles::class, ImportImdbRatings::class, SyncTmdbMovies::class, SyncTmdbShows::class, SyncTvdbShows::class];
+    private const array COMMANDS = [SyncTmdbMovies::class, SyncTvdbShows::class, SyncTmdbShows::class, ImportImdbRatings::class];
 
     public function handle(): int
     {

@@ -57,8 +57,9 @@ it('skips a non-numeric export id without hydrating it', function (): void {
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/0'));
 });
 
-it('persists hydrated shows with _tmdb_ columns', function (): void {
+it('enriches a matching TVDB show with _tmdb_ columns in place', function (): void {
     // Arrange
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0944947']);
     fakeTmdbShowSync();
 
     // Act
@@ -68,10 +69,12 @@ it('persists hydrated shows with _tmdb_ columns', function (): void {
     $got = Show::where('_tmdb_id', 1399)->first();
     expect($got)->not->toBeNull();
     expect($got->_tmdb_name)->toBe('Game of Thrones');
+    expect(Show::count())->toBe(1);
 });
 
-it('persists the hydrated show images into media', function (): void {
+it('persists the enriched show images into media', function (): void {
     // Arrange
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0944947']);
     fakeTmdbShowSync();
 
     // Act

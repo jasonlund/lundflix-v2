@@ -204,9 +204,10 @@ the API returned it**:
   app bookkeeping. The unique source identifier is the one **naming exception**:
   always `_{source}_id` (e.g. `_imdb_id`, even though IMDb's raw attribute is
   `tconst`), and **listed first** in that source's block. A source-provided
-  discriminator is prefixed too — e.g. `_imdb_title_type` (still cast to
-  `TitleType`, still the movie/show discriminator; the import routing reads the
-  raw row `$row['titleType']`, not the column, so the rename doesn't touch it).
+  discriminator is prefixed too — e.g. `Media._tvdb_type` (TVDB's raw
+  artwork-type code, cast `'integer'`), kept separate from the app's own derived,
+  source-agnostic dimension in the unprefixed `type` column (cast to
+  `ArtworkType`), so no single source owns the app's own dimension.
 - **App-owned bookkeeping columns are NOT prefixed** — the surrogate PK `id`,
   foreign/morph keys, `*_synced_at`, `is_active`, `created_at`/`updated_at`, and
   any column the app computes or owns. (The *source* identity key is **not** one of
