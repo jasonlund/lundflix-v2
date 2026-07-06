@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Download\Services;
 
 use App\Domains\Download\Data\DownloadResult;
+use App\Domains\Download\Enums\Category;
 use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
 use App\Domains\Download\Exceptions\DownloadRequestFailed;
@@ -38,53 +39,58 @@ final class DownloadSearchService
     private const string TITLE_LINK = 'td.al a[href^="/t/"]';
 
     /**
-     * Download source movie category ids — riding the `/t` query as empty-valued
-     * params (`&100=`) scopes the search to movies.
-     *
-     * @var list<int>
-     */
-    private const array MOVIE_CATEGORIES = [6, 7, 20, 38, 48, 54, 62, 68, 77, 87, 89, 90, 96, 100, 101];
-
-    /**
+     * @param  list<Category>  $categories
      * @return Collection<int, DownloadResult>
      */
-    public function search(string $query, int $page = 1): Collection
+    public function search(string $imdbIdOrTerm, array $categories = []): Collection
     {
-        $response = $this->get('/t', ['q' => $query, 'p' => $page]);
-
-        return $this->parseResults($response->body(), $query);
-    }
-
-    /**
-     * @return Collection<int, DownloadResult>
-     */
-    public function searchMovieByImdbId(string $imdbId): Collection
-    {
-        return $this->searchMovies($imdbId);
-    }
-
-    /**
-     * @return Collection<int, DownloadResult>
-     */
-    public function searchMovieByTitle(string $title, int $year): Collection
-    {
-        return $this->searchMovies($title.' '.$year);
-    }
-
-    /**
-     * @return Collection<int, DownloadResult>
-     */
-    private function searchMovies(string $query): Collection
-    {
-        $categories = array_fill_keys(array_map(strval(...), self::MOVIE_CATEGORIES), '');
-
         // Build the query string ourselves so spaces encode as `+` (Guzzle would
-        // emit `%20`) and the empty-valued category markers (`100=`) survive.
-        $queryString = http_build_query(['q' => $query, 'p' => 1] + $categories);
+        // emit `%20`) and the empty-valued category markers (`72=`) survive.
+        $queryString = http_build_query(['q' => $imdbIdOrTerm] + $this->categoryMarkers($categories));
 
         $response = $this->get('/t?'.$queryString);
 
-        return $this->parseResults($response->body(), $query);
+        return $this->sortResults($this->parseResults($response->body(), $imdbIdOrTerm));
+    }
+
+    /**
+     * Rank a parsed result set highest-preference first, per decision 6:
+     * (1) quality via Quality::priority() DESC — a null quality has no priority,
+     * so a PHP_INT_MIN sentinel sinks unrecognized-quality rows last; (2) non-rar
+     * before rar (isRar ASC); (3) availability DESC.
+     *
+     * Null-quality rows are KEPT (sorted last), not filtered — this service is a
+     * sorted-set contract; callers decide what to drop.
+     *
+     * @param  Collection<int, DownloadResult>  $results
+     * @return Collection<int, DownloadResult>
+     */
+    private function sortResults(Collection $results): Collection
+    {
+        return $results
+            ->sort(fn (DownloadResult $a, DownloadResult $b): int => ($b->quality?->priority() ?? PHP_INT_MIN) <=> ($a->quality?->priority() ?? PHP_INT_MIN)
+                ?: $a->isRar <=> $b->isRar
+                ?: $b->availability <=> $a->availability)
+            ->values();
+    }
+
+    /**
+     * Turn the requested categories (empty → the non-adult defaults) into the
+     * empty-valued query markers the source expects (`72=`), keyed by category
+     * value so they merge into the search query.
+     *
+     * @param  list<Category>  $categories
+     * @return array<string, string>
+     */
+    private function categoryMarkers(array $categories): array
+    {
+        $resolved = $categories === [] ? Category::defaults() : $categories;
+
+        // Belt-and-suspenders: defaults() already excludes adult, but an
+        // explicitly-passed adult category must never reach the wire.
+        $resolved = array_filter($resolved, fn (Category $c): bool => ! $c->isAdult());
+
+        return array_fill_keys(array_map(fn (Category $c): string => $c->value, $resolved), '');
     }
 
     public function fetchImdbId(int $downloadId): ?string
@@ -262,6 +268,7 @@ final class DownloadSearchService
     private function configure(PendingRequest $request): PendingRequest
     {
         $settings = resolve(DownloadSettings::class);
+        ['uid' => $uid, 'pass' => $pass] = $this->credentials($settings);
 
         // This service owns the sole 429/Retry-After backoff + RequestThrottle
         // past-cap valve for its own calls (see get()), so the global blind-retry
@@ -273,6 +280,21 @@ final class DownloadSearchService
         // global seam active for every other domain.
         return $request->baseUrl(self::BASE_URL)
             ->withOptions(['retry_enabled' => false])
-            ->withHeaders(['Cookie' => "uid={$settings->uid}; pass={$settings->pass}"]);
+            ->withHeaders(['Cookie' => "uid={$uid}; pass={$pass}"]);
+    }
+
+    /**
+     * Coalesce the uid/pass credential: an operator-set setting (rotated via
+     * Filament) wins when non-empty, else fall back to the env/config value —
+     * so env is the zero-config default while runtime rotation still overrides.
+     *
+     * @return array{uid: string, pass: string}
+     */
+    private function credentials(DownloadSettings $settings): array
+    {
+        return [
+            'uid' => $settings->uid !== '' ? $settings->uid : (string) config('services.downloads.uid'),
+            'pass' => $settings->pass !== '' ? $settings->pass : (string) config('services.downloads.pass'),
+        ];
     }
 }
