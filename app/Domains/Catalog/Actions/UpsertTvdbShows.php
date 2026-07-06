@@ -48,42 +48,22 @@ final class UpsertTvdbShows
 
         $payloads = $this->dedupeByImdbId($payloads);
 
-        $imdbIds = array_values(array_filter(array_map(
-            $this->imdbIdFrom(...),
+        $rows = array_map(
+            fn (array $payload): array => $this->rawTvdbRow($payload, $now),
             $payloads,
-        )));
+        );
 
-        $existingByImdbId = $imdbIds === []
-            ? collect()
-            : Show::query()->whereIn('_imdb_id', $imdbIds)->get()->keyBy('_imdb_id');
+        Show::upsert($rows, ['_tvdb_id'], array_keys($rows[0]));
 
-        $touchedIds = [];
-        $tvdbOnlyRows = [];
-
-        foreach ($payloads as $payload) {
-            $imdbId = $this->imdbIdFrom($payload);
-            $existing = $imdbId === null ? null : $existingByImdbId->get($imdbId);
-
-            if ($existing instanceof Show) {
-                $existing->fill($this->tvdbColumnsFor($payload, $now));
-                $existing->save();
-                $touchedIds[] = $existing->getKey();
-
-                continue;
-            }
-
-            $tvdbOnlyRows[] = $this->rawTvdbRow($payload, $now);
-        }
-
-        $touchedIds = array_merge($touchedIds, $this->insertTvdbOnly($tvdbOnlyRows));
-
-        Show::query()->whereIn('id', $touchedIds)->searchable();
+        Show::query()
+            ->whereIn('_tvdb_id', array_column($rows, '_tvdb_id'))
+            ->searchable();
 
         return count($payloads);
     }
 
     /**
-     * Pull the IMDb anchor out of the nested `remoteIds[]`: the entry whose
+     * Pull the IMDb id out of the nested `remoteIds[]`: the entry whose
      * `sourceName` is "IMDB". Returns null when there is no such entry.
      *
      * @param  array<string, mixed>  $payload
@@ -130,31 +110,10 @@ final class UpsertTvdbShows
     }
 
     /**
-     * Insert the payloads that matched no existing IMDb row via a cast-bypassing
-     * `Model::upsert()`, then return the ids of the affected shows (so they can
-     * be reindexed). Returns no ids when there are no tvdb-only rows.
-     *
-     * @param  array<int, array<string, mixed>>  $rows
-     * @return list<int|string>
-     */
-    private function insertTvdbOnly(array $rows): array
-    {
-        if ($rows === []) {
-            return [];
-        }
-
-        Show::upsert($rows, ['_tvdb_id'], array_keys($rows[0]));
-
-        return Show::query()
-            ->whereIn('_tvdb_id', array_column($rows, '_tvdb_id'))
-            ->pluck('id')
-            ->all();
-    }
-
-    /**
      * Map a raw TVDB payload onto the model's source-prefixed `_tvdb_*` columns
      * (plus the app-owned `tvdb_synced_at` stamp), persisting each value exactly
-     * as the API returned it. App-owned IMDb columns are never touched.
+     * as the API returned it. The `_imdb_id` crosswalk is seeded separately in
+     * {@see rawTvdbRow()}, not here.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
@@ -178,6 +137,10 @@ final class UpsertTvdbShows
     private function rawTvdbRow(array $payload, Carbon $now): array
     {
         $row = $this->tvdbColumnsFor($payload, $now);
+
+        // TVDB carries IMDb's identity key in remoteIds[]; copy it raw so the
+        // `_tvdb_id` upsert also seeds `_imdb_id` (null when absent).
+        $row['_imdb_id'] = $this->imdbIdFrom($payload);
 
         foreach (self::JSON_COLUMNS as $column) {
             $row[$column] = $row[$column] === null ? null : json_encode($row[$column]);

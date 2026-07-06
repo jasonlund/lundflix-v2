@@ -198,6 +198,44 @@ it('reports every failed id when multiple ids in the batch keep returning a 500 
 
 /*
 |--------------------------------------------------------------------------
+| movies(array $ids): auth and undecodable failures inside the pool
+|--------------------------------------------------------------------------
+| resolvePooled only collects a persistent non-404, non-401 failure as a
+| per-id PooledIdFailed; a 401 and an undecodable 200 both fall through to
+| decode(), which throws immediately and is NOT aggregated. So a single id's
+| 401 inside the batch surfaces as a fatal TmdbAuthenticationFailed for the
+| whole batch, and a single id's undecodable 200 surfaces as an immediate
+| TmdbRequestFailed (decode's json()-null branch, not the ::forIds aggregate).
+| The 401/empty-200 error bodies real data can't produce are synthetic; the
+| succeeding id reuses the byte-exact movie.json fixture.
+*/
+
+it('throws TmdbAuthenticationFailed when one id in the batch returns a 401', function (): void {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake([
+        '*/movie/603*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
+        '*/movie/604*' => Http::response('', 401),
+    ]);
+
+    $call = fn () => resolve(TmdbApiService::class)->movies([603, 604]);
+
+    expect($call)->toThrow(TmdbAuthenticationFailed::class);
+});
+
+it('throws TmdbRequestFailed when one id in the batch returns an undecodable 200', function (): void {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake([
+        '*/movie/603*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
+        '*/movie/604*' => Http::response('', 200),
+    ]);
+
+    $call = fn () => resolve(TmdbApiService::class)->movies([603, 604]);
+
+    expect($call)->toThrow(TmdbRequestFailed::class);
+});
+
+/*
+|--------------------------------------------------------------------------
 | movies(array $ids): chunked pooling sized by services.tmdb.concurrency
 |--------------------------------------------------------------------------
 | The batch fans out at most `concurrency` concurrent requests at a time by

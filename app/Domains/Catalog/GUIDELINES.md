@@ -16,8 +16,8 @@ verbatim; derive/normalize downstream, not on ingest.
   in a `finally` that runs **only** when the generator completes or is GC'd —
   callers **MUST fully consume** the collection (`->all()`, or foreach to the
   end). Abandoning it part-way leaks the handle until GC.
-- `count()` applies the **same `includes()` filter** as `rows()`, so a progress
-  total matches the rows actually yielded.
+- `count()` skips the header and blank lines, counting every data row, so a
+  progress total matches the rows `rows()` actually yields.
 - An empty gz body (valid magic, no content) surfaces a domain exception, not a
   raw `ValueError`.
 
@@ -34,12 +34,11 @@ verbatim; derive/normalize downstream, not on ingest.
   `TmdbRequestFailed`, so single-request and batch callers see the same typed
   failure.
 
-## Enums filter raw rows
+## Sync ordering (`tmdb:sync-shows`)
 
-`ImdbDataset` filters the **raw string row before casting** — drop unrecognized
-values there, not after hydration. Genres are the exception: stored raw at ingest
-and mapped to known `Genre` cases at **read time** by the `ImdbGenres` cast (via
-`Genre::fromRawValues`), per the raw-source-column convention.
+- `tmdb:sync-shows` enriches only — it matches existing shows by `_imdb_id` and
+  never creates one, so it depends on `tvdb:sync-shows` having run first; run
+  standalone or against an empty `shows` table it silently persists nothing.
 
 ## Ratings update (`UpdateImdbRatings`)
 

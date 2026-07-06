@@ -18,7 +18,7 @@ use Illuminate\Support\LazyCollection;
 use function Laravel\Prompts\progress;
 use function Laravel\Prompts\spin;
 
-#[Description('Download the TMDB tv-series-ids export, hydrate each id, and upsert shows and their images')]
+#[Description('Download the TMDB tv-series-ids export, hydrate each id, and enrich existing (TVDB-sourced) shows matched by _imdb_id with TMDB data and images — never creates a show')]
 #[Signature('tmdb:sync-shows {--fresh} {--limit=}')]
 class SyncTmdbShows extends Command
 {
