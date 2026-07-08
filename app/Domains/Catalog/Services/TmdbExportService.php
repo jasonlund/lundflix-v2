@@ -18,34 +18,31 @@ final class TmdbExportService
     private const string BASE_URL = 'https://files.tmdb.org/p/exports';
 
     /**
-     * Download today's daily export for the given kind to a temp file, returning
-     * its path; the kind defaults to the movie-ids export.
+     * Download the most-recent daily export for the given kind to a temp file,
+     * returning its path; the kind defaults to the movie-ids export.
      *
-     * TMDB publishes the export under a date-stamped URL and the current day's
-     * file may not exist yet, so a 404 on today falls back to the prior day; any
-     * other failure (or a 404 on the fallback) propagates. The returned temp file
-     * is the caller's to consume and delete; it only survives a successful
-     * download — a failed attempt unlinks its own temp file before throwing.
+     * TMDB publishes each day's date-stamped export by 08:00 UTC (the export job
+     * starts ~07:00 UTC), so the most-recent published date is today (UTC) once
+     * the hour is >= 8, and yesterday (UTC) before that. That single date is
+     * requested once — any failure (non-2xx or connection) propagates. The
+     * returned temp file is the caller's to consume and delete; it only survives
+     * a successful download — a failed attempt unlinks its own temp file before
+     * throwing.
      */
     public function download(TmdbExport $kind = TmdbExport::MovieIds): string
     {
-        $today = $this->attempt($kind, now()->format('m_d_Y'), allow404: true);
+        $now = now()->utc();
+        $date = $now->hour >= 8 ? $now : $now->copy()->subDay();
 
-        if ($today !== null) {
-            return $today;
-        }
-
-        return $this->attempt($kind, now()->subDay()->format('m_d_Y'), allow404: false);
+        return $this->fetch($kind, $date->format('m_d_Y'));
     }
 
     /**
-     * Download the export for one date to a temp file.
+     * Download the export for one date to a temp file, returning the temp path.
      *
-     * Returns the temp path on success. When $allow404 is true a 404 is treated
-     * as "not published yet": the temp file is removed and null returned so the
-     * caller can fall back. Any other failure unlinks the temp file and rethrows.
+     * Any failure unlinks the temp file and rethrows.
      */
-    private function attempt(TmdbExport $kind, string $date, bool $allow404): ?string
+    private function fetch(TmdbExport $kind, string $date): string
     {
         $path = tempnam(sys_get_temp_dir(), 'tmdb_');
 
@@ -58,12 +55,6 @@ final class TmdbExportService
                 ->timeout(600)
                 ->retry(3, 1000, throw: false)
                 ->get(self::BASE_URL.'/'.$kind->filename($date));
-
-            if ($allow404 && $response->status() === 404) {
-                @unlink($path);
-
-                return null;
-            }
 
             $response->throw();
         } catch (Throwable $e) {

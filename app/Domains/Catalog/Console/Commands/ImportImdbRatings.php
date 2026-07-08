@@ -9,7 +9,6 @@ use App\Domains\Catalog\Services\ImdbDatasetService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Symfony\Component\Console\Helper\ProgressBar;
 
 #[Description('Download the IMDb title.ratings dataset and update ratings on catalog titles')]
 #[Signature('imdb:import-ratings')]
@@ -19,6 +18,11 @@ class ImportImdbRatings extends Command
      * Flush the accumulated ratings buffer once it reaches this size.
      */
     private const int BATCH_SIZE = 5000;
+
+    /**
+     * Running count of ratings applied, for the per-flush progress heartbeat.
+     */
+    private int $processed = 0;
 
     public function __construct(
         private readonly ImdbDatasetService $datasets,
@@ -31,9 +35,12 @@ class ImportImdbRatings extends Command
     {
         $path = $this->datasets->download();
 
-        try {
-            $bar = $this->output->createProgressBar($this->datasets->count($path));
+        // Plain writeln progress, not a progress bar: bars render nothing
+        // under sync:catalog's nested Artisan::call, so a per-flush heartbeat
+        // is the only visible movement.
+        $this->output->writeln('Importing IMDb ratings…');
 
+        try {
             /** @var array<string, array{num_votes: int, average_rating: float}> $batch */
             $batch = [];
 
@@ -44,14 +51,11 @@ class ImportImdbRatings extends Command
                 ];
 
                 if (count($batch) >= self::BATCH_SIZE) {
-                    $this->flush($batch, $bar);
+                    $this->flush($batch);
                 }
             }
 
-            $this->flush($batch, $bar);
-
-            $bar->finish();
-            $this->newLine();
+            $this->flush($batch);
         } finally {
             @unlink($path);
         }
@@ -60,18 +64,19 @@ class ImportImdbRatings extends Command
     }
 
     /**
-     * Persist the accumulated ratings buffer, advance the progress bar, and reset it.
+     * Persist the accumulated ratings buffer, emit a progress heartbeat, and reset it.
      *
      * @param  array<string, array{num_votes: int, average_rating: float}>  $batch
      */
-    private function flush(array &$batch, ProgressBar $bar): void
+    private function flush(array &$batch): void
     {
         if ($batch === []) {
             return;
         }
 
         $this->updater->handle($batch);
-        $bar->advance(count($batch));
+        $this->processed += count($batch);
+        $this->output->writeln("  [imdb ratings {$this->processed}]");
         $batch = [];
     }
 }

@@ -15,10 +15,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\LazyCollection;
 
-use function Laravel\Prompts\progress;
-use function Laravel\Prompts\spin;
-
-#[Description('Download the TMDB tv-series-ids export, hydrate each id, and enrich existing (TVDB-sourced) shows matched by _imdb_id with TMDB data and images — never creates a show')]
+#[Description('Download the TMDB tv-series-ids export, hydrate each id, and create-or-merge shows: match an existing show by any source id (imdb/tmdb/tvdb) and merge TMDB data and images onto it, else insert a tmdb-only row')]
 #[Signature('tmdb:sync-shows {--fresh} {--limit=}')]
 class SyncTmdbShows extends Command
 {
@@ -27,29 +24,26 @@ class SyncTmdbShows extends Command
      */
     private const int BATCH_SIZE = 1000;
 
+    /**
+     * Running count of hydrated shows, for the every-1000th progress heartbeat.
+     */
+    private int $processed = 0;
+
     public function handle(
         TmdbExportService $export,
         TmdbApiService $api,
         UpsertTmdbShows $upsertShows,
         UpsertTmdbImages $upsertImages,
     ): int {
-        $file = spin(fn (): string => $export->download(TmdbExport::TvSeriesIds), 'Downloading tv-series-ids export…');
+        // Plain writeln progress, not spin()/progress(): those fork a renderer
+        // that overwrites the terminal (and render nothing under sync:catalog's
+        // nested Artisan::call), which swallowed the per-batch heartbeat below.
+        $this->output->writeln('Downloading tv-series-ids export…');
+        $file = $export->download(TmdbExport::TvSeriesIds);
 
         try {
-            // The export count only matches the rows actually iterated when --fresh
-            // skips nothing and no --limit caps the stream; only then is a
-            // determinate bar's total honest. Otherwise drive an indeterminate
-            // spinner rather than show a bar that stalls below 100%.
-            $determinate = $this->option('fresh') && $this->option('limit') === null;
-
-            if ($determinate) {
-                $this->syncDeterminate($export, $file, $api, $upsertShows, $upsertImages);
-            } else {
-                spin(
-                    fn () => $this->syncRows($export, $file, $api, $upsertShows, $upsertImages),
-                    'Syncing shows',
-                );
-            }
+            $this->output->writeln('Syncing TMDB shows…');
+            $this->syncRows($export, $file, $api, $upsertShows, $upsertImages);
         } finally {
             @unlink($file);
         }
@@ -58,29 +52,7 @@ class SyncTmdbShows extends Command
     }
 
     /**
-     * Iterate the kept rows with a determinate progress bar — only valid when the
-     * export count exactly equals the rows iterated (--fresh, no --limit).
-     */
-    private function syncDeterminate(
-        TmdbExportService $export,
-        string $file,
-        TmdbApiService $api,
-        UpsertTmdbShows $upsertShows,
-        UpsertTmdbImages $upsertImages,
-    ): void {
-        $total = spin(fn (): int => $export->count($file), 'Counting shows…');
-
-        $bar = progress(label: 'Syncing shows', steps: $total);
-        $bar->start();
-
-        $this->syncRows($export, $file, $api, $upsertShows, $upsertImages, $bar->advance(...));
-
-        $bar->finish();
-    }
-
-    /**
-     * Stream the kept rows, hydrating and upserting in BATCH_SIZE chunks. When an
-     * $advance callback is given (determinate bar) it fires once per row.
+     * Stream the kept rows, hydrating and upserting in BATCH_SIZE chunks.
      */
     private function syncRows(
         TmdbExportService $export,
@@ -88,7 +60,6 @@ class SyncTmdbShows extends Command
         TmdbApiService $api,
         UpsertTmdbShows $upsertShows,
         UpsertTmdbImages $upsertImages,
-        ?callable $advance = null,
     ): void {
         $ids = [];
 
@@ -96,27 +67,39 @@ class SyncTmdbShows extends Command
             // Skip a malformed (non-numeric) export id rather than let (int) coerce
             // it to 0 and waste a /tv/0 hydration call.
             if (! is_numeric($row['id'])) {
-                if ($advance !== null) {
-                    $advance();
-                }
-
                 continue;
             }
 
             $ids[] = (int) $row['id'];
 
             if (count($ids) >= self::BATCH_SIZE) {
-                $this->syncChunk($ids, $api, $upsertShows, $upsertImages);
+                $this->syncChunkSafely($ids, $api, $upsertShows, $upsertImages);
                 $ids = [];
-            }
-
-            if ($advance !== null) {
-                $advance();
             }
         }
 
         if ($ids !== []) {
+            $this->syncChunkSafely($ids, $api, $upsertShows, $upsertImages);
+        }
+    }
+
+    /**
+     * Run one chunk, reporting rather than propagating a failure so one bad batch
+     * (a transient API failure or a single malformed row) can't abort the entire
+     * ingest and silently truncate the catalog — the loop moves on to the next.
+     *
+     * @param  array<int, int>  $ids
+     */
+    private function syncChunkSafely(
+        array $ids,
+        TmdbApiService $api,
+        UpsertTmdbShows $upsertShows,
+        UpsertTmdbImages $upsertImages,
+    ): void {
+        try {
             $this->syncChunk($ids, $api, $upsertShows, $upsertImages);
+        } catch (\Throwable $e) {
+            report($e);
         }
     }
 
@@ -159,6 +142,15 @@ class SyncTmdbShows extends Command
         }
 
         $upsertShows->handle($payloads);
+
+        // Heartbeat: print every 1000th hydrated title. spin()/progress() render
+        // nothing under sync:catalog's nested Artisan::call, so this plain line
+        // is the only visible movement; the label distinguishes this phase.
+        foreach ($payloads as $payload) {
+            if (++$this->processed % 1000 === 0) {
+                $this->output->writeln("  [tmdb shows {$this->processed}] ".($payload['name'] ?? '—'));
+            }
+        }
 
         $shows = Show::query()
             ->whereIn('_tmdb_id', array_column($payloads, 'id'))

@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Throwable;
 
 #[Description('Sync the catalog from TMDB and TVDB, then apply IMDb ratings, surviving any single failure')]
-#[Signature('sync:catalog')]
+#[Signature('sync:catalog {--fresh}')]
 class SyncCatalog extends Command
 {
     /**
@@ -27,8 +27,12 @@ class SyncCatalog extends Command
         $failed = false;
 
         foreach (self::COMMANDS as $command) {
+            $arguments = $command === SyncTvdbShows::class && $this->option('fresh')
+                ? ['--fresh' => true]
+                : [];
+
             try {
-                if (Artisan::call($command, [], $this->output) !== self::SUCCESS) {
+                if (Artisan::call($command, $arguments, $this->output) !== self::SUCCESS) {
                     $failed = true;
                 }
             } catch (Throwable $e) {

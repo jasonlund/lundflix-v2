@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Models\Movie;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
@@ -126,4 +128,65 @@ it('reprocesses an already-synced movie with --fresh', function (): void {
 
     // Assert
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
+});
+
+it('prints a phase-labeled heartbeat every 1000th hydrated title', function (): void {
+    // Arrange
+    // 1000 hydratable ids so the running count reaches the every-1000th boundary.
+    // A minimal per-id payload (no images) keeps this volume test fast — the
+    // heartbeat only needs a title; ingest correctness is covered by other tests.
+    $lines = array_map(fn (int $id): string => json_encode(['id' => $id]), range(1, 1000));
+    $export = gzencode(implode("\n", $lines));
+    Http::fake([
+        '*movie_ids*' => Http::response($export),
+        '*api.themoviedb.org*' => function (Request $request) {
+            preg_match('#/movie/(\d+)#', (string) $request->url(), $m);
+            $id = (int) ($m[1] ?? 0);
+
+            return Http::response(json_encode(['id' => $id, 'title' => "Movie {$id}"]));
+        },
+    ]);
+
+    // Act & Assert
+    $this->artisan('tmdb:sync-movies')->expectsOutputToContain('[movies 1000]');
+});
+
+it('continues to the next batch when one batch throws', function (): void {
+    // Arrange
+    Exceptions::fake();
+    // Synthetic export body: a >1000-row export is a structural input a committed
+    // real fixture can't practically provide — ids 1..1001 force a second batch
+    // (batch 1 = 1..1000, batch 2 = id 1001) across the BATCH_SIZE=1000 boundary.
+    $lines = array_map(fn (int $id): string => json_encode(['id' => $id]), range(1, 1001));
+    $export = gzencode(implode("\n", $lines));
+    $matrix = fixtureBytes('Catalog/tmdb/movie.json');
+    $decoded = json_decode($matrix, true);
+    $decoded['id'] = 1001;
+    $batchTwoBody = json_encode($decoded);
+    Http::fake([
+        '*movie_ids*' => Http::response($export),
+        '*api.themoviedb.org*' => function (Request $request) use ($batchTwoBody) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+
+            return match (true) {
+                str_ends_with($path, '/movie/1001') => Http::response($batchTwoBody),
+                // One batch-1 id 500s persistently; TMDB aggregates a persistent
+                // non-404 failure into a thrown TmdbRequestFailed, so batch 1 throws.
+                str_ends_with($path, '/movie/1') => Http::response('', 500),
+                default => Http::response('', 404),
+            };
+        },
+    ]);
+
+    // Act
+    try {
+        $this->artisan('tmdb:sync-movies');
+    } catch (Throwable) {
+        // A throwing batch currently aborts the command; surface the missing
+        // batch-2 row as this test's failure rather than the propagated throw.
+    }
+
+    // Assert
+    expect(Movie::where('_tmdb_id', 1001)->exists())->toBeTrue();
+    Exceptions::assertReported(TmdbRequestFailed::class);
 });

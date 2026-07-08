@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Show;
+use App\Domains\Catalog\Support\ExistingShowResolver;
 use App\Domains\Catalog\Support\RawSourceColumns;
+use App\Domains\Catalog\Support\SourceIds;
 use Illuminate\Support\Carbon;
 
-final class UpsertTvdbShows
+final readonly class UpsertTvdbShows
 {
     private const string SOURCE = 'tvdb';
 
@@ -36,6 +38,21 @@ final class UpsertTvdbShows
     ];
 
     /**
+     * TVDB `_tvdb_*` DATE columns cast via `NullableDate` on the model; when
+     * writing through the cast-bypassing `Model::upsert()` that cast never runs,
+     * so blank/sentinel dates must be nulled here to satisfy MySQL's strict DATE
+     * columns (matching `NullableDate::set()`).
+     *
+     * @var list<string>
+     */
+    private const array DATE_COLUMNS = [
+        '_tvdb_firstAired',
+        '_tvdb_lastAired',
+    ];
+
+    public function __construct(private ExistingShowResolver $resolver = new ExistingShowResolver) {}
+
+    /**
      * @param  array<int, array<string, mixed>>  $payloads  decoded TVDB /series/{id}/extended responses
      */
     public function handle(array $payloads): int
@@ -48,22 +65,48 @@ final class UpsertTvdbShows
 
         $payloads = $this->dedupeByImdbId($payloads);
 
-        $rows = array_map(
-            fn (array $payload): array => $this->rawTvdbRow($payload, $now),
-            $payloads,
-        );
+        $candidates = $this->resolver->loadCandidates(array_map($this->sourceIdsFor(...), $payloads));
 
-        Show::upsert($rows, ['_tvdb_id'], array_keys($rows[0]));
+        $touchedIds = [];
+        $tvdbOnlyRows = [];
 
-        Show::query()
-            ->whereIn('_tvdb_id', array_column($rows, '_tvdb_id'))
-            ->searchable();
+        foreach ($payloads as $payload) {
+            $existing = $this->resolver->match($this->sourceIdsFor($payload), $candidates);
+
+            if ($existing instanceof Show) {
+                $existing->fill($this->tvdbColumnsFor($payload, $now));
+                $existing->save();
+                $touchedIds[] = $existing->getKey();
+
+                continue;
+            }
+
+            $tvdbOnlyRows[] = $this->rawTvdbRow($payload, $now);
+        }
+
+        $touchedIds = array_merge($touchedIds, $this->insertTvdbOnly($tvdbOnlyRows));
+
+        Show::query()->whereIn('id', $touchedIds)->searchable();
 
         return count($payloads);
     }
 
     /**
-     * Pull the IMDb id out of the nested `remoteIds[]`: the entry whose
+     * Extract the three cross-source ids out of a TVDB /series/extended payload.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function sourceIdsFor(array $payload): SourceIds
+    {
+        return new SourceIds(
+            $this->imdbIdFrom($payload),
+            $this->tmdbIdFrom($payload),
+            $this->tvdbIdFrom($payload),
+        );
+    }
+
+    /**
+     * Pull the IMDb anchor out of the nested `remoteIds[]`: the entry whose
      * `sourceName` is "IMDB". Returns null when there is no such entry.
      *
      * @param  array<string, mixed>  $payload
@@ -80,11 +123,37 @@ final class UpsertTvdbShows
     }
 
     /**
+     * Pull the TMDB id out of the nested `remoteIds[]`: the entry whose
+     * `sourceName` is "TheMovieDB.com", cast to int. Null when absent.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function tmdbIdFrom(array $payload): ?int
+    {
+        foreach ($payload['remoteIds'] ?? [] as $remoteId) {
+            if (($remoteId['sourceName'] ?? null) === 'TheMovieDB.com') {
+                return isset($remoteId['id']) ? (int) $remoteId['id'] : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function tvdbIdFrom(array $payload): ?int
+    {
+        return isset($payload['id']) ? (int) $payload['id'] : null;
+    }
+
+    /**
      * Collapse payloads that share an IMDb id down to the last one (last-wins),
      * so a single `imdb_id` is written exactly once per batch and a later payload
      * never leaves an earlier same-id write half-applied. Payloads with no IMDb id
-     * are distinct tvdb-only shows and pass through untouched. (Cross-batch dedup
-     * of prior source-only rows by `_tvdb_id` is deferred to FLIX-180.)
+     * are distinct tvdb-only shows and pass through untouched; matching them to an
+     * existing row (including a prior source-only row, by any source id) is handled
+     * downstream by {@see ExistingShowResolver}.
      *
      * @param  array<int, array<string, mixed>>  $payloads
      * @return list<array<string, mixed>>
@@ -110,6 +179,28 @@ final class UpsertTvdbShows
     }
 
     /**
+     * Insert the payloads that matched no existing show via a cast-bypassing
+     * `Model::upsert()`, then return the ids of the affected shows (so they can
+     * be reindexed). Returns no ids when there are no tvdb-only rows.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return list<int|string>
+     */
+    private function insertTvdbOnly(array $rows): array
+    {
+        if ($rows === []) {
+            return [];
+        }
+
+        Show::upsert($rows, ['_tvdb_id'], array_keys($rows[0]));
+
+        return Show::query()
+            ->whereIn('_tvdb_id', array_column($rows, '_tvdb_id'))
+            ->pluck('id')
+            ->all();
+    }
+
+    /**
      * Map a raw TVDB payload onto the model's source-prefixed `_tvdb_*` columns
      * (plus the app-owned `tvdb_synced_at` stamp), persisting each value exactly
      * as the API returned it. The `_imdb_id` crosswalk is seeded separately in
@@ -128,8 +219,9 @@ final class UpsertTvdbShows
 
     /**
      * Build a cast-bypassing row for `Model::upsert()`: json columns are
-     * pre-encoded and the timestamp is rendered to a datetime string, since
-     * `upsert()` writes raw values without invoking the model's casts.
+     * pre-encoded, sentinel dates nulled, and the timestamp rendered to a
+     * datetime string, since `upsert()` writes raw values without invoking the
+     * model's casts.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
@@ -144,6 +236,12 @@ final class UpsertTvdbShows
 
         foreach (self::JSON_COLUMNS as $column) {
             $row[$column] = $row[$column] === null ? null : json_encode($row[$column]);
+        }
+
+        foreach (self::DATE_COLUMNS as $column) {
+            if (in_array($row[$column], [null, '', '0000-00-00'], true)) {
+                $row[$column] = null;
+            }
         }
 
         $row['tvdb_synced_at'] = $now->toDateTimeString();

@@ -6,6 +6,7 @@ use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Services\TmdbApiService;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 
@@ -140,60 +141,79 @@ it('de-duplicates repeated input ids, firing one request per unique id and keyin
 
 /*
 |--------------------------------------------------------------------------
-| movies(array $ids): a transport failure inside the pool halts loud
+| movies(array $ids): a transport failure inside the pool reports, not throws
 |--------------------------------------------------------------------------
 | When one id's request fails at the connection/transport level and exhausts
 | retries, Http::pool() places a ConnectionException object at that slot
 | (it does not throw). The batch must surface that as a domain
-| TmdbRequestFailed — not a raw TypeError from passing the exception to a
-| Response-typed decoder — and must evaluate every id before throwing, so a
-| multi-id failure reports ALL failed ids. shouldRetry() retries a
-| non-RequestException, so the connection failure exhausts retries (Sleep is
-| faked so the base delay doesn't sleep), and the fake throws a
-| ConnectionException for the failing id's url.
+| TmdbRequestFailed via report() — not a raw TypeError from passing the
+| exception to a Response-typed decoder — while still RETURNING the succeeding
+| ids so one transient failure doesn't drop the whole batch's good rows. Every
+| id is evaluated, so a multi-id failure reports ALL failed ids together.
+| shouldRetry() retries a non-RequestException, so the connection failure
+| exhausts retries (Sleep is faked so the base delay doesn't sleep), and the
+| fake throws a ConnectionException for the failing id's url. Exceptions::fake()
+| captures the reported aggregate.
 */
 
-it('throws TmdbRequestFailed when one id in the batch fails at the transport level', function (): void {
+it('reports TmdbRequestFailed and still returns the succeeding id when one id in the batch fails at the transport level', function (): void {
+    // Arrange
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
+    Exceptions::fake();
     Http::fake([
         '*/movie/603*' => fn () => throw new ConnectionException('Connection timed out'),
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
     ]);
 
-    $call = fn () => resolve(TmdbApiService::class)->movies([603, 604]);
+    // Act
+    $result = resolve(TmdbApiService::class)->movies([603, 604]);
 
-    expect($call)->toThrow(TmdbRequestFailed::class);
+    // Assert
+    expect($result)->toBe([604 => json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true)]);
+    Exceptions::assertReported(fn (TmdbRequestFailed $e): bool => str_contains($e->getMessage(), '603'));
 });
 
-it('reports every failed id when multiple ids in the batch fail at the transport level', function (): void {
+it('reports every failed id and still returns the succeeding id when multiple ids in the batch fail at the transport level', function (): void {
+    // Arrange
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
+    Exceptions::fake();
     Http::fake([
         '*/movie/603*' => fn () => throw new ConnectionException('Connection timed out'),
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
         '*/movie/605*' => fn () => throw new ConnectionException('Connection timed out'),
     ]);
 
-    $call = fn () => resolve(TmdbApiService::class)->movies([603, 604, 605]);
+    // Act
+    $result = resolve(TmdbApiService::class)->movies([603, 604, 605]);
 
-    expect($call)->toThrow(TmdbRequestFailed::class, '603')
-        ->and($call)->toThrow(TmdbRequestFailed::class, '605');
+    // Assert
+    expect($result)->toBe([604 => json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true)]);
+    Exceptions::assertReported(
+        fn (TmdbRequestFailed $e): bool => str_contains($e->getMessage(), '603') && str_contains($e->getMessage(), '605')
+    );
 });
 
-it('reports every failed id when multiple ids in the batch keep returning a 500 past retries', function (): void {
+it('reports every failed id and still returns the succeeding id when multiple ids in the batch keep returning a 500 past retries', function (): void {
+    // Arrange
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
+    Exceptions::fake();
     Http::fake([
         '*/movie/603*' => Http::response('', 500),
         '*/movie/604*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json')),
         '*/movie/605*' => Http::response('', 500),
     ]);
 
-    $call = fn () => resolve(TmdbApiService::class)->movies([603, 604, 605]);
+    // Act
+    $result = resolve(TmdbApiService::class)->movies([603, 604, 605]);
 
-    expect($call)->toThrow(TmdbRequestFailed::class, '603')
-        ->and($call)->toThrow(TmdbRequestFailed::class, '605');
+    // Assert
+    expect($result)->toBe([604 => json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true)]);
+    Exceptions::assertReported(
+        fn (TmdbRequestFailed $e): bool => str_contains($e->getMessage(), '603') && str_contains($e->getMessage(), '605')
+    );
 });
 
 /*
