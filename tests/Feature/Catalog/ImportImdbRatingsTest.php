@@ -53,6 +53,14 @@ it('exits SUCCESS', function (): void {
     $this->artisan('imdb:import-ratings')->assertExitCode(0);
 });
 
+it('emits a progress heartbeat', function (): void {
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
+
+    // Act & Assert
+    $this->artisan('imdb:import-ratings')->expectsOutputToContain('[imdb ratings');
+});
+
 it('deletes the temp file afterward', function (): void {
     // Arrange
     $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');

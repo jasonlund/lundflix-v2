@@ -53,6 +53,7 @@ final class TmdbExportService
         try {
             $response = Http::sink($path)
                 ->timeout(600)
+                ->withOptions(['retry_enabled' => false])
                 ->retry(3, 1000, throw: false)
                 ->get(self::BASE_URL.'/'.$kind->filename($date));
 

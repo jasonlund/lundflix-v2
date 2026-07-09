@@ -95,6 +95,21 @@ it('removes the temp file when the download fails', function (): void {
     expect($tempFiles())->toBe($before);
 });
 
+it('does not compound the global retry middleware past three attempts on a persistent 500', function (): void {
+    // The always-on global Guzzle retry would multiply Laravel's ->retry(3) up to
+    // 3x3 = 9 real requests against a persistently failing host; the retry_enabled
+    // guard suppresses the global layer so exactly three attempts are sent.
+    Http::fake(['*files.tmdb.org*' => Http::response('', 500)]);
+
+    try {
+        resolve(TmdbExportService::class)->download();
+    } catch (RequestException) {
+        // the request count, not the throw, is under test
+    }
+
+    Http::assertSentCount(3);
+});
+
 it('leaves the temp file in place on success', function (): void {
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
 

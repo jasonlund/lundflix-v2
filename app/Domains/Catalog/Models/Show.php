@@ -32,6 +32,7 @@ class Show extends Model
      */
     public function toSearchableArray(): array
     {
+        // TODO: tmdb-only rows (UpsertTmdbShows::insertTmdbOnly) index null title/year here; fall back to _tmdb_name / _tmdb_first_air_date (parsed to year) when _tvdb_* are null, mirroring Movie::toSearchableArray's source union.
         return [
             'id' => $this->id,
             'imdb_id' => $this->_imdb_id,

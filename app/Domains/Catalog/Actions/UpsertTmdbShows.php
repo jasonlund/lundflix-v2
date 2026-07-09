@@ -214,6 +214,10 @@ final readonly class UpsertTmdbShows
     {
         $row = $this->tmdbColumnsFor($payload, $now);
 
+        // TMDB tv carries IMDb's identity key nested in external_ids; copy it raw
+        // so the `_tmdb_id` upsert also seeds `_imdb_id` (null when absent).
+        $row['_imdb_id'] = $this->imdbIdFrom($payload);
+
         foreach (self::JSON_COLUMNS as $column) {
             $row[$column] = $row[$column] === null ? null : json_encode($row[$column]);
         }

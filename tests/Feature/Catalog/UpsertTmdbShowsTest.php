@@ -124,6 +124,21 @@ it('inserts a tmdb-only show with null imdb_id when no existing imdb show matche
         ->and($show->_tmdb_id)->toBe(1234567);
 });
 
+it('seeds _imdb_id from nested external_ids.imdb_id on a fresh tmdb-only insert', function (): void {
+    // Arrange
+    $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $payload['id'] = 1234567;
+    $payload['external_ids']['imdb_id'] = 'tt0944947';
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+    // Assert
+    $show = Show::query()->where('_tmdb_id', 1234567)->firstOrFail();
+    expect($show->_imdb_id)->toBe('tt0944947')
+        ->and($show->_tmdb_id)->toBe(1234567);
+});
+
 it('does not duplicate a tmdb-only show when the same payload is re-run', function (): void {
     // Arrange
     $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
@@ -155,6 +170,32 @@ it('writes one last-wins row when two payloads in one batch share an imdb_id', f
     expect(Show::query()->count())->toBe(1)
         ->and($fresh->_tmdb_id)->toBe(7654321)
         ->and($fresh->_tmdb_name)->toBe('Winning Write');
+});
+
+it('persists a blank TMDB first_air_date as null, not an empty string', function (): void {
+    // Arrange
+    $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $payload['id'] = 603;
+    $payload['first_air_date'] = '';
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+    // Assert
+    expect(DB::table('shows')->where('_tmdb_id', 603)->value('_tmdb_first_air_date'))->toBeNull();
+});
+
+it('persists the 0000-00-00 sentinel TMDB first_air_date as null', function (): void {
+    // Arrange
+    $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $payload['id'] = 604;
+    $payload['first_air_date'] = '0000-00-00';
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+    // Assert
+    expect(DB::table('shows')->where('_tmdb_id', 604)->value('_tmdb_first_air_date'))->toBeNull();
 });
 
 it('returns 0 and persists nothing for empty input', function (): void {

@@ -179,12 +179,9 @@ it('continues to the next batch when one batch throws', function (): void {
     ]);
 
     // Act
-    try {
-        $this->artisan('tmdb:sync-movies');
-    } catch (Throwable) {
-        // A throwing batch currently aborts the command; surface the missing
-        // batch-2 row as this test's failure rather than the propagated throw.
-    }
+    // The command reports a failing batch's TmdbRequestFailed rather than
+    // throwing, so it runs to completion and processes batch 2 regardless.
+    $this->artisan('tmdb:sync-movies');
 
     // Assert
     expect(Movie::where('_tmdb_id', 1001)->exists())->toBeTrue();
