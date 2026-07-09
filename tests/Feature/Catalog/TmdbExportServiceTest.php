@@ -14,7 +14,7 @@ afterEach(fn () => Date::setTestNow());
 
 it('requests the daily tv-series-ids export when asked', function (): void {
     // Arrange
-    Date::setTestNow('2026-06-21');
+    Date::setTestNow('2026-06-21 12:00:00');
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
     $expectedFilename = 'tv_series_ids_'.now()->format('m_d_Y').'.json.gz';
 
@@ -27,28 +27,8 @@ it('requests the daily tv-series-ids export when asked', function (): void {
     @unlink($path);
 });
 
-it('falls back to the prior day for tv-series-ids when today returns a 404', function (): void {
-    // Arrange
-    Date::setTestNow('2026-06-21');
-    $todayFilename = 'tv_series_ids_'.now()->format('m_d_Y').'.json.gz';
-    $yesterdayFilename = 'tv_series_ids_'.now()->subDay()->format('m_d_Y').'.json.gz';
-    Http::fake([
-        '*'.$todayFilename => Http::response('', 404),
-        '*'.$yesterdayFilename => Http::response(gzencode('{"id":1}')),
-    ]);
-
-    // Act
-    $path = resolve(TmdbExportService::class)->download(TmdbExport::TvSeriesIds);
-
-    // Assert
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $yesterdayFilename));
-    expect($path)->not->toBe('');
-
-    @unlink($path);
-});
-
 it('requests the daily movie-ids export for today', function (): void {
-    Date::setTestNow('2026-06-21');
+    Date::setTestNow('2026-06-21 12:00:00');
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
     $expectedFilename = 'movie_ids_'.now()->format('m_d_Y').'.json.gz';
 
@@ -59,19 +39,32 @@ it('requests the daily movie-ids export for today', function (): void {
     @unlink($path);
 });
 
-it('falls back to the prior day when today returns a 404', function (): void {
-    Date::setTestNow('2026-06-21');
-    $todayFilename = 'movie_ids_'.now()->format('m_d_Y').'.json.gz';
-    $yesterdayFilename = 'movie_ids_'.now()->subDay()->format('m_d_Y').'.json.gz';
-    Http::fake([
-        '*'.$todayFilename => Http::response('', 404),
-        '*'.$yesterdayFilename => Http::response(gzencode('{"id":1}')),
-    ]);
+it("requests yesterday's export before 08:00 UTC (today not yet published)", function (): void {
+    // Arrange
+    Date::setTestNow('2026-06-21 07:59:00');
+    Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
+    $expectedFilename = 'movie_ids_'.now()->utc()->subDay()->format('m_d_Y').'.json.gz';
 
+    // Act
     $path = resolve(TmdbExportService::class)->download();
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $yesterdayFilename));
-    expect($path)->not->toBe('');
+    // Assert
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $expectedFilename));
+
+    @unlink($path);
+});
+
+it("requests today's export at/after 08:00 UTC (published)", function (): void {
+    // Arrange
+    Date::setTestNow('2026-06-21 08:00:00');
+    Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
+    $expectedFilename = 'movie_ids_'.now()->utc()->format('m_d_Y').'.json.gz';
+
+    // Act
+    $path = resolve(TmdbExportService::class)->download();
+
+    // Assert
+    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $expectedFilename));
 
     @unlink($path);
 });
@@ -100,6 +93,21 @@ it('removes the temp file when the download fails', function (): void {
     }
 
     expect($tempFiles())->toBe($before);
+});
+
+it('does not compound the global retry middleware past three attempts on a persistent 500', function (): void {
+    // The always-on global Guzzle retry would multiply Laravel's ->retry(3) up to
+    // 3x3 = 9 real requests against a persistently failing host; the retry_enabled
+    // guard suppresses the global layer so exactly three attempts are sent.
+    Http::fake(['*files.tmdb.org*' => Http::response('', 500)]);
+
+    try {
+        resolve(TmdbExportService::class)->download();
+    } catch (RequestException) {
+        // the request count, not the throw, is under test
+    }
+
+    Http::assertSentCount(3);
 });
 
 it('leaves the temp file in place on success', function (): void {

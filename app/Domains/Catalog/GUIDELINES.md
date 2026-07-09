@@ -36,9 +36,11 @@ verbatim; derive/normalize downstream, not on ingest.
 
 ## Sync ordering (`tmdb:sync-shows`)
 
-- `tmdb:sync-shows` enriches only — it matches existing shows by `_imdb_id` and
-  never creates one, so it depends on `tvdb:sync-shows` having run first; run
-  standalone or against an empty `shows` table it silently persists nothing.
+- `tmdb:sync-shows` create-or-merge — it matches an existing show by **any**
+  source id (`_imdb_id`, `_tmdb_id`, or `_tvdb_id`, including the IMDb id nested
+  in `external_ids`) and merges its `_tmdb_*` columns onto it; when nothing
+  matches it inserts a tmdb-only row (seeding `_imdb_id` when the payload carries
+  one). It no longer depends on `tvdb:sync-shows` having run first.
 
 ## Ratings update (`UpdateImdbRatings`)
 

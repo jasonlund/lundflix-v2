@@ -19,24 +19,27 @@ use Throwable;
  * order/404/aggregate-failure contract lives here.
  *
  * Not used by Common's PlexApiService, whose `poolByServer()` is a deliberately
- * different contract (per-server tolerance, no chunk/dedupe/aggregate-throw).
+ * different contract (per-server tolerance, no chunk/dedupe/aggregate-report).
  */
 trait PoolsIdBatches
 {
     /**
      * Batch-fetch one request per id, fanning out one {@see Http::pool} per
      * chunk from {@see chunkIds} so at most `concurrency` requests are in flight
-     * at once; responses accumulate across chunks (each named after its id via
-     * {@see configure}'s shared auth/retry), then decode in input order. A
-     * single id's 404 decodes to null without sinking its siblings.
+     * at once; each chunk (named after its id via {@see configure}'s shared
+     * auth/retry) is decoded and freed before the next fans out, so results
+     * still land in input order across chunk boundaries. A single id's 404
+     * decodes to null without sinking its siblings.
      *
      * Request failures don't short-circuit the batch: both a connection-level
      * failure (a pool entry that comes back as a {@see Throwable} instead of a
      * {@see Response}) and the per-service failure conditions signalled by
      * {@see resolvePooled} are collected per-id, the rest are still decoded, and
      * once the loop completes any failed ids are surfaced together as the single
-     * aggregate {@see pooledFailure}. Auth (401) is fatal for the whole batch:
-     * {@see resolvePooled} throws it immediately rather than aggregating.
+     * aggregate {@see pooledFailure} — reported for observability, not thrown, so
+     * the batch's successful results are still returned for the callers to upsert.
+     * Auth (401) is fatal for the whole batch: {@see resolvePooled} throws it
+     * immediately rather than aggregating.
      *
      * @template TKey of int|string
      *
@@ -48,36 +51,55 @@ trait PoolsIdBatches
     {
         $ids = array_values(array_unique($ids));
 
-        $responses = [];
-
-        foreach ($this->chunkIds($ids) as $chunk) {
-            $responses += Http::pool(fn (Pool $pool): array => array_map(
-                fn (int|string $id) => $build($this->configure($pool->as((string) $id)), $id),
-                $chunk,
-            ));
-        }
-
         $results = [];
         $failedIds = [];
 
-        foreach ($ids as $id) {
-            $response = $responses[(string) $id];
+        // Resolve and free each chunk's responses in-loop rather than
+        // accumulating them all. Every chunk's Http::pool() spins up its own
+        // curl-multi handler holding pipe fds plus one socket per in-flight
+        // request; holding all chunks' responses kept every handler alive at
+        // once, exhausting the process fd limit on a full sync (measured ~380
+        // pipe fds; a small VPS caps at ~256). Dropping the responses and
+        // forcing a GC after each chunk reclaims that chunk's handler before the
+        // next opens one, bounding live fds to a single chunk. Connection: close
+        // additionally stops each request's socket lingering in keep-alive
+        // (measured 161 ESTABLISHED → concurrency). Pooled path only —
+        // single-call paths keep their keep-alive intentionally.
+        foreach ($this->chunkIds($ids) as $chunk) {
+            $responses = Http::pool(fn (Pool $pool): array => array_map(
+                fn (int|string $id) => $build(
+                    $this->configure($pool->as((string) $id))->withHeaders(['Connection' => 'close']),
+                    $id,
+                ),
+                $chunk,
+            ));
 
-            if (! $response instanceof Response) {
-                $failedIds[] = $id;
+            foreach ($chunk as $id) {
+                $response = $responses[(string) $id];
 
-                continue;
+                if (! $response instanceof Response) {
+                    $failedIds[] = $id;
+
+                    continue;
+                }
+
+                try {
+                    $results[$id] = $this->resolvePooled($response);
+                } catch (PooledIdFailed) {
+                    $failedIds[] = $id;
+                }
             }
 
-            try {
-                $results[$id] = $this->resolvePooled($response);
-            } catch (PooledIdFailed) {
-                $failedIds[] = $id;
-            }
+            unset($responses);
+            gc_collect_cycles();
         }
 
         if ($failedIds !== []) {
-            throw $this->pooledFailure($failedIds);
+            // Report — don't throw. A transient per-id failure must not discard the
+            // whole batch's successful results (that dropped ~1000 good rows per one
+            // bad id). Callers upsert the successes; failed ids are logged for a later
+            // targeted re-sync.
+            report($this->pooledFailure($failedIds));
         }
 
         return $results;

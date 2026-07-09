@@ -23,27 +23,54 @@ class SyncTvdbShows extends Command
      */
     private const int BATCH_SIZE = 1000;
 
+    /**
+     * Running count of hydrated shows, for the every-1000th progress heartbeat.
+     */
+    private int $processed = 0;
+
     public function handle(
         TvdbApiService $api,
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
     ): int {
+        $this->output->writeln('Syncing TVDB shows…');
+
         $ids = [];
 
         foreach ($this->keptIds($api) as $id) {
             $ids[] = $id;
 
             if (count($ids) >= self::BATCH_SIZE) {
-                $this->syncChunk($ids, $api, $upsertShows, $upsertArtworks);
+                $this->syncChunkSafely($ids, $api, $upsertShows, $upsertArtworks);
                 $ids = [];
             }
         }
 
         if ($ids !== []) {
-            $this->syncChunk($ids, $api, $upsertShows, $upsertArtworks);
+            $this->syncChunkSafely($ids, $api, $upsertShows, $upsertArtworks);
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Run one chunk, reporting rather than propagating a failure so one bad batch
+     * (a transient API failure or a single malformed record) can't abort the entire
+     * ingest and silently truncate the catalog — the loop moves on to the next.
+     *
+     * @param  array<int, int>  $ids
+     */
+    private function syncChunkSafely(
+        array $ids,
+        TvdbApiService $api,
+        UpsertTvdbShows $upsertShows,
+        UpsertTvdbArtworks $upsertArtworks,
+    ): void {
+        try {
+            $this->syncChunk($ids, $api, $upsertShows, $upsertArtworks);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -152,6 +179,15 @@ class SyncTvdbShows extends Command
         }
 
         $upsertShows->handle($payloads);
+
+        // Heartbeat: print every 1000th hydrated title. spin()/progress() render
+        // nothing under sync:catalog's nested Artisan::call, so this plain line
+        // is the only visible movement; the label distinguishes this phase.
+        foreach ($payloads as $payload) {
+            if (++$this->processed % 1000 === 0) {
+                $this->output->writeln("  [tvdb shows {$this->processed}] ".($payload['name'] ?? '—'));
+            }
+        }
 
         $shows = Show::query()
             ->whereIn('_tvdb_id', array_column($payloads, 'id'))
