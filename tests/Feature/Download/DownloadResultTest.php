@@ -19,10 +19,10 @@ it('exposes every property unchanged from direct construction', function (): voi
         quality: Quality::P1080,
         codec: Codec::Hevc,
         source: Source::WebDl,
+        releaseTag: ReleaseTag::None,
         availability: 17,
         sizeBytes: 4_294_967_296,
         isRar: true,
-        releaseTag: ReleaseTag::None,
     );
 
     // Assert
