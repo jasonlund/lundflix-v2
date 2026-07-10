@@ -8,6 +8,8 @@ use App\Domains\Download\Data\DownloadResult;
 use App\Domains\Download\Enums\Category;
 use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
+use App\Domains\Download\Enums\ReleaseTag;
+use App\Domains\Download\Enums\Source;
 use App\Domains\Download\Exceptions\DownloadRequestFailed;
 use App\Domains\Download\Exceptions\InvalidDownloadCredentials;
 use App\Domains\Download\Settings\DownloadSettings;
@@ -54,10 +56,17 @@ final class DownloadSearchService
     }
 
     /**
-     * Rank a parsed result set highest-preference first, per decision 6:
+     * Rank a parsed result set highest-preference first via a 6-tier chain, each
+     * tier deciding ONLY when every higher tier ties:
      * (1) quality via Quality::priority() DESC — a null quality has no priority,
-     * so a PHP_INT_MIN sentinel sinks unrecognized-quality rows last; (2) non-rar
-     * before rar (isRar ASC); (3) availability DESC.
+     * so a PHP_INT_MIN sentinel sinks unrecognized-quality rows last; (2) source
+     * via Source::priority() DESC; (3) codec via Codec::priority() ASC; (4)
+     * releaseTag via ReleaseTag::priority() DESC; (5) non-rar before rar (isRar
+     * ASC); (6) availability DESC.
+     *
+     * Codec compares ASCENDING while the other priority tiers compare descending
+     * because Codec::priority() is inverted — 0 is best (Av1) … 4 worst (Other),
+     * so the lowest int is the most preferred and must sort first.
      *
      * Null-quality rows are KEPT (sorted last), not filtered — this service is a
      * sorted-set contract; callers decide what to drop.
@@ -69,6 +78,10 @@ final class DownloadSearchService
     {
         return $results
             ->sort(fn (DownloadResult $a, DownloadResult $b): int => ($b->quality?->priority() ?? PHP_INT_MIN) <=> ($a->quality?->priority() ?? PHP_INT_MIN)
+                ?: $b->source->priority() <=> $a->source->priority()
+                // Codec priority is inverted (0 = best), so this tier ALONE compares ASC — do NOT "fix" to $b <=> $a.
+                ?: $a->codec->priority() <=> $b->codec->priority()
+                ?: $b->releaseTag->priority() <=> $a->releaseTag->priority()
                 ?: $a->isRar <=> $b->isRar
                 ?: $b->availability <=> $a->availability)
             ->values();
@@ -172,6 +185,8 @@ final class DownloadSearchService
             name: $name,
             quality: Quality::fromName($name),
             codec: Codec::fromName($name),
+            source: Source::fromName($name),
+            releaseTag: ReleaseTag::fromName($name),
             availability: $this->availabilityFrom($cells->eq(6)->text()),
             sizeBytes: $this->bytesFromSize($cells->eq(5)->text()),
             isRar: preg_match('/no[\s._-]*rar/i', $name) === 0,

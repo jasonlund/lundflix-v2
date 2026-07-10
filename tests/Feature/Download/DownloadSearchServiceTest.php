@@ -6,6 +6,8 @@ use App\Domains\Download\Data\DownloadResult;
 use App\Domains\Download\Enums\Category;
 use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
+use App\Domains\Download\Enums\ReleaseTag;
+use App\Domains\Download\Enums\Source;
 use App\Domains\Download\Exceptions\DownloadRequestFailed;
 use App\Domains\Download\Exceptions\InvalidDownloadCredentials;
 use App\Domains\Download\Exceptions\RateLimitExceeded;
@@ -179,6 +181,53 @@ it('maps an X265 release to Codec::Hevc', function (): void {
     expect($result->codec)->toBe(Codec::Hevc);
 });
 
+it('maps a WEB-DL release to Source::WebDl', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7537888);
+
+    // Assert
+    expect($result->source)->toBe(Source::WebDl);
+});
+
+it('maps a WEBRip release to Source::WebRip', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    // downloadId 7270124 "The Matrix 1999 1080p WEBRip DDP7 1 x264-ZoroSenpai"
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7270124);
+
+    // Assert
+    expect($result->source)->toBe(Source::WebRip);
+});
+
+it('maps a BluRay release to Source::BluRay', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    // downloadId 7288096 "The Matrix 1999 4K Remaster 1080p BluRay DTS x264-Geek"
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7288096);
+
+    // Assert
+    expect($result->source)->toBe(Source::BluRay);
+});
+
 it('maps a 720p release to Quality::P720', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
@@ -192,6 +241,40 @@ it('maps a 720p release to Quality::P720', function (): void {
 
     // Assert
     expect($result->quality)->toBe(Quality::P720);
+});
+
+it('maps a PROPER release to ReleaseTag::Proper', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    // downloadId 6982976 "The Matrix Revolutions 2003 PROPER 1080p UHD BluRay DD 7 1 x264-LoRD"
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 6982976);
+
+    // Assert
+    expect($result->releaseTag)->toBe(ReleaseTag::Proper);
+});
+
+// REPACK has no real row in search_movie.html, so parse-side Repack is unit-covered
+// only (ReleaseTagTest); fabricating a REPACK fixture row is disallowed.
+it('maps a release with neither PROPER nor REPACK to ReleaseTag::None', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    // downloadId 7537888 "The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB"
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7537888);
+
+    // Assert
+    expect($result->releaseTag)->toBe(ReleaseTag::None);
 });
 
 it('flags a bracketed [NORAR] release as not rar\'d', function (): void {
@@ -244,27 +327,49 @@ it('flags a dashed -NoRAR group-suffix release as not rar\'d', function (): void
 | DownloadSearchService — search() sorted results slice
 |--------------------------------------------------------------------------
 | search() returns EVERY parsed `table#torrents` row (nothing filtered — a
-| null-quality row is KEPT) ordered by quality (720p > 1080p > unrecognized
-| LAST — the ladder deliberately ranks 720p above 1080p), then availability
-| descending at equal quality. Ground truth is the byte-exact search_norar.html
-| fixture already documented above, whose results table mixes recognized- and
-| null-quality rows across a range of availability counts (search_movie.html is
-| unsuitable: its 50 result rows are all 1080p/720p — the 2160p rows live in the
-| sidebar `table#topTables`, never the results).
+| null-quality row is KEPT) ordered by a 6-tier chain, each tier deciding ONLY
+| when all higher tiers tie:
+|   quality → source → codec → releaseTag → isRar → availability.
+| Quality ranks 720p > 1080p > unrecognized LAST (the ladder deliberately ranks
+| 720p above 1080p); a null-quality row sinks to the end but is never dropped.
 |
-| Anchors below (all inside table#torrents; SOURCE-order index in parens):
-|   quality:      720p 3794673 (46), 1080p 4114060 (41), null 4979363 (4) —
-|     a correct sort reorders them to 720p < 1080p < null, inverting source.
-|   availability: two 1080p rows 4664952 avail 11312 (28) and 4708249 avail 145
-|     (12) — a correct sort places the higher-availability row first, inverting
-|     source. (This fixture is entirely non-rar, so the rar tie-break is not
-|     observable here and is deferred to a fixture that mixes rar states.)
+| The quality/availability tiers use search_norar.html (search_movie's 50 result
+| rows are all 1080p/720p — its 2160p and other rows live in the sidebar
+| `table#topTables`, never the results). The source/codec/releaseTag tiers use
+| search_movie.html, whose result rows are entirely rar (isRar ties across the
+| whole page). Each of those three anchor PAIRS ties on every tier ABOVE the one
+| it isolates AND is chosen so the LOWEST tie-break, availability, currently
+| orders the pair the WRONG way — so under the pre-chain sort
+| (quality → isRar → availability) the asserted order is inverted, and ONLY the
+| new tier can produce it. Availability values are from the byte-exact fixture.
 |
-|   tests/Fixtures/Download/downloads/search_rar_mixed.html — search_movie.html
-|     with one real non-rar 1080p row (downloadId 4676917, [NORAR], avail 43)
-|     injected to give the rar tie-break a mixed page. It ties on quality with
-|     the rar 1080p row 6692762 (avail 628), so availability-desc alone would
-|     rank 6692762 first — only the non-rar-before-rar clause explains the order.
+|   quality (search_norar.html): 720p 3794673, 1080p 4114060, null 4979363 — a
+|     correct sort reorders them 720p < 1080p < null, inverting source order.
+|   source (search_movie.html): 6690919 BluRay avail 106 ("...Remastered BluRay
+|     1080p ... x264-hallowed") before 6788230 WebDl avail 189 ("The Matrix
+|     Reloaded 2003 1080p PTV WEB-DL ... H 264-PiRaTeS") — both 1080p/X264/None,
+|     so quality/codec/releaseTag tie; availability alone would rank the WebDl row
+|     first (189 > 106), so only source (BluRay > WebDl) explains BluRay first.
+|   codec (search_movie.html): 6666741 Hevc avail 134 ("...1080p UHD BluRay ...
+|     x265-HiDt") before 7165734 X264 avail 146 ("...Remastered 1080p BluRay
+|     x264-OFT") — both 1080p/BluRay/None, so quality/source tie; availability
+|     alone would rank the X264 row first (146 > 134), so only codec (Hevc > X264)
+|     explains Hevc first.
+|   releaseTag (search_movie.html): 6982976 Proper avail 290 ("...PROPER 1080p
+|     UHD BluRay ... x264-LoRD") before 7288096 None avail 463 ("The Matrix 1999
+|     4K Remaster 1080p BluRay ... x264-Geek") — both 1080p/BluRay/X264, so
+|     quality/source/codec tie; availability alone would rank the None row first
+|     (463 > 290), so only releaseTag (Proper > None) explains Proper first.
+|   availability (search_norar.html): two 1080p rows 4664952 avail 11312 and
+|     4708249 avail 145 — the higher-availability row sorts first.
+|
+|   isRar (search_rar_mixed.html = search_movie + one injected non-rar row): the
+|     injected 4676917 is retagged "...1080p WEB-DL h264-DiRT[NORAR]" so it parses
+|     1080p/WebDl/X264/None/NON-rar (avail 43), tying the real rar row 7537888
+|     "...1080p MA WEB-DL H 264..." (avail 103) on quality/source/codec/releaseTag.
+|     Availability DISAGREES with isRar here (103 > 43 would rank the rar row first),
+|     so only the isRar tier (non-rar > rar) can put 4676917 ahead — that
+|     disagreement is what isolates the tier from availability below it.
 */
 
 it('keeps the null-quality row in the result set', function (): void {
@@ -315,7 +420,73 @@ it('orders by availability descending at equal quality', function (): void {
     expect($positionOf(4664952))->toBeLessThan($positionOf(4708249));
 });
 
-it('orders a non-rar release before a rar release at equal quality', function (): void {
+// source tier (2): 6690919 BluRay and 6788230 WebDl both parse 1080p/X264/None
+// (all search_movie rows are rar, so isRar ties too), leaving quality as the only
+// higher tier — and it ties. The BluRay row has LOWER availability (106 < 189), so
+// the pre-chain availability tie-break ranks the WebDl row first; only source
+// (BluRay > WebDl) can put the BluRay row ahead.
+it('orders by source at equal quality', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('matrix');
+
+    // Assert
+    $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
+    expect($positionOf(6690919))->toBeLessThan($positionOf(6788230));
+});
+
+// codec tier (3): 6666741 Hevc and 7165734 X264 both parse 1080p/BluRay/None (all
+// rar), so quality and source tie above. The Hevc row has LOWER availability
+// (134 < 146), so the pre-chain availability tie-break ranks the X264 row first;
+// only codec (Hevc > X264) can put the Hevc row ahead.
+it('orders by codec at equal quality and source', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('matrix');
+
+    // Assert
+    $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
+    expect($positionOf(6666741))->toBeLessThan($positionOf(7165734));
+});
+
+// releaseTag tier (4): 6982976 Proper and 7288096 None both parse 1080p/BluRay/X264
+// (all rar), so quality/source/codec all tie above. The Proper row has LOWER
+// availability (290 < 463), so the pre-chain availability tie-break ranks the None
+// row first; only releaseTag (Proper > None) can put the Proper row ahead.
+it('orders by releaseTag at equal quality, source, and codec', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('matrix');
+
+    // Assert
+    $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
+    expect($positionOf(6982976))->toBeLessThan($positionOf(7288096));
+});
+
+// isRar tier (5): retagged 4676917 (non-rar, avail 43) and real 7537888 (rar,
+// avail 103) both parse 1080p/WebDl/X264/None, so quality/source/codec/releaseTag
+// all tie above. The non-rar row has LOWER availability (43 < 103), so the
+// availability tier below would rank the rar row first; only isRar (non-rar > rar)
+// can put 4676917 ahead — proving this assertion isolates isRar, not availability.
+it('orders a non-rar release before a rar release at equal quality, source, codec, and tag', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
     $settings->uid = 'cookie-uid';
@@ -328,7 +499,7 @@ it('orders a non-rar release before a rar release at equal quality', function ()
 
     // Assert
     $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
-    expect($positionOf(4676917))->toBeLessThan($positionOf(6692762));
+    expect($positionOf(4676917))->toBeLessThan($positionOf(7537888));
 });
 
 /*

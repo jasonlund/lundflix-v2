@@ -6,6 +6,8 @@ namespace App\Domains\Download\Data;
 
 use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
+use App\Domains\Download\Enums\ReleaseTag;
+use App\Domains\Download\Enums\Source;
 use Spatie\LaravelData\Data;
 
 class DownloadResult extends Data
@@ -15,6 +17,8 @@ class DownloadResult extends Data
         public string $name,
         public ?Quality $quality,
         public Codec $codec,
+        public Source $source,
+        public ReleaseTag $releaseTag,
         public int $availability,
         public int $sizeBytes,
         public bool $isRar,

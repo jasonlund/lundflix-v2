@@ -58,17 +58,55 @@ it('classifies a name containing x265/h265 as Hevc, never mis-matched as X264', 
     expect($codecs)->toBe([Codec::Hevc, Codec::Hevc]);
 });
 
-it('ranks codec priority Hevc before X264 before Other', function (): void {
+it('classifies an AV1 token as Codec::Av1', function (): void {
+    // Arrange
+    // (enum is the subject under test; no state to set up)
+
+    // Act
+    $codec = Codec::fromName('Some Movie 2160p AV1');
+
+    // Assert
+    expect($codec)->toBe(Codec::Av1);
+});
+
+it('classifies XviD and DivX spellings as Codec::Xvid', function (): void {
+    // Arrange
+    // (enum is the subject under test; no state to set up)
+
+    // Act
+    $codecs = [
+        Codec::fromName('Some Movie XviD'),
+        Codec::fromName('Some Movie DivX'),
+    ];
+
+    // Assert
+    expect($codecs)->toBe([Codec::Xvid, Codec::Xvid]);
+});
+
+it('ranks AV1 over a co-occurring HEVC token by first-match scan order', function (): void {
+    // Arrange
+    // (enum is the subject under test; no state to set up)
+
+    // Act
+    $codec = Codec::fromName('Some Movie AV1 HEVC');
+
+    // Assert
+    expect($codec)->toBe(Codec::Av1);
+});
+
+it('ranks codec priority Av1 before Hevc before X264 before Xvid before Other', function (): void {
     // Arrange
     // (enum is the subject under test; no state to set up)
 
     // Act
     $priorities = [
+        Codec::Av1->priority(),
         Codec::Hevc->priority(),
         Codec::X264->priority(),
+        Codec::Xvid->priority(),
         Codec::Other->priority(),
     ];
 
     // Assert
-    expect($priorities)->toBe([0, 1, 2]);
+    expect($priorities)->toBe([0, 1, 2, 3, 4]);
 });
