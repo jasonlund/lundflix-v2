@@ -14,7 +14,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\LazyCollection;
 
-#[Description('Download the TMDB movie-ids export, hydrate each id, and upsert movies and their images')]
+#[Description('Two-phase TMDB movie sync: insert-new from the ids export, then update-changed from the rolling changes feed')]
 #[Signature('tmdb:sync-movies {--fresh} {--limit=}')]
 class SyncTmdbMovies extends Command
 {
@@ -47,7 +47,54 @@ class SyncTmdbMovies extends Command
             @unlink($file);
         }
 
+        // The changes pass only makes sense for a full default run: --fresh already
+        // re-hydrates every exported id above (a changes pass would be redundant),
+        // and --limit is a bounded partial run that a full changes sweep would blow
+        // past.
+        if (! $this->option('fresh') && $this->option('limit') === null) {
+            $this->updateChanged($api, $upsertMovies, $upsertImages);
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Update-changed phase: refresh locally held movies that TMDB reports as
+     * changed within the rolling 14-day window, hydrating the intersection of the
+     * changes feed and our synced rows through the shared insert-phase plumbing.
+     */
+    private function updateChanged(
+        TmdbApiService $api,
+        UpsertTmdbMovies $upsertMovies,
+        UpsertTmdbImages $upsertImages,
+    ): void {
+        $this->output->writeln('Updating changed movies…');
+
+        $end = now()->utc()->format('Y-m-d');
+        $start = now()->utc()->subDays(14)->format('Y-m-d');
+
+        // Report rather than propagate a changes-feed failure so a transient error
+        // paging the feed can't abort the whole command — the insert phase already
+        // ran, so we exit SUCCESS with what we have.
+        try {
+            $changedIds = $api->changedMovieIds($start, $end);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return;
+        }
+
+        // Only refresh ids we already hold — a changed id we've never synced is an
+        // insert candidate the export phase owns, not an update.
+        $ids = Movie::query()
+            ->whereNotNull('tmdb_synced_at')
+            ->whereIn('_tmdb_id', $changedIds)
+            ->pluck('_tmdb_id')
+            ->all();
+
+        foreach (array_chunk($ids, self::BATCH_SIZE) as $chunk) {
+            $this->syncChunkSafely($chunk, $api, $upsertMovies, $upsertImages);
+        }
     }
 
     /**

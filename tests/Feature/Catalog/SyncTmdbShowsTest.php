@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
@@ -31,6 +32,41 @@ function fakeTmdbShowSync(): void
         '*tv_series_ids*' => Http::response(fixtureBytes('Catalog/tmdb/tv_series_ids.json.gz')),
         '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/tv/1399')
             ? Http::response(fixtureBytes('Catalog/tmdb/tv.json'))
+            : Http::response('', 404),
+    ]);
+}
+
+/*
+| Fakes the three hosts the update-changed phase touches. The export is empty so
+| the insert-new phase is a no-op and can't interfere with the update phase.
+| tv_changes_page1.json declares total_pages:2, so the client pages through to
+| page 2 (tv_changes_page2.json) — both are byte-exact real feed slices. The
+| changes feed lives on the TMDB API host too, so its stub is listed BEFORE the
+| generic detail stub. The Game of Thrones detail body is re-keyed onto id 23310
+| (the only synthetic touch, an accepted pattern here) so the detail-upsert —
+| which keys on the payload's id — lands on the existing _tmdb_id 23310 row;
+| every other detail id 404s.
+*/
+function fakeTmdbShowUpdateSync(): void
+{
+    $decoded = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $decoded['id'] = 23310;
+    $detailBody = json_encode($decoded);
+
+    Http::fake([
+        '*tv_series_ids*' => Http::response(gzencode('')),
+        '*/tv/changes*' => function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return (int) ($query['page'] ?? 1) === 2
+                ? Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'));
+        },
+        '*api.themoviedb.org*' => fn (Request $request) => str_ends_with(
+            (string) parse_url($request->url(), PHP_URL_PATH),
+            '/tv/23310',
+        )
+            ? Http::response($detailBody)
             : Http::response('', 404),
     ]);
 }
@@ -139,4 +175,61 @@ it('reprocesses an already-synced show with --fresh', function (): void {
 
     // Assert
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
+});
+
+it('refreshes an existing synced show present in the changes feed', function (): void {
+    // Arrange
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now(), '_tmdb_name' => 'Stale']);
+    fakeTmdbShowUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-shows');
+
+    // Assert
+    expect(Show::where('_tmdb_id', 23310)->first()->_tmdb_name)->toBe('Game of Thrones');
+});
+
+it('ignores a changed tv id not in the local catalog', function (): void {
+    // Arrange
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
+    fakeTmdbShowUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-shows');
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/325296'));
+});
+
+it('requests the rolling 14-day changes window', function (): void {
+    // Arrange
+    Date::setTestNow('2026-07-09');
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
+    fakeTmdbShowUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-shows');
+
+    // Assert
+    Http::assertSent(function (Request $request): bool {
+        if (! str_contains($request->url(), '/tv/changes')) {
+            return false;
+        }
+        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+        return ($query['start_date'] ?? null) === '2026-06-25'
+            && ($query['end_date'] ?? null) === '2026-07-09';
+    });
+});
+
+it('skips the update phase with --fresh', function (): void {
+    // Arrange
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
+    fakeTmdbShowUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-shows', ['--fresh' => true]);
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
 });
