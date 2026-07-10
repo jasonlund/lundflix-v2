@@ -88,7 +88,7 @@ final class DownloadSearchService
     }
 
     /**
-     * Turn the requested categories (empty → the non-adult defaults) into the
+     * Turn the requested categories (empty → both mother categories) into the
      * empty-valued query markers the source expects (`72=`), keyed by category
      * value so they merge into the search query.
      *
@@ -97,11 +97,7 @@ final class DownloadSearchService
      */
     private function categoryMarkers(array $categories): array
     {
-        $resolved = $categories === [] ? Category::defaults() : $categories;
-
-        // Belt-and-suspenders: defaults() already excludes adult, but an
-        // explicitly-passed adult category must never reach the wire.
-        $resolved = array_filter($resolved, fn (Category $c): bool => ! $c->isAdult());
+        $resolved = $categories === [] ? Category::cases() : $categories;
 
         return array_fill_keys(array_map(fn (Category $c): string => $c->value, $resolved), '');
     }

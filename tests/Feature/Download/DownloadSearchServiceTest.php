@@ -686,17 +686,17 @@ it('returns null when the IMDb href carries no tt-id', function (): void {
 | DownloadSearchService — search(term, categories) request wiring slice
 |--------------------------------------------------------------------------
 | One search() entry point sends `q=<term>` plus each RESOLVED category id as an
-| empty-valued marker on the `/t` query (`&72=`; 72 is Movies). An empty
-| categories arg falls back to Category::defaults() (every non-adult case), so a
-| default search carries 72= but never the adult 88= (Xxx). An adult category
-| passed explicitly is always stripped. These assert only what is SENT — the
-| parse path (returns-50) is covered by the parseResults slice above.
+| empty-valued marker on the `/t` query (`&72=`; 72 is Movies, 73 is Tv). An empty
+| categories arg falls back to Category::cases() — the two mother ids — so a
+| default search carries both 72= and 73=. An explicit category scopes the request
+| to just that id. These assert only what is SENT — the parse path (returns-50) is
+| covered by the parseResults slice above.
 |
 | Reuses the byte-exact fixture:
 |   tests/Fixtures/Download/downloads/search_movie.html — 50 result rows.
 */
 
-it('empty categories → sends default category ids and strips adult', function (): void {
+it('empty categories → sends both mother category ids', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
     $settings->uid = 'cookie-uid';
@@ -708,10 +708,15 @@ it('empty categories → sends default category ids and strips adult', function 
     resolve(DownloadSearchService::class)->search('matrix');
 
     // Assert
+    // both mother ids present; NO sub-category id (87=Movie3d) — the mother id
+    // expands server-side, so the collapsed enum sends only 72= and 73=.
     Http::assertSent(function ($request): bool {
         $url = $request->url();
 
-        return str_contains($url, 'q=matrix') && str_contains($url, '72=') && ! str_contains($url, '88=');
+        return str_contains($url, 'q=matrix')
+            && str_contains($url, '72=')
+            && str_contains($url, '73=')
+            && ! str_contains($url, '87=');
     });
 });
 
@@ -731,25 +736,6 @@ it('scopes to an explicit category and no unrelated parent', function (): void {
         $url = $request->url();
 
         return str_contains($url, '72=') && ! str_contains($url, '73=');
-    });
-});
-
-it('strips an adult category passed alongside a normal one', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
-
-    // Act
-    resolve(DownloadSearchService::class)->search('matrix', [Category::Movies, Category::Xxx]);
-
-    // Assert
-    Http::assertSent(function ($request): bool {
-        $url = $request->url();
-
-        return str_contains($url, '72=') && ! str_contains($url, '88=');
     });
 });
 
