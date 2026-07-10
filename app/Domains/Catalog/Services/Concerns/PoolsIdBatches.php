@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services\Concerns;
 
+use App\Domains\Catalog\Data\PooledResult;
 use App\Domains\Catalog\Exceptions\PooledIdFailed;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
@@ -45,9 +46,8 @@ trait PoolsIdBatches
      *
      * @param  array<int, TKey>  $ids
      * @param  callable(PendingRequest, TKey): Response  $build
-     * @return array<TKey, array<string, mixed>|null>
      */
-    private function pooled(array $ids, callable $build): array
+    private function pooled(array $ids, callable $build): PooledResult
     {
         $ids = array_values(array_unique($ids));
 
@@ -102,7 +102,7 @@ trait PoolsIdBatches
             report($this->pooledFailure($failedIds));
         }
 
-        return $results;
+        return new PooledResult($results, $failedIds);
     }
 
     /**

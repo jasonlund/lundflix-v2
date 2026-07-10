@@ -27,13 +27,8 @@ class SyncCatalog extends Command
         $failed = false;
 
         foreach (self::COMMANDS as $command) {
-            // TODO: --fresh currently reaches only the tvdb sub-command; forward it to SyncTmdbMovies and SyncTmdbShows too (they honor it) so --fresh is a true full resync.
-            $arguments = $command === SyncTvdbShows::class && $this->option('fresh')
-                ? ['--fresh' => true]
-                : [];
-
             try {
-                if (Artisan::call($command, $arguments, $this->output) !== self::SUCCESS) {
+                if (Artisan::call($command, [], $this->output) !== self::SUCCESS) {
                     $failed = true;
                 }
             } catch (Throwable $e) {

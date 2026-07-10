@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services;
 
+use App\Domains\Catalog\Data\PooledResult;
 use App\Domains\Catalog\Exceptions\PooledIdFailed;
 use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
@@ -32,13 +33,13 @@ final class TvdbApiService
     }
 
     /**
-     * Batch-fetch each series' "extended" detail through {@see pooled} — map of
-     * id → raw payload (null on 404), input order preserved.
+     * Batch-fetch each series' "extended" detail through {@see pooled}, returning
+     * a {@see PooledResult}: the input-ordered id → raw payload map (null on 404)
+     * plus the ids whose requests failed past retries.
      *
      * @param  array<int, int>  $ids
-     * @return array<int, array<string, mixed>|null>
      */
-    public function seriesMany(array $ids): array
+    public function seriesMany(array $ids): PooledResult
     {
         return $this->pooled($ids, fn (PendingRequest $request, int $id) => $request
             ->get("/series/{$id}/extended"));
