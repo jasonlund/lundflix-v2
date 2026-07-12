@@ -81,6 +81,23 @@ it('prefers a stored setting over the env credential', function (): void {
     Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=op-uid; pass=op-pass'));
 });
 
+it('takes the stored pair verbatim when only one stored half is set', function (): void {
+    // Arrange
+    // operator has begun configuring: stored uid filled, stored pass still blank —
+    // the pair must come wholly from storage (blank pass), never the env pass
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'op-uid';
+    $settings->pass = '';
+    $settings->save();
+    Http::fake(['*' => Http::response('ok', 200)]);
+
+    // Act
+    rescue(fn () => resolve(DownloadSearchService::class)->search('anything'));
+
+    // Assert
+    Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=op-uid; pass='));
+});
+
 it('throws InvalidDownloadCredentials when the response is the login page', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
@@ -363,12 +380,16 @@ it('flags a dashed -NoRAR group-suffix release as not rar\'d', function (): void
 |   availability (search_norar.html): two 1080p rows 4664952 avail 11312 and
 |     4708249 avail 145 — the higher-availability row sorts first.
 |
-|   isRar (search_rar_mixed.html = search_movie + one injected non-rar row): the
-|     injected 4676917 is retagged "...1080p WEB-DL h264-DiRT[NORAR]" so it parses
-|     1080p/WebDl/X264/None/NON-rar (avail 43), tying the real rar row 7537888
-|     "...1080p MA WEB-DL H 264..." (avail 103) on quality/source/codec/releaseTag.
-|     Availability DISAGREES with isRar here (103 > 43 would rank the rar row first),
-|     so only the isRar tier (non-rar > rar) can put 4676917 ahead — that
+|   isRar (search_rar_mixed.html = search_movie + one spliced non-rar row): no real
+|     capture pairs a rar and a non-rar row that tie on every higher tier —
+|     search_movie is all-rar, search_norar all-non-rar — so this fixture is the two
+|     byte-exact real rows spliced together; nothing is hand-authored. The spliced
+|     4401191 is a byte-exact real [NORAR] row lifted from search_norar.html ("Mother
+|     And Child 2009 1080p BluRay x264-Japhson [NORAR]"), parsing 1080p/BluRay/X264/
+|     None/NON-rar (avail 330), tying the real rar row 6692762 "The Matrix Reloaded
+|     2003 1080p BluRay x264-CtrlHD" (avail 628) on quality/source/codec/releaseTag.
+|     Availability DISAGREES with isRar here (628 > 330 would rank the rar row first),
+|     so only the isRar tier (non-rar > rar) can put 4401191 ahead — that
 |     disagreement is what isolates the tier from availability below it.
 */
 
@@ -481,11 +502,11 @@ it('orders by releaseTag at equal quality, source, and codec', function (): void
     expect($positionOf(6982976))->toBeLessThan($positionOf(7288096));
 });
 
-// isRar tier (5): retagged 4676917 (non-rar, avail 43) and real 7537888 (rar,
-// avail 103) both parse 1080p/WebDl/X264/None, so quality/source/codec/releaseTag
-// all tie above. The non-rar row has LOWER availability (43 < 103), so the
+// isRar tier (5): spliced-real 4401191 (non-rar, avail 330) and real 6692762 (rar,
+// avail 628) both parse 1080p/BluRay/X264/None, so quality/source/codec/releaseTag
+// all tie above. The non-rar row has LOWER availability (330 < 628), so the
 // availability tier below would rank the rar row first; only isRar (non-rar > rar)
-// can put 4676917 ahead — proving this assertion isolates isRar, not availability.
+// can put 4401191 ahead — proving this assertion isolates isRar, not availability.
 it('orders a non-rar release before a rar release at equal quality, source, codec, and tag', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
@@ -499,7 +520,7 @@ it('orders a non-rar release before a rar release at equal quality, source, code
 
     // Assert
     $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
-    expect($positionOf(4676917))->toBeLessThan($positionOf(7537888));
+    expect($positionOf(4401191))->toBeLessThan($positionOf(6692762));
 });
 
 /*

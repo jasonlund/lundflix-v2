@@ -33,6 +33,17 @@ it('resolves each recognized resolution token to its case', function (): void {
     ]);
 });
 
+it('resolves an uppercase resolution token case-insensitively', function (): void {
+    // Arrange
+    // (enum is the subject under test; no state to set up)
+
+    // Act
+    $resolved = Quality::fromName('Movie.1080P.x264-GROUP');
+
+    // Assert
+    expect($resolved)->toBe(Quality::P1080);
+});
+
 it('returns null for an excluded 2160p token or a no-resolution name', function (): void {
     // Arrange
     // (enum is the subject under test; no state to set up)

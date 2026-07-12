@@ -295,17 +295,27 @@ final class DownloadSearchService
     }
 
     /**
-     * Coalesce the uid/pass credential: an operator-set setting (rotated via
-     * Filament) wins when non-empty, else fall back to the env/config value —
-     * so env is the zero-config default while runtime rotation still overrides.
+     * Coalesce the uid/pass credential as an ATOMIC PAIR — uid and pass are
+     * never drawn from different sources. If EITHER stored half is non-empty the
+     * operator has begun configuring credentials (rotated via Filament), so the
+     * stored pair is used verbatim even if the other half is blank; a blank half
+     * then surfaces the misconfiguration predictably instead of being silently
+     * masked by a mismatched env value (a stored uid paired with a stale env pass
+     * fails auth with only a generic error). Only when BOTH stored halves are
+     * empty does env/config supply the pair — preserving the fresh-env zero-config
+     * default (both blank → env, which authenticates).
      *
      * @return array{uid: string, pass: string}
      */
     private function credentials(DownloadSettings $settings): array
     {
+        if ($settings->uid !== '' || $settings->pass !== '') {
+            return ['uid' => $settings->uid, 'pass' => $settings->pass];
+        }
+
         return [
-            'uid' => $settings->uid !== '' ? $settings->uid : (string) config('services.downloads.uid'),
-            'pass' => $settings->pass !== '' ? $settings->pass : (string) config('services.downloads.pass'),
+            'uid' => (string) config('services.downloads.uid'),
+            'pass' => (string) config('services.downloads.pass'),
         ];
     }
 }

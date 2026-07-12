@@ -20,11 +20,11 @@ enum Codec: string
         }
 
         // HEVC/x265/h265 must be checked before x264 so HEVC wins over any x264/h264 token in the same name.
-        if (preg_match('/hevc|[xh][\s.]*265/i', $name)) {
+        if (preg_match('/hevc|[xh][\s._-]*265/i', $name)) {
             return self::Hevc;
         }
 
-        if (preg_match('/[xh][\s.]*264/i', $name)) {
+        if (preg_match('/[xh][\s._-]*264/i', $name)) {
             return self::X264;
         }
 

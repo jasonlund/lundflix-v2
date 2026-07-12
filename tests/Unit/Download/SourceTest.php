@@ -83,6 +83,31 @@ it('classifies a bare WEB token with no -DL/-Rip separator as Source::Web', func
     expect($sources)->toBe([Source::Web, Source::Web]);
 });
 
+it('does not collapse a title WORD "web" to Source::Web, yet a standalone WEB source tag still resolves', function (): void {
+    // Arrange
+    // (enum is the subject under test; no state to set up)
+
+    // Act
+    $sources = [
+        Source::fromName("Charlotte's Web 720p HDTV x264-GROUP"),
+        Source::fromName('Some Movie 1080p WEB x265-GROUP'),
+    ];
+
+    // Assert
+    expect($sources)->toBe([Source::Hdtv, Source::Web]);
+});
+
+it('classifies a BD-disc full-disc tag as Source::BluRay', function (): void {
+    // Arrange
+    // (enum is the subject under test; no state to set up)
+
+    // Act
+    $source = Source::fromName('Some Movie 2160p BD50 AVC');
+
+    // Assert
+    expect($source)->toBe(Source::BluRay);
+});
+
 it('falls back to Source::Other for a telesync/cam and a junk name carrying no web token', function (): void {
     // Arrange
     // (enum is the subject under test; no state to set up)

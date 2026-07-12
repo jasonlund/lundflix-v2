@@ -24,7 +24,7 @@ enum Quality: string
     public static function fromName(string $name): ?self
     {
         foreach (self::cases() as $case) {
-            if (str_contains($name, $case->value)) {
+            if (stripos($name, $case->value) !== false) {
                 return $case;
             }
         }

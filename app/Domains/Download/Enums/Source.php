@@ -20,7 +20,7 @@ enum Source: string
         // Order is load-bearing: BluRay wins over a co-occurring BDRip token, and
         // WEB-DL/WEBRip must be matched before the bare WEB fallback so a
         // separator'd token never collapses into Source::Web.
-        if (preg_match('/bluray|bdmv|remux/i', $name)) {
+        if (preg_match('/bluray|bdmv|remux|bd(?:25|50|66|100)/i', $name)) {
             return self::BluRay;
         }
 
@@ -36,7 +36,12 @@ enum Source: string
             return self::WebRip;
         }
 
-        if (preg_match('/web/i', $name)) {
+        // Bare-WEB fallback is deliberately case-sensitive (no /i) and boundary-anchored:
+        // a scene source tag is all-caps "WEB", a title word is title-case "Web"
+        // ("Charlotte's Web", "Cobweb"). Matching only an uppercase, letter-delimited
+        // WEB token keeps a plain English title word from inflating to Source::Web.
+        // A naive \bWEB\b is insufficient — it still hits the standalone title word.
+        if (preg_match('/(?<![A-Za-z])WEB(?![A-Za-z])/', $name)) {
             return self::Web;
         }
 

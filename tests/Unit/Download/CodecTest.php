@@ -33,6 +33,20 @@ it('classifies x264 and h264 spellings as Codec::X264', function (): void {
     expect($codecs)->toBe([Codec::X264, Codec::X264]);
 });
 
+it('tolerates underscore or hyphen separators in HEVC and x264 tokens', function (): void {
+    // Arrange
+    // (enum is the subject under test; no state to set up)
+
+    // Act
+    $codecs = [
+        Codec::fromName('Movie.h_265-GROUP'),
+        Codec::fromName('Movie.x-264-GROUP'),
+    ];
+
+    // Assert
+    expect($codecs)->toBe([Codec::Hevc, Codec::X264]);
+});
+
 it('falls back to Codec::Other for a name with no recognizable codec token', function (): void {
     // Arrange
     // (enum is the subject under test; no state to set up)
