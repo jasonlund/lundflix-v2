@@ -8,16 +8,16 @@ use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
-it('resolves provider cookie credentials seeded from env', function (): void {
+it('defaults credentials to empty when unset', function (): void {
     // Arrange
-    // seed migration runs under RefreshDatabase, sourcing DOWNLOADS_UID/PASS from phpunit.xml
+    // migration registers the keys with empty defaults; no operator value stored
 
     // Act
     $settings = resolve(DownloadSettings::class);
 
     // Assert
-    expect($settings->uid)->toBe('test-uid');
-    expect($settings->pass)->toBe('test-pass');
+    expect($settings->uid)->toBe('');
+    expect($settings->pass)->toBe('');
 });
 
 it('persists rotated credentials', function (): void {
@@ -38,7 +38,9 @@ it('persists rotated credentials', function (): void {
 
 it('stores the pass encrypted at rest', function (): void {
     // Arrange
-    resolve(DownloadSettings::class);
+    $settings = resolve(DownloadSettings::class);
+    $settings->pass = 'secret-pass';
+    $settings->save();
 
     // Act
     $passPayload = DB::table('settings')
@@ -47,6 +49,7 @@ it('stores the pass encrypted at rest', function (): void {
         ->value('payload');
 
     // Assert
-    expect($passPayload)->not->toContain('test-pass');
-    expect(resolve(DownloadSettings::class)->pass)->toBe('test-pass');
+    expect($passPayload)->not->toContain('secret-pass');
+    app()->forgetInstance(DownloadSettings::class);
+    expect(resolve(DownloadSettings::class)->pass)->toBe('secret-pass');
 });

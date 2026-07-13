@@ -10,12 +10,15 @@ use Livewire\Livewire;
 it('loads the page with the current uid but never the plaintext pass', function (): void {
     // Arrange
     $this->actingAs(User::factory()->create());
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'stored-uid';
+    $settings->save();
 
     // Act
     $page = Livewire::test(AppSettings::class);
 
     // Assert
-    $page->assertFormSet(['uid' => 'test-uid']);
+    $page->assertFormSet(['uid' => 'stored-uid']);
     expect($page->get('data')['pass'])->toBe('');
 });
 
@@ -52,6 +55,9 @@ it('persists a rotated uid and pass', function (): void {
 it('keeps the stored pass when submitted blank', function (): void {
     // Arrange
     $this->actingAs(User::factory()->create());
+    $settings = resolve(DownloadSettings::class);
+    $settings->pass = 'existing-pass';
+    $settings->save();
 
     // Act
     $page = Livewire::test(AppSettings::class)
@@ -65,5 +71,5 @@ it('keeps the stored pass when submitted blank', function (): void {
     $page->assertHasNoFormErrors();
     app()->forgetInstance(DownloadSettings::class);
     expect(resolve(DownloadSettings::class)->uid)->toBe('rotated-uid');
-    expect(resolve(DownloadSettings::class)->pass)->toBe('test-pass');
+    expect(resolve(DownloadSettings::class)->pass)->toBe('existing-pass');
 });

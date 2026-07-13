@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use App\Domains\Download\Data\DownloadResult;
+use App\Domains\Download\Enums\Category;
 use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
+use App\Domains\Download\Enums\ReleaseTag;
+use App\Domains\Download\Enums\Source;
 use App\Domains\Download\Exceptions\DownloadRequestFailed;
 use App\Domains\Download\Exceptions\InvalidDownloadCredentials;
 use App\Domains\Download\Exceptions\RateLimitExceeded;
@@ -49,6 +52,50 @@ it('sends the uid/pass cookie from DownloadSettings', function (): void {
 
     // Assert
     Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=cookie-uid; pass=cookie-pass'));
+});
+
+it('falls back to the env/config credential when settings are blank', function (): void {
+    // Arrange
+    // no operator value stored → settings resolve to empty; env DOWNLOADS_UID/PASS is test-uid/test-pass
+    Http::fake(['*' => Http::response('ok', 200)]);
+
+    // Act
+    rescue(fn () => resolve(DownloadSearchService::class)->search('anything'));
+
+    // Assert
+    Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=test-uid; pass=test-pass'));
+});
+
+it('prefers a stored setting over the env credential', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'op-uid';
+    $settings->pass = 'op-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response('ok', 200)]);
+
+    // Act
+    rescue(fn () => resolve(DownloadSearchService::class)->search('anything'));
+
+    // Assert
+    Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=op-uid; pass=op-pass'));
+});
+
+it('takes the stored pair verbatim when only one stored half is set', function (): void {
+    // Arrange
+    // operator has begun configuring: stored uid filled, stored pass still blank —
+    // the pair must come wholly from storage (blank pass), never the env pass
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'op-uid';
+    $settings->pass = '';
+    $settings->save();
+    Http::fake(['*' => Http::response('ok', 200)]);
+
+    // Act
+    rescue(fn () => resolve(DownloadSearchService::class)->search('anything'));
+
+    // Assert
+    Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=op-uid; pass='));
 });
 
 it('throws InvalidDownloadCredentials when the response is the login page', function (): void {
@@ -115,7 +162,7 @@ it('returns a Collection of 50 DownloadResult', function (): void {
         ->each->toBeInstanceOf(DownloadResult::class);
 });
 
-it('maps every field of the first result row', function (): void {
+it('maps every field of a result row', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
     $settings->uid = 'cookie-uid';
@@ -124,7 +171,7 @@ it('maps every field of the first result row', function (): void {
     Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
 
     // Act
-    $result = resolve(DownloadSearchService::class)->search('matrix')->first();
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7537888);
 
     // Assert
     expect($result->downloadId)->toBe(7537888)
@@ -151,6 +198,53 @@ it('maps an X265 release to Codec::Hevc', function (): void {
     expect($result->codec)->toBe(Codec::Hevc);
 });
 
+it('maps a WEB-DL release to Source::WebDl', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7537888);
+
+    // Assert
+    expect($result->source)->toBe(Source::WebDl);
+});
+
+it('maps a WEBRip release to Source::WebRip', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    // downloadId 7270124 "The Matrix 1999 1080p WEBRip DDP7 1 x264-ZoroSenpai"
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7270124);
+
+    // Assert
+    expect($result->source)->toBe(Source::WebRip);
+});
+
+it('maps a BluRay release to Source::BluRay', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    // downloadId 7288096 "The Matrix 1999 4K Remaster 1080p BluRay DTS x264-Geek"
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7288096);
+
+    // Assert
+    expect($result->source)->toBe(Source::BluRay);
+});
+
 it('maps a 720p release to Quality::P720', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
@@ -164,6 +258,40 @@ it('maps a 720p release to Quality::P720', function (): void {
 
     // Assert
     expect($result->quality)->toBe(Quality::P720);
+});
+
+it('maps a PROPER release to ReleaseTag::Proper', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    // downloadId 6982976 "The Matrix Revolutions 2003 PROPER 1080p UHD BluRay DD 7 1 x264-LoRD"
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 6982976);
+
+    // Assert
+    expect($result->releaseTag)->toBe(ReleaseTag::Proper);
+});
+
+// REPACK has no real row in search_movie.html, so parse-side Repack is unit-covered
+// only (ReleaseTagTest); fabricating a REPACK fixture row is disallowed.
+it('maps a release with neither PROPER nor REPACK to ReleaseTag::None', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    // downloadId 7537888 "The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB"
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7537888);
+
+    // Assert
+    expect($result->releaseTag)->toBe(ReleaseTag::None);
 });
 
 it('flags a bracketed [NORAR] release as not rar\'d', function (): void {
@@ -213,6 +341,190 @@ it('flags a dashed -NoRAR group-suffix release as not rar\'d', function (): void
 
 /*
 |--------------------------------------------------------------------------
+| DownloadSearchService — search() sorted results slice
+|--------------------------------------------------------------------------
+| search() returns EVERY parsed `table#torrents` row (nothing filtered — a
+| null-quality row is KEPT) ordered by a 6-tier chain, each tier deciding ONLY
+| when all higher tiers tie:
+|   quality → source → codec → releaseTag → isRar → availability.
+| Quality ranks 720p > 1080p > unrecognized LAST (the ladder deliberately ranks
+| 720p above 1080p); a null-quality row sinks to the end but is never dropped.
+|
+| The quality/availability tiers use search_norar.html (search_movie's 50 result
+| rows are all 1080p/720p — its 2160p and other rows live in the sidebar
+| `table#topTables`, never the results). The source/codec/releaseTag tiers use
+| search_movie.html, whose result rows are entirely rar (isRar ties across the
+| whole page). Each of those three anchor PAIRS ties on every tier ABOVE the one
+| it isolates AND is chosen so the LOWEST tie-break, availability, currently
+| orders the pair the WRONG way — so under the pre-chain sort
+| (quality → isRar → availability) the asserted order is inverted, and ONLY the
+| new tier can produce it. Availability values are from the byte-exact fixture.
+|
+|   quality (search_norar.html): 720p 3794673, 1080p 4114060, null 4979363 — a
+|     correct sort reorders them 720p < 1080p < null, inverting source order.
+|   source (search_movie.html): 6690919 BluRay avail 106 ("...Remastered BluRay
+|     1080p ... x264-hallowed") before 6788230 WebDl avail 189 ("The Matrix
+|     Reloaded 2003 1080p PTV WEB-DL ... H 264-PiRaTeS") — both 1080p/X264/None,
+|     so quality/codec/releaseTag tie; availability alone would rank the WebDl row
+|     first (189 > 106), so only source (BluRay > WebDl) explains BluRay first.
+|   codec (search_movie.html): 6666741 Hevc avail 134 ("...1080p UHD BluRay ...
+|     x265-HiDt") before 7165734 X264 avail 146 ("...Remastered 1080p BluRay
+|     x264-OFT") — both 1080p/BluRay/None, so quality/source tie; availability
+|     alone would rank the X264 row first (146 > 134), so only codec (Hevc > X264)
+|     explains Hevc first.
+|   releaseTag (search_movie.html): 6982976 Proper avail 290 ("...PROPER 1080p
+|     UHD BluRay ... x264-LoRD") before 7288096 None avail 463 ("The Matrix 1999
+|     4K Remaster 1080p BluRay ... x264-Geek") — both 1080p/BluRay/X264, so
+|     quality/source/codec tie; availability alone would rank the None row first
+|     (463 > 290), so only releaseTag (Proper > None) explains Proper first.
+|   availability (search_norar.html): two 1080p rows 4664952 avail 11312 and
+|     4708249 avail 145 — the higher-availability row sorts first.
+|
+|   isRar (search_rar_mixed.html = search_movie + one spliced non-rar row): no real
+|     capture pairs a rar and a non-rar row that tie on every higher tier —
+|     search_movie is all-rar, search_norar all-non-rar — so this fixture is the two
+|     byte-exact real rows spliced together; nothing is hand-authored. The spliced
+|     4401191 is a byte-exact real [NORAR] row lifted from search_norar.html ("Mother
+|     And Child 2009 1080p BluRay x264-Japhson [NORAR]"), parsing 1080p/BluRay/X264/
+|     None/NON-rar (avail 330), tying the real rar row 6692762 "The Matrix Reloaded
+|     2003 1080p BluRay x264-CtrlHD" (avail 628) on quality/source/codec/releaseTag.
+|     Availability DISAGREES with isRar here (628 > 330 would rank the rar row first),
+|     so only the isRar tier (non-rar > rar) can put 4401191 ahead — that
+|     disagreement is what isolates the tier from availability below it.
+*/
+
+it('keeps the null-quality row in the result set', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_norar.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('norar');
+
+    // Assert
+    expect($results->firstWhere('downloadId', 4979363))->not->toBeNull();
+});
+
+it('orders by quality with unrecognized quality last', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_norar.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('norar');
+
+    // Assert
+    $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
+    expect($positionOf(3794673))->toBeLessThan($positionOf(4114060))
+        ->and($positionOf(4114060))->toBeLessThan($positionOf(4979363));
+});
+
+it('orders by availability descending at equal quality', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_norar.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('norar');
+
+    // Assert
+    $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
+    expect($positionOf(4664952))->toBeLessThan($positionOf(4708249));
+});
+
+// source tier (2): 6690919 BluRay and 6788230 WebDl both parse 1080p/X264/None
+// (all search_movie rows are rar, so isRar ties too), leaving quality as the only
+// higher tier — and it ties. The BluRay row has LOWER availability (106 < 189), so
+// the pre-chain availability tie-break ranks the WebDl row first; only source
+// (BluRay > WebDl) can put the BluRay row ahead.
+it('orders by source at equal quality', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('matrix');
+
+    // Assert
+    $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
+    expect($positionOf(6690919))->toBeLessThan($positionOf(6788230));
+});
+
+// codec tier (3): 6666741 Hevc and 7165734 X264 both parse 1080p/BluRay/None (all
+// rar), so quality and source tie above. The Hevc row has LOWER availability
+// (134 < 146), so the pre-chain availability tie-break ranks the X264 row first;
+// only codec (Hevc > X264) can put the Hevc row ahead.
+it('orders by codec at equal quality and source', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('matrix');
+
+    // Assert
+    $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
+    expect($positionOf(6666741))->toBeLessThan($positionOf(7165734));
+});
+
+// releaseTag tier (4): 6982976 Proper and 7288096 None both parse 1080p/BluRay/X264
+// (all rar), so quality/source/codec all tie above. The Proper row has LOWER
+// availability (290 < 463), so the pre-chain availability tie-break ranks the None
+// row first; only releaseTag (Proper > None) can put the Proper row ahead.
+it('orders by releaseTag at equal quality, source, and codec', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('matrix');
+
+    // Assert
+    $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
+    expect($positionOf(6982976))->toBeLessThan($positionOf(7288096));
+});
+
+// isRar tier (5): spliced-real 4401191 (non-rar, avail 330) and real 6692762 (rar,
+// avail 628) both parse 1080p/BluRay/X264/None, so quality/source/codec/releaseTag
+// all tie above. The non-rar row has LOWER availability (330 < 628), so the
+// availability tier below would rank the rar row first; only isRar (non-rar > rar)
+// can put 4401191 ahead — proving this assertion isolates isRar, not availability.
+it('orders a non-rar release before a rar release at equal quality, source, codec, and tag', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_rar_mixed.html'), 200)]);
+
+    // Act
+    $results = resolve(DownloadSearchService::class)->search('matrix');
+
+    // Assert
+    $positionOf = fn (int $id): int|false => $results->search(fn (DownloadResult $r): bool => $r->downloadId === $id);
+    expect($positionOf(4401191))->toBeLessThan($positionOf(6692762));
+});
+
+/*
+|--------------------------------------------------------------------------
 | DownloadSearchService — parseResults resilience slice
 |--------------------------------------------------------------------------
 | A single markup-drifted row (an ad/pinned/short row that carries a `/t/`
@@ -241,7 +553,7 @@ it('skips a short/ad row and still returns the valid results', function (): void
     // Assert
     expect($results)->toHaveCount(50)
         ->and($results->firstWhere('downloadId', 9999999))->toBeNull()
-        ->and($results->first()->downloadId)->toBe(7537888);
+        ->and($results->firstWhere('downloadId', 7537888))->not->toBeNull();
 });
 
 it('parses a comma-grouped availability as its full integer', function (): void {
@@ -253,7 +565,7 @@ it('parses a comma-grouped availability as its full integer', function (): void 
     Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_availability.html'), 200)]);
 
     // Act
-    $result = resolve(DownloadSearchService::class)->search('matrix')->first();
+    $result = resolve(DownloadSearchService::class)->search('matrix')->firstWhere('downloadId', 7537888);
 
     // Assert
     expect($result->availability)->toBe(1024);
@@ -392,21 +704,20 @@ it('returns null when the IMDb href carries no tt-id', function (): void {
 
 /*
 |--------------------------------------------------------------------------
-| DownloadSearchService — movie-scoped search entry points slice
+| DownloadSearchService — search(term, categories) request wiring slice
 |--------------------------------------------------------------------------
-| Two convenience entry points that scope a search to the download source's MOVIE
-| categories and parse rows through the same path as search(). Category ids
-| ride the `/t` query as empty-valued download params (`&100=`); 100 is x265. The
-| by-imdb form queries `q = <tt-id>`; the by-title form queries
-| `q = "<title> <year>"` (Laravel encodes the query-string spaces as `+`, so
-| the sent URL carries `q=The+Matrix+1999`). IMDb verification is deferred —
-| these just parse and return the rows.
+| One search() entry point sends `q=<term>` plus each RESOLVED category id as an
+| empty-valued marker on the `/t` query (`&72=`; 72 is Movies, 73 is Tv). An empty
+| categories arg falls back to Category::cases() — the two mother ids — so a
+| default search carries both 72= and 73=. An explicit category scopes the request
+| to just that id. These assert only what is SENT — the parse path (returns-50) is
+| covered by the parseResults slice above.
 |
 | Reuses the byte-exact fixture:
 |   tests/Fixtures/Download/downloads/search_movie.html — 50 result rows.
 */
 
-it('returns a Collection of 50 DownloadResult for a movie imdb-id search', function (): void {
+it('empty categories → sends both mother category ids', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
     $settings->uid = 'cookie-uid';
@@ -415,15 +726,22 @@ it('returns a Collection of 50 DownloadResult for a movie imdb-id search', funct
     Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
 
     // Act
-    $results = resolve(DownloadSearchService::class)->searchMovieByImdbId('tt0234215');
+    resolve(DownloadSearchService::class)->search('matrix');
 
     // Assert
-    expect($results)->toBeInstanceOf(Collection::class)
-        ->toHaveCount(50)
-        ->and($results->first())->toBeInstanceOf(DownloadResult::class);
+    // both mother ids present; NO sub-category id (87=Movie3d) — the mother id
+    // expands server-side, so the collapsed enum sends only 72= and 73=.
+    Http::assertSent(function ($request): bool {
+        $url = $request->url();
+
+        return str_contains($url, 'q=matrix')
+            && str_contains($url, '72=')
+            && str_contains($url, '73=')
+            && ! str_contains($url, '87=');
+    });
 });
 
-it('queries by imdb id within movie categories', function (): void {
+it('scopes to an explicit category and no unrelated parent', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
     $settings->uid = 'cookie-uid';
@@ -432,17 +750,17 @@ it('queries by imdb id within movie categories', function (): void {
     Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
 
     // Act
-    resolve(DownloadSearchService::class)->searchMovieByImdbId('tt0234215');
+    resolve(DownloadSearchService::class)->search('matrix', [Category::Movies]);
 
     // Assert
     Http::assertSent(function ($request): bool {
         $url = $request->url();
 
-        return str_contains($url, '/t') && str_contains($url, 'q=tt0234215') && str_contains($url, '100=');
+        return str_contains($url, '72=') && ! str_contains($url, '73=');
     });
 });
 
-it('queries by "title year" within movie categories', function (): void {
+it('sends an imdb-id term on the query unencoded', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
     $settings->uid = 'cookie-uid';
@@ -451,31 +769,14 @@ it('queries by "title year" within movie categories', function (): void {
     Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
 
     // Act
-    resolve(DownloadSearchService::class)->searchMovieByTitle('The Matrix', 1999);
+    resolve(DownloadSearchService::class)->search('tt0234215');
 
     // Assert
     Http::assertSent(function ($request): bool {
         $url = $request->url();
 
-        return str_contains($url, 'q=The+Matrix+1999') && str_contains($url, '100=');
+        return str_contains($url, 'q=tt0234215');
     });
-});
-
-it('returns a Collection of 50 DownloadResult for a movie title search', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/search_movie.html'), 200)]);
-
-    // Act
-    $results = resolve(DownloadSearchService::class)->searchMovieByTitle('The Matrix', 1999);
-
-    // Assert
-    expect($results)->toBeInstanceOf(Collection::class)
-        ->toHaveCount(50)
-        ->and($results->first())->toBeInstanceOf(DownloadResult::class);
 });
 
 /*

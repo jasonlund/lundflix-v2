@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Domains\Download\Services;
 
 use App\Domains\Download\Data\DownloadResult;
+use App\Domains\Download\Enums\Category;
 use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
+use App\Domains\Download\Enums\ReleaseTag;
+use App\Domains\Download\Enums\Source;
 use App\Domains\Download\Exceptions\DownloadRequestFailed;
 use App\Domains\Download\Exceptions\InvalidDownloadCredentials;
 use App\Domains\Download\Settings\DownloadSettings;
@@ -38,53 +41,65 @@ final class DownloadSearchService
     private const string TITLE_LINK = 'td.al a[href^="/t/"]';
 
     /**
-     * Download source movie category ids — riding the `/t` query as empty-valued
-     * params (`&100=`) scopes the search to movies.
-     *
-     * @var list<int>
-     */
-    private const array MOVIE_CATEGORIES = [6, 7, 20, 38, 48, 54, 62, 68, 77, 87, 89, 90, 96, 100, 101];
-
-    /**
+     * @param  list<Category>  $categories
      * @return Collection<int, DownloadResult>
      */
-    public function search(string $query, int $page = 1): Collection
+    public function search(string $imdbIdOrTerm, array $categories = []): Collection
     {
-        $response = $this->get('/t', ['q' => $query, 'p' => $page]);
-
-        return $this->parseResults($response->body(), $query);
-    }
-
-    /**
-     * @return Collection<int, DownloadResult>
-     */
-    public function searchMovieByImdbId(string $imdbId): Collection
-    {
-        return $this->searchMovies($imdbId);
-    }
-
-    /**
-     * @return Collection<int, DownloadResult>
-     */
-    public function searchMovieByTitle(string $title, int $year): Collection
-    {
-        return $this->searchMovies($title.' '.$year);
-    }
-
-    /**
-     * @return Collection<int, DownloadResult>
-     */
-    private function searchMovies(string $query): Collection
-    {
-        $categories = array_fill_keys(array_map(strval(...), self::MOVIE_CATEGORIES), '');
-
         // Build the query string ourselves so spaces encode as `+` (Guzzle would
-        // emit `%20`) and the empty-valued category markers (`100=`) survive.
-        $queryString = http_build_query(['q' => $query, 'p' => 1] + $categories);
+        // emit `%20`) and the empty-valued category markers (`72=`) survive.
+        $queryString = http_build_query(['q' => $imdbIdOrTerm] + $this->categoryMarkers($categories));
 
         $response = $this->get('/t?'.$queryString);
 
-        return $this->parseResults($response->body(), $query);
+        return $this->sortResults($this->parseResults($response->body(), $imdbIdOrTerm));
+    }
+
+    /**
+     * Rank a parsed result set highest-preference first via a 6-tier chain, each
+     * tier deciding ONLY when every higher tier ties:
+     * (1) quality via Quality::priority() DESC — a null quality has no priority,
+     * so a PHP_INT_MIN sentinel sinks unrecognized-quality rows last; (2) source
+     * via Source::priority() DESC; (3) codec via Codec::priority() ASC; (4)
+     * releaseTag via ReleaseTag::priority() DESC; (5) non-rar before rar (isRar
+     * ASC); (6) availability DESC.
+     *
+     * Codec compares ASCENDING while the other priority tiers compare descending
+     * because Codec::priority() is inverted — 0 is best (Av1) … 4 worst (Other),
+     * so the lowest int is the most preferred and must sort first.
+     *
+     * Null-quality rows are KEPT (sorted last), not filtered — this service is a
+     * sorted-set contract; callers decide what to drop.
+     *
+     * @param  Collection<int, DownloadResult>  $results
+     * @return Collection<int, DownloadResult>
+     */
+    private function sortResults(Collection $results): Collection
+    {
+        return $results
+            ->sort(fn (DownloadResult $a, DownloadResult $b): int => ($b->quality?->priority() ?? PHP_INT_MIN) <=> ($a->quality?->priority() ?? PHP_INT_MIN)
+                ?: $b->source->priority() <=> $a->source->priority()
+                // Codec priority is inverted (0 = best), so this tier ALONE compares ASC — do NOT "fix" to $b <=> $a.
+                ?: $a->codec->priority() <=> $b->codec->priority()
+                ?: $b->releaseTag->priority() <=> $a->releaseTag->priority()
+                ?: $a->isRar <=> $b->isRar
+                ?: $b->availability <=> $a->availability)
+            ->values();
+    }
+
+    /**
+     * Turn the requested categories (empty → both mother categories) into the
+     * empty-valued query markers the source expects (`72=`), keyed by category
+     * value so they merge into the search query.
+     *
+     * @param  list<Category>  $categories
+     * @return array<string, string>
+     */
+    private function categoryMarkers(array $categories): array
+    {
+        $resolved = $categories === [] ? Category::cases() : $categories;
+
+        return array_fill_keys(array_map(fn (Category $c): string => $c->value, $resolved), '');
     }
 
     public function fetchImdbId(int $downloadId): ?string
@@ -166,6 +181,8 @@ final class DownloadSearchService
             name: $name,
             quality: Quality::fromName($name),
             codec: Codec::fromName($name),
+            source: Source::fromName($name),
+            releaseTag: ReleaseTag::fromName($name),
             availability: $this->availabilityFrom($cells->eq(6)->text()),
             sizeBytes: $this->bytesFromSize($cells->eq(5)->text()),
             isRar: preg_match('/no[\s._-]*rar/i', $name) === 0,
@@ -262,6 +279,7 @@ final class DownloadSearchService
     private function configure(PendingRequest $request): PendingRequest
     {
         $settings = resolve(DownloadSettings::class);
+        ['uid' => $uid, 'pass' => $pass] = $this->credentials($settings);
 
         // This service owns the sole 429/Retry-After backoff + RequestThrottle
         // past-cap valve for its own calls (see get()), so the global blind-retry
@@ -273,6 +291,31 @@ final class DownloadSearchService
         // global seam active for every other domain.
         return $request->baseUrl(self::BASE_URL)
             ->withOptions(['retry_enabled' => false])
-            ->withHeaders(['Cookie' => "uid={$settings->uid}; pass={$settings->pass}"]);
+            ->withHeaders(['Cookie' => "uid={$uid}; pass={$pass}"]);
+    }
+
+    /**
+     * Coalesce the uid/pass credential as an ATOMIC PAIR — uid and pass are
+     * never drawn from different sources. If EITHER stored half is non-empty the
+     * operator has begun configuring credentials (rotated via Filament), so the
+     * stored pair is used verbatim even if the other half is blank; a blank half
+     * then surfaces the misconfiguration predictably instead of being silently
+     * masked by a mismatched env value (a stored uid paired with a stale env pass
+     * fails auth with only a generic error). Only when BOTH stored halves are
+     * empty does env/config supply the pair — preserving the fresh-env zero-config
+     * default (both blank → env, which authenticates).
+     *
+     * @return array{uid: string, pass: string}
+     */
+    private function credentials(DownloadSettings $settings): array
+    {
+        if ($settings->uid !== '' || $settings->pass !== '') {
+            return ['uid' => $settings->uid, 'pass' => $settings->pass];
+        }
+
+        return [
+            'uid' => (string) config('services.downloads.uid'),
+            'pass' => (string) config('services.downloads.pass'),
+        ];
     }
 }
