@@ -76,6 +76,28 @@ it('maps _tmdb_* columns raw, stamps tmdb_synced_at, and stores _tmdb_genres byt
         ->and($genres)->toBe(json_encode($payload['genres']));
 });
 
+it('persists a blank TMDB release_date as null, not an empty string', function (): void {
+    // Arrange
+    $payload = tmdbPayload(['id' => 603, 'release_date' => '']);
+
+    // Act
+    resolve(UpsertTmdbMovies::class)->handle([$payload]);
+
+    // Assert
+    expect(DB::table('movies')->where('_tmdb_id', 603)->value('_tmdb_release_date'))->toBeNull();
+});
+
+it('persists the 0000-00-00 sentinel TMDB release_date as null', function (): void {
+    // Arrange
+    $payload = tmdbPayload(['id' => 604, 'release_date' => '0000-00-00']);
+
+    // Act
+    resolve(UpsertTmdbMovies::class)->handle([$payload]);
+
+    // Assert
+    expect(DB::table('movies')->where('_tmdb_id', 604)->value('_tmdb_release_date'))->toBeNull();
+});
+
 /**
  * Build a minimal-but-complete TMDB payload: only id / imdb_id / title carry the
  * key-relevant values per test; the remaining keys are harmless filler so the

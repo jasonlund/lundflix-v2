@@ -43,6 +43,18 @@ final class UpsertTmdbMovies
     ];
 
     /**
+     * TMDB `_tmdb_*` DATE columns cast via `NullableDate` on the model; when
+     * writing through the cast-bypassing `Model::upsert()` that cast never runs,
+     * so blank/sentinel dates must be nulled here to satisfy MySQL's strict DATE
+     * columns (matching {@see NullableDate::set()}).
+     *
+     * @var list<string>
+     */
+    private const array DATE_COLUMNS = [
+        '_tmdb_release_date',
+    ];
+
+    /**
      * @param  array<int, array<string, mixed>>  $payloads  decoded TMDB /movie responses
      */
     public function handle(array $payloads): int
@@ -101,6 +113,12 @@ final class UpsertTmdbMovies
 
         foreach (self::JSON_COLUMNS as $column) {
             $row[$column] = $row[$column] === null ? null : json_encode($row[$column]);
+        }
+
+        foreach (self::DATE_COLUMNS as $column) {
+            if (in_array($row[$column], [null, '', '0000-00-00'], true)) {
+                $row[$column] = null;
+            }
         }
 
         $row['tmdb_synced_at'] = $now->toDateTimeString();

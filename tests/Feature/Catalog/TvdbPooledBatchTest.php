@@ -6,6 +6,7 @@ use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Services\TvdbApiService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 
@@ -18,9 +19,10 @@ use Illuminate\Support\Sleep;
 | order. A per-id 404 yields null for that id without sinking its siblings;
 | repeated ids de-dupe to one request per unique id; ids fan out at most
 | `services.tvdb.concurrency` requests per chunk in input order. Request
-| failures past retries are collected and surfaced together as a single
-| TvdbRequestFailed naming every failed id; a 401 is fatal for the whole batch
-| and throws TvdbAuthenticationFailed.
+| failures past retries are collected and report()ed together as a single
+| TvdbRequestFailed naming every failed id, while the succeeding ids are still
+| RETURNED (a transient per-id failure never drops the batch's good rows); a
+| 401 is fatal for the whole batch and throws TvdbAuthenticationFailed.
 |
 | Fixtures (byte-exact real captures; never hand-fabricated):
 |   series_extended.json — real /series/{id}/extended body. Reused as the
@@ -109,8 +111,10 @@ describe('seriesMany()', function (): void {
         ]);
     });
 
-    it('reports every failed id when multiple series requests fail past retries', function (): void {
+    it('returns the succeeding id and reports every failed id when multiple series requests fail past retries', function (): void {
+        // Arrange
         Sleep::fake();
+        Exceptions::fake();
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
             '*/series/121361/extended*' => Http::response('', 500),
@@ -118,32 +122,35 @@ describe('seriesMany()', function (): void {
             '*/series/424242/extended*' => Http::response('', 500),
         ]);
 
-        $msg = '';
-        try {
-            resolve(TvdbApiService::class)->seriesMany([121361, 305288, 424242]);
-        } catch (TvdbRequestFailed $e) {
-            $msg = $e->getMessage();
-        }
+        // Act
+        $result = resolve(TvdbApiService::class)->seriesMany([121361, 305288, 424242]);
 
-        expect($msg)->toContain('121361')->toContain('424242');
+        // Assert
+        expect($result)->toBe([305288 => json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)]);
+        Exceptions::assertReported(
+            fn (TvdbRequestFailed $e): bool => str_contains($e->getMessage(), '121361') && str_contains($e->getMessage(), '424242')
+        );
     });
 
-    it('reports both a 5xx id and an undecodable-200 id together in one aggregate failure', function (): void {
+    it('returns the succeeding id and reports a 5xx id and an undecodable-200 id together in one aggregate failure', function (): void {
+        // Arrange
         Sleep::fake();
+        Exceptions::fake();
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*/series/121361/extended*' => Http::response('', 500),
-            '*/series/305288/extended*' => Http::response('not json', 200),
+            '*/series/121361/extended*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
+            '*/series/305288/extended*' => Http::response('', 500),
+            '*/series/424242/extended*' => Http::response('not json', 200),
         ]);
 
-        $msg = '';
-        try {
-            resolve(TvdbApiService::class)->seriesMany([121361, 305288]);
-        } catch (TvdbRequestFailed $e) {
-            $msg = $e->getMessage();
-        }
+        // Act
+        $result = resolve(TvdbApiService::class)->seriesMany([121361, 305288, 424242]);
 
-        expect($msg)->toContain('121361')->toContain('305288');
+        // Assert
+        expect($result)->toBe([121361 => json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)]);
+        Exceptions::assertReported(
+            fn (TvdbRequestFailed $e): bool => str_contains($e->getMessage(), '305288') && str_contains($e->getMessage(), '424242')
+        );
     });
 
     it('throws TvdbAuthenticationFailed when one series id in the batch returns 401', function (): void {

@@ -7,6 +7,7 @@ use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Tests\TestCase;
@@ -154,46 +155,75 @@ it('decodes and returns results keyed in input order', function (): void {
         ->and($result[30])->toBe(['id' => 30]);
 });
 
-it('aggregates a non-Response pool entry as a failed id instead of throwing mid-loop', function (): void {
+it('returns the succeeding id and reports the aggregate when a non-Response pool entry lands a failed id', function (): void {
     // Arrange
     // a connection failure past retries lands a Throwable (not a Response) at the
     // pool slot; the loop must collect that id, not blow up dereferencing it
     Sleep::fake();
+    Exceptions::fake();
     Http::fake([
         '*/item/1*' => fn () => throw new ConnectionException('Connection timed out'),
         '*/item/2*' => Http::response(['id' => 2]),
     ]);
 
-    // Act & Assert
-    expect(fn () => resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]))
-        ->toThrow(RuntimeException::class, 'failed ids: 1');
+    // Act
+    $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
+
+    // Assert
+    expect($result)->toBe([2 => ['id' => 2]]);
+    Exceptions::assertReported(
+        fn (RuntimeException $e): bool => str_contains($e->getMessage(), 'failed ids: 1')
+    );
 });
 
-it('aggregates a PooledIdFailed from resolvePooled as a failed id and continues', function (): void {
+it('returns the succeeding id and reports the aggregate when resolvePooled signals a PooledIdFailed', function (): void {
     // Arrange
     // the 500 makes the host's resolvePooled throw PooledIdFailed for id 1; id 2
-    // must still be decoded before the batch aggregates the failure
+    // must still be decoded before the batch reports the aggregate failure
+    Exceptions::fake();
     Http::fake([
         '*/item/1*' => Http::response('', 500),
         '*/item/2*' => Http::response(['id' => 2]),
     ]);
 
-    // Act & Assert
-    expect(fn () => resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]))
-        ->toThrow(RuntimeException::class, 'failed ids: 1');
+    // Act
+    $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
+
+    // Assert
+    expect($result)->toBe([2 => ['id' => 2]]);
+    Exceptions::assertReported(
+        fn (RuntimeException $e): bool => str_contains($e->getMessage(), 'failed ids: 1')
+    );
 });
 
-it('surfaces every failed id together in one aggregate pooledFailure, not short-circuiting on the first', function (): void {
+it('sends Connection: close on pooled requests so each socket closes after its response', function (): void {
     // Arrange
-    // ids 1 and 3 both fail while 2 succeeds; the batch must evaluate all three
-    // and report BOTH failed ids in a single aggregate throw, not stop at id 1
+    Http::fake(['*/item/*' => Http::response(['ok' => true])]);
+
+    // Act
+    resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
+
+    // Assert
+    Http::assertSent(fn ($request): bool => $request->hasHeader('Connection', 'close'));
+});
+
+it('returns the succeeding id and reports every failed id together in one aggregate pooledFailure, not short-circuiting on the first', function (): void {
+    // Arrange
+    // ids 1 and 3 both fail while 2 succeeds; the batch must evaluate all three,
+    // return id 2, and report BOTH failed ids in a single aggregate, not stop at id 1
+    Exceptions::fake();
     Http::fake([
         '*/item/1*' => Http::response('', 500),
         '*/item/2*' => Http::response(['id' => 2]),
         '*/item/3*' => Http::response('', 500),
     ]);
 
-    // Act & Assert
-    expect(fn () => resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2, 3]))
-        ->toThrow(RuntimeException::class, 'failed ids: 1,3');
+    // Act
+    $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2, 3]);
+
+    // Assert
+    expect($result)->toBe([2 => ['id' => 2]]);
+    Exceptions::assertReported(
+        fn (RuntimeException $e): bool => str_contains($e->getMessage(), 'failed ids: 1,3')
+    );
 });

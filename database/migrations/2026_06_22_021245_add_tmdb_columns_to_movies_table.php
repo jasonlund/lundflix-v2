@@ -22,12 +22,18 @@ return new class extends Migration
             $table->string($tmdb('original_language'))->nullable();
             $table->text($tmdb('overview'))->nullable();
             $table->text($tmdb('tagline'))->nullable();
-            $table->string($tmdb('homepage'))->nullable();
+            // TEXT, not string(255): some TMDB homepage URLs exceed 255 chars and
+            // MySQL strict mode rejects the overflow, aborting the whole upsert batch.
+            $table->text($tmdb('homepage'))->nullable();
             $table->string($tmdb('status'))->nullable();
             $table->date($tmdb('release_date'))->nullable();
             $table->unsignedInteger($tmdb('runtime'))->nullable();
-            $table->unsignedBigInteger($tmdb('budget'))->nullable();
-            $table->unsignedBigInteger($tmdb('revenue'))->nullable();
+            // Signed, not unsigned: TMDB occasionally returns a negative budget/
+            // revenue (bad upstream data), and MySQL strict mode rejects a negative
+            // into an unsigned column (22003), aborting the whole upsert batch. Stored
+            // raw per the source-column convention, so the column must hold the sign.
+            $table->bigInteger($tmdb('budget'))->nullable();
+            $table->bigInteger($tmdb('revenue'))->nullable();
             $table->float($tmdb('popularity'))->nullable();
             $table->float($tmdb('vote_average'))->nullable();
             $table->unsignedInteger($tmdb('vote_count'))->nullable();

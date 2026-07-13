@@ -127,9 +127,9 @@ final class TmdbApiService
      * Per-id pooled decision for TMDB: a persistent non-404, non-401 failure is
      * collected per-id (signalled via {@see PooledIdFailed}); a 401 flows to
      * {@see decode}, which throws {@see TmdbAuthenticationFailed} immediately
-     * (auth is fatal for the whole batch); an undecodable 200 flows to
-     * {@see decode}, which throws {@see TmdbRequestFailed} immediately — a
-     * decode error is not aggregated.
+     * (auth is fatal for the whole batch). An undecodable 200 makes {@see decode}
+     * throw {@see TmdbRequestFailed}, which is caught and re-signalled as a
+     * per-id failure so it aggregates rather than sinking the batch's good rows.
      *
      * @return array<string, mixed>|null
      */
@@ -139,7 +139,11 @@ final class TmdbApiService
             throw new PooledIdFailed;
         }
 
-        return $this->decode($response);
+        try {
+            return $this->decode($response);
+        } catch (TmdbRequestFailed) {
+            throw new PooledIdFailed;
+        }
     }
 
     /**

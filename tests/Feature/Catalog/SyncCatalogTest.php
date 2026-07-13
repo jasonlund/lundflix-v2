@@ -32,6 +32,11 @@ beforeEach(function (): void {
 |   tv.json — /tv/1399 (external_ids.imdb_id tt0944947).
 | tests/Fixtures/Catalog/tvdb/* — login JWT, chained /updates feed, and
 |   Breaking Bad's /series/434847/extended (_tvdb_id 81189, IMDB tt0903747).
+| tests/Fixtures/Catalog/tvdb/series_page1.json + series_empty.json — the
+|   --fresh allSeries crawl: GET /series?page=0 (500 base records, first id
+|   70327, links.next set) then /series?page=1 (empty, crawl terminus). On the
+|   crawl path Breaking Bad's extended payload is served for discovered id 70327
+|   instead of updates recordId 434847.
 |
 | sync:catalog dispatches tmdb:sync-movies → tvdb:sync-shows →
 | tmdb:sync-shows → imdb:import-ratings. There is no title.basics import in the
@@ -72,6 +77,38 @@ function fakeCatalogSync(): void
     ]);
 }
 
+/**
+ * Identical to fakeCatalogSync() but swaps TheTVDB's /updates path for the
+ * --fresh allSeries crawl: /series?page=0 (base records), /series?page=1 (empty
+ * terminus), and Breaking Bad's extended payload keyed on crawled id 70327
+ * instead of updates recordId 434847. TMDB and IMDb fakes are unchanged.
+ */
+function fakeCatalogSyncFresh(): void
+{
+    Http::fake([
+        '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
+        '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
+        '*tv_series_ids*' => Http::response(fixtureBytes('Catalog/tmdb/tv_series_ids.json.gz')),
+        '*api.themoviedb.org*' => function (Request $request) {
+            if (str_contains($request->url(), '/movie/603')) {
+                return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));
+            }
+
+            if (str_contains($request->url(), '/tv/1399')) {
+                return Http::response(fixtureBytes('Catalog/tmdb/tv.json'));
+            }
+
+            return Http::response('', 404);
+        },
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series?page=0*' => Http::response(fixtureBytes('Catalog/tvdb/series_page1.json')),
+        '*api4.thetvdb.com/v4/series?page=1*' => Http::response(fixtureBytes('Catalog/tvdb/series_empty.json')),
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/70327/extended')
+            ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
+            : Http::response('', 404),
+    ]);
+}
+
 it('is born a movie from TMDB', function (): void {
     // Arrange
     fakeCatalogSync();
@@ -86,7 +123,7 @@ it('is born a movie from TMDB', function (): void {
     expect(Movie::count())->toBe(1);
 });
 
-it('is born a show from TVDB and never inserts a TMDB show', function (): void {
+it('is born a show from TVDB, and TMDB inserts a tmdb-only show matching none', function (): void {
     // Arrange
     fakeCatalogSync();
 
@@ -94,11 +131,17 @@ it('is born a show from TVDB and never inserts a TMDB show', function (): void {
     $this->artisan('sync:catalog');
 
     // Assert
+    // Breaking Bad is born from TVDB; Game of Thrones shares none of its source
+    // ids, so TMDB inserts it as its own tmdb-only row rather than dropping it —
+    // two independent shows, each source-of-truth for its own row.
     $breakingBad = Show::where('_tvdb_id', 81189)->first();
     expect($breakingBad)->not->toBeNull();
     expect($breakingBad->_imdb_id)->toBe('tt0903747');
-    expect(Show::where('_tmdb_id', 1399)->first())->toBeNull();
-    expect(Show::count())->toBe(1);
+
+    $gameOfThrones = Show::where('_tmdb_id', 1399)->first();
+    expect($gameOfThrones)->not->toBeNull();
+    expect($gameOfThrones->_tvdb_id)->toBeNull();
+    expect(Show::count())->toBe(2);
 });
 
 it('applies IMDb ratings last by _imdb_id', function (): void {
@@ -169,4 +212,29 @@ it('continues past a failing show command, exits FAILURE and reports', function 
     // Assert
     Exceptions::assertReported(fn (RequestException $e): bool => true);
     expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+});
+
+it('crawls TVDB via allSeries when --fresh is passed', function (): void {
+    // Arrange
+    fakeCatalogSyncFresh();
+
+    // Act
+    $this->artisan('sync:catalog', ['--fresh' => true]);
+
+    // Assert
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/series?page'));
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/updates'));
+    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+});
+
+it('uses the TVDB updates feed on a default run', function (): void {
+    // Arrange
+    fakeCatalogSync();
+
+    // Act
+    $this->artisan('sync:catalog');
+
+    // Assert
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/updates'));
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series?page'));
 });
