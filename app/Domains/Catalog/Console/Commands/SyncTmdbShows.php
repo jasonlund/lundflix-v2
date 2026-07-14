@@ -15,7 +15,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\LazyCollection;
 
-#[Description('Download the TMDB tv-series-ids export, hydrate each id, and create-or-merge shows: match an existing show by any source id (imdb/tmdb/tvdb) and merge TMDB data and images onto it, else insert a tmdb-only row')]
+#[Description('Two-phase TMDB show sync: insert-new from the tv-series-ids export (create-or-merge onto any matching source id), then update-changed from the rolling changes feed')]
 #[Signature('tmdb:sync-shows {--fresh} {--limit=}')]
 class SyncTmdbShows extends Command
 {
@@ -48,7 +48,62 @@ class SyncTmdbShows extends Command
             @unlink($file);
         }
 
+        // The changes pass only makes sense for a full default run: --fresh already
+        // re-hydrates every exported id above (a changes pass would be redundant),
+        // and --limit is a bounded partial run that a full changes sweep would blow
+        // past.
+        if (! $this->option('fresh') && $this->option('limit') === null) {
+            $this->updateChanged($api, $upsertShows, $upsertImages);
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Update-changed phase: refresh locally held shows that TMDB reports as
+     * changed within the rolling 14-day window, hydrating the intersection of the
+     * changes feed and our synced rows through the shared insert-phase plumbing.
+     */
+    private function updateChanged(
+        TmdbApiService $api,
+        UpsertTmdbShows $upsertShows,
+        UpsertTmdbImages $upsertImages,
+    ): void {
+        $this->output->writeln('Updating changed shows…');
+
+        $end = now()->utc()->format('Y-m-d');
+        $start = now()->utc()->subDays(14)->format('Y-m-d');
+
+        // Report rather than propagate a changes-feed failure so a transient error
+        // paging the feed — or resolving which of those ids we hold — can't abort
+        // the whole command; the insert phase already ran, so we exit SUCCESS with
+        // what we have.
+        try {
+            $changedIds = $api->changedTvIds($start, $end);
+
+            // Only refresh ids we already hold — a changed id we've never synced is
+            // an insert candidate the export phase owns, not an update. Chunk the
+            // unbounded changes feed before the whereIn: a busy window returns
+            // thousands of ids, and every other intersection in this domain
+            // pre-chunks to BATCH_SIZE to stay under packet/bind-param limits.
+            $ids = [];
+
+            foreach (array_chunk($changedIds, self::BATCH_SIZE) as $chunk) {
+                $ids = array_merge($ids, Show::query()
+                    ->whereNotNull('tmdb_synced_at')
+                    ->whereIn('_tmdb_id', $chunk)
+                    ->pluck('_tmdb_id')
+                    ->all());
+            }
+        } catch (\Throwable $e) {
+            report($e);
+
+            return;
+        }
+
+        foreach (array_chunk($ids, self::BATCH_SIZE) as $chunk) {
+            $this->syncChunkSafely($chunk, $api, $upsertShows, $upsertImages);
+        }
     }
 
     /**

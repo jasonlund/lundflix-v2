@@ -57,6 +57,12 @@ function fakeCatalogSync(): void
         '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
         '*tv_series_ids*' => Http::response(fixtureBytes('Catalog/tmdb/tv_series_ids.json.gz')),
+        // Both TMDB commands hit their changes feed after the insert phase on a
+        // default run; empty-results pages drive the update phase through its
+        // success path (no swallowed exception, no stray stack trace). Listed
+        // before the generic detail stub since they live on the same host.
+        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => function (Request $request) {
             if (str_contains($request->url(), '/movie/603')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));
@@ -92,6 +98,12 @@ function fakeCatalogSyncFreshAndUpdates(): void
         '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
         '*tv_series_ids*' => Http::response(fixtureBytes('Catalog/tmdb/tv_series_ids.json.gz')),
+        // Both TMDB commands hit their changes feed after the insert phase on a
+        // default run; empty-results pages drive the update phase through its
+        // success path (no swallowed exception, no stray stack trace). Listed
+        // before the generic detail stub since they live on the same host.
+        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => function (Request $request) {
             if (str_contains($request->url(), '/movie/603')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));
@@ -255,4 +267,16 @@ it('on a default run uses the TVDB updates feed and forwards no --fresh to the T
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series?page'));
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
+});
+
+it('exercises both TMDB changes feeds on a default run', function (): void {
+    // Arrange
+    fakeCatalogSync();
+
+    // Act
+    $this->artisan('sync:catalog');
+
+    // Assert
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/movie/changes'));
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
 });

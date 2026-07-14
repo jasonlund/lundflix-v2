@@ -6,6 +6,7 @@ use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Models\Movie;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 
@@ -30,8 +31,50 @@ function fakeTmdbSync(): void
 {
     Http::fake([
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
+        // A default run always hits the changes feed after the insert phase; an
+        // empty-results page drives the update phase through its success path
+        // (no swallowed exception, no stray stack trace). Listed before the
+        // generic detail stub since it lives on the same host.
+        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/movie/603')
             ? Http::response(fixtureBytes('Catalog/tmdb/movie.json'))
+            : Http::response('', 404),
+    ]);
+}
+
+/*
+| Fakes the three hosts the update-changed phase touches. The export is empty so
+| the insert-new phase is a no-op and can't interfere with the update phase.
+| movie_changes_page1.json declares total_pages:2, so the client pages through to
+| page 2 (movie_changes_page2.json) — both are hand-authored representative
+| fixtures approximating the /movie/changes wire format, not verbatim live
+| captures. The
+| changes feed lives on the TMDB API host too, so its stub is listed BEFORE the
+| generic detail stub. The Matrix detail body is re-keyed onto id 345 (the only
+| synthetic touch, an accepted pattern here) so the detail-upsert — which keys on
+| the payload's id — lands on the existing _tmdb_id 345 row; every other detail id
+| 404s.
+*/
+function fakeTmdbUpdateSync(): void
+{
+    $decoded = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
+    $decoded['id'] = 345;
+    $detailBody = json_encode($decoded);
+
+    Http::fake([
+        '*movie_ids*' => Http::response(gzencode('')),
+        '*/movie/changes*' => function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return (int) ($query['page'] ?? 1) === 2
+                ? Http::response(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'));
+        },
+        '*api.themoviedb.org*' => fn (Request $request) => str_ends_with(
+            (string) parse_url($request->url(), PHP_URL_PATH),
+            '/movie/345',
+        )
+            ? Http::response($detailBody)
             : Http::response('', 404),
     ]);
 }
@@ -185,5 +228,93 @@ it('continues to the next batch when one batch throws', function (): void {
 
     // Assert
     expect(Movie::where('_tmdb_id', 1001)->exists())->toBeTrue();
+    Exceptions::assertReported(TmdbRequestFailed::class);
+});
+
+it('refreshes an existing synced movie present in the changes feed', function (): void {
+    // Arrange
+    Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now(), '_tmdb_title' => 'Stale']);
+    fakeTmdbUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-movies');
+
+    // Assert
+    expect(Movie::where('_tmdb_id', 345)->first()->_tmdb_title)->toBe('The Matrix');
+});
+
+it('ignores a changed id not in the local catalog', function (): void {
+    // Arrange
+    Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
+    fakeTmdbUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-movies');
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/1648226'));
+});
+
+it('requests the rolling 14-day changes window', function (): void {
+    // Arrange
+    Date::setTestNow('2026-07-09');
+    Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
+    fakeTmdbUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-movies');
+
+    // Assert
+    Http::assertSent(function (Request $request): bool {
+        if (! str_contains($request->url(), '/movie/changes')) {
+            return false;
+        }
+        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+        return ($query['start_date'] ?? null) === '2026-06-25'
+            && ($query['end_date'] ?? null) === '2026-07-09';
+    });
+});
+
+it('skips the update phase with --fresh', function (): void {
+    // Arrange
+    Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
+    fakeTmdbUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-movies', ['--fresh' => true]);
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/changes'));
+});
+
+it('skips the update phase with --limit', function (): void {
+    // Arrange
+    Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
+    fakeTmdbUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-movies', ['--limit' => 1]);
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/changes'));
+});
+
+it('reports a persistent changes-feed failure and still exits SUCCESS', function (): void {
+    // Arrange
+    Exceptions::fake();
+    // Empty export → the insert phase is a no-op; the changes feed 404s on every
+    // page, which TMDB raises as a fatal TmdbRequestFailed the update phase must
+    // report rather than propagate.
+    Http::fake([
+        '*movie_ids*' => Http::response(gzencode('')),
+        '*/movie/changes*' => Http::response('', 404),
+        '*api.themoviedb.org*' => Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('tmdb:sync-movies')->assertExitCode(0);
+
+    // Assert
     Exceptions::assertReported(TmdbRequestFailed::class);
 });
