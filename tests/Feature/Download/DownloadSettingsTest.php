@@ -20,6 +20,17 @@ it('defaults credentials to empty when unset', function (): void {
     expect($settings->pass)->toBe('');
 });
 
+it('defaults rss_key to empty when unset', function (): void {
+    // Arrange
+    // migration registers the key with an empty default; no operator value stored
+
+    // Act
+    $settings = resolve(DownloadSettings::class);
+
+    // Assert
+    expect($settings->rss_key)->toBe('');
+});
+
 it('persists rotated credentials', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
@@ -52,4 +63,22 @@ it('stores the pass encrypted at rest', function (): void {
     expect($passPayload)->not->toContain('secret-pass');
     app()->forgetInstance(DownloadSettings::class);
     expect(resolve(DownloadSettings::class)->pass)->toBe('secret-pass');
+});
+
+it('stores the rss_key encrypted at rest', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->rss_key = 'secret-rss';
+    $settings->save();
+
+    // Act
+    $rssKeyPayload = DB::table('settings')
+        ->where('group', 'download')
+        ->where('name', 'rss_key')
+        ->value('payload');
+
+    // Assert
+    expect($rssKeyPayload)->not->toContain('secret-rss');
+    app()->forgetInstance(DownloadSettings::class);
+    expect(resolve(DownloadSettings::class)->rss_key)->toBe('secret-rss');
 });

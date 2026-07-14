@@ -52,6 +52,24 @@ it('persists a rotated uid and pass', function (): void {
     expect(resolve(DownloadSettings::class)->pass)->toBe('rotated-pass');
 });
 
+it('persists an entered rss_key', function (): void {
+    // Arrange
+    $this->actingAs(User::factory()->create());
+
+    // Act
+    $page = Livewire::test(AppSettings::class)
+        ->fillForm([
+            'uid' => 'op-uid',
+            'rss_key' => 'entered-rss',
+        ])
+        ->call('save');
+
+    // Assert
+    $page->assertHasNoFormErrors();
+    app()->forgetInstance(DownloadSettings::class);
+    expect(resolve(DownloadSettings::class)->rss_key)->toBe('entered-rss');
+});
+
 it('keeps the stored pass when submitted blank', function (): void {
     // Arrange
     $this->actingAs(User::factory()->create());

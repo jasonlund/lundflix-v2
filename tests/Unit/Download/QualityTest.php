@@ -69,6 +69,26 @@ it('resolves the highest-priority token when several co-occur', function (): voi
     expect($resolved)->toBe(Quality::P720);
 });
 
+it('keeps the exact resolution backing values', function (): void {
+    // Arrange
+    // (enum is the subject under test; no state to set up)
+
+    // Act
+    $values = [
+        Quality::P720->value,
+        Quality::I720->value,
+        Quality::P1080->value,
+        Quality::I1080->value,
+        Quality::P576->value,
+        Quality::I576->value,
+        Quality::P480->value,
+        Quality::I480->value,
+    ];
+
+    // Assert
+    expect($values)->toBe(['720p', '720i', '1080p', '1080i', '576p', '576i', '480p', '480i']);
+});
+
 it('ranks the resolution ladder in strict descending priority', function (): void {
     // Arrange
     // (enum is the subject under test; no state to set up)
@@ -119,24 +139,4 @@ it('sorts a shuffled mixed list highest-priority first with null last', function
         Quality::I480,
         null,
     ]);
-});
-
-it('keeps the exact resolution backing values', function (): void {
-    // Arrange
-    // (enum is the subject under test; no state to set up)
-
-    // Act
-    $values = [
-        Quality::P720->value,
-        Quality::I720->value,
-        Quality::P1080->value,
-        Quality::I1080->value,
-        Quality::P576->value,
-        Quality::I576->value,
-        Quality::P480->value,
-        Quality::I480->value,
-    ];
-
-    // Assert
-    expect($values)->toBe(['720p', '720i', '1080p', '1080i', '576p', '576i', '480p', '480i']);
 });

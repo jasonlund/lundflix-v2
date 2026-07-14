@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Domains\Download\Exceptions\RateLimitExceeded;
 use App\Domains\Download\Support\RequestThrottle;
-use Carbon\CarbonInterval;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
@@ -24,59 +23,37 @@ it('does not sleep on the first await of a fresh throttle', function (): void {
     Sleep::assertNeverSlept();
 });
 
-it('backs off within the cap and delays the next request by the retry-after', function (): void {
+it('spaces a back-to-back await by a random 100-250ms', function (): void {
     // Arrange
     Cache::flush();
     Sleep::fake();
     $this->freezeTime();
     $throttle = new RequestThrottle;
-    $throttle->backoff(10);
+    $now = now()->getTimestampMs();
 
     // Act
     $throttle->await();
 
     // Assert
-    Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMilliseconds === 10000.0, times: 1);
+    $gap = (int) Cache::get('download:request-throttle:next-slot') - $now;
+    expect($gap)->toBeGreaterThanOrEqual(100)->toBeLessThanOrEqual(250);
 });
 
-it('falls back to a 60 second backoff that trips the wait cap', function (): void {
+it('accumulates independent random gaps across two successive awaits', function (): void {
     // Arrange
     Cache::flush();
     Sleep::fake();
     $this->freezeTime();
     $throttle = new RequestThrottle;
-    $throttle->backoff();
-
-    // Act & Assert
-    expect(fn () => $throttle->await())->toThrow(RateLimitExceeded::class);
-});
-
-it('trips the wait cap before sleeping when the backoff exceeds it', function (): void {
-    // Arrange
-    Cache::flush();
-    Sleep::fake();
-    $this->freezeTime();
-    $throttle = new RequestThrottle;
-    $throttle->backoff(45);
-
-    // Act & Assert
-    expect(fn () => $throttle->await())->toThrow(RateLimitExceeded::class);
-    Sleep::assertNeverSlept();
-});
-
-it('spaces back-to-back awaits 6.5 seconds apart', function (): void {
-    // Arrange
-    Cache::flush();
-    Sleep::fake();
-    $this->freezeTime();
-    $throttle = new RequestThrottle;
+    $now = now()->getTimestampMs();
 
     // Act
     $throttle->await();
     $throttle->await();
 
     // Assert
-    Sleep::assertSlept(fn (CarbonInterval $duration): bool => $duration->totalMilliseconds === 6500.0, times: 1);
+    $advance = (int) Cache::get('download:request-throttle:next-slot') - $now;
+    expect($advance)->toBeGreaterThanOrEqual(200)->toBeLessThanOrEqual(500);
 });
 
 it('surfaces a lock timeout as a domain rate limit failure', function (): void {
