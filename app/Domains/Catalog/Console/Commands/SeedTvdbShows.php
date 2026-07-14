@@ -21,6 +21,7 @@ class SeedTvdbShows extends TvdbShowsCommand
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
     ): int {
+        $this->output->writeln('Syncing shows…');
         $failed = $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks);
 
         // TheTVDB offers no re-download list, so a dropped id has to heal within the

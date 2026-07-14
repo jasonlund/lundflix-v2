@@ -124,3 +124,11 @@ it('exits SUCCESS', function (): void {
     // Act & Assert
     $this->artisan('tvdb:sync-shows')->assertExitCode(0);
 });
+
+it('announces it is starting before the pipeline runs', function (): void {
+    // Arrange
+    fakeTvdbUpdates();
+
+    // Act & Assert
+    $this->artisan('tvdb:sync-shows')->expectsOutputToContain('Syncing shows…');
+});

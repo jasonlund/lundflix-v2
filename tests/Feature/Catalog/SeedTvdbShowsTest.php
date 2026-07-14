@@ -185,6 +185,14 @@ it('exits SUCCESS', function (): void {
     $this->artisan('tvdb:seed-shows')->assertExitCode(0);
 });
 
+it('announces it is starting before the pipeline runs', function (): void {
+    // Arrange
+    fakeTvdbSeedCrawl();
+
+    // Act & Assert
+    $this->artisan('tvdb:seed-shows')->expectsOutputToContain('Syncing shows…');
+});
+
 it('persists an id that fails its first hydrate then succeeds on the retry pass', function (): void {
     // Arrange
     // An undecodable 200 is non-retryable, so the crawl pass fails 70327 with exactly one

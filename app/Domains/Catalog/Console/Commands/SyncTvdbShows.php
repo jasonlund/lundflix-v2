@@ -28,6 +28,7 @@ class SyncTvdbShows extends TvdbShowsCommand
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
     ): int {
+        $this->output->writeln('Syncing shows…');
         $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks);
 
         return self::SUCCESS;
