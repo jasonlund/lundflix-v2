@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Exceptions\PooledIdFailed;
 use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
+use App\Domains\Catalog\Support\PooledResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -56,9 +57,8 @@ final readonly class PoolsIdBatchesTestHost
 
     /**
      * @param  array<int, int|string>  $ids
-     * @return array<int|string, array<string, mixed>|null>
      */
-    public function fetch(array $ids): array
+    public function fetch(array $ids): PooledResult
     {
         return $this->pooled($ids, fn (PendingRequest $request, int|string $id) => $request
             ->get("/item/{$id}"));
@@ -149,10 +149,11 @@ it('decodes and returns results keyed in input order', function (): void {
     $result = resolve(PoolsIdBatchesTestHost::class)->fetch([10, 20, 30]);
 
     // Assert
-    expect(array_keys($result))->toBe([10, 20, 30])
-        ->and($result[10])->toBe(['id' => 10])
-        ->and($result[20])->toBe(['id' => 20])
-        ->and($result[30])->toBe(['id' => 30]);
+    expect(array_keys($result->results))->toBe([10, 20, 30])
+        ->and($result->results[10])->toBe(['id' => 10])
+        ->and($result->results[20])->toBe(['id' => 20])
+        ->and($result->results[30])->toBe(['id' => 30])
+        ->and($result->failedIds)->toBe([]);
 });
 
 it('returns the succeeding id and reports the aggregate when a non-Response pool entry lands a failed id', function (): void {
@@ -170,7 +171,8 @@ it('returns the succeeding id and reports the aggregate when a non-Response pool
     $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
 
     // Assert
-    expect($result)->toBe([2 => ['id' => 2]]);
+    expect($result->results)->toBe([2 => ['id' => 2]])
+        ->and($result->failedIds)->toBe([1]);
     Exceptions::assertReported(
         fn (RuntimeException $e): bool => str_contains($e->getMessage(), 'failed ids: 1')
     );
@@ -190,7 +192,8 @@ it('returns the succeeding id and reports the aggregate when resolvePooled signa
     $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
 
     // Assert
-    expect($result)->toBe([2 => ['id' => 2]]);
+    expect($result->results)->toBe([2 => ['id' => 2]])
+        ->and($result->failedIds)->toBe([1]);
     Exceptions::assertReported(
         fn (RuntimeException $e): bool => str_contains($e->getMessage(), 'failed ids: 1')
     );
@@ -222,7 +225,7 @@ it('returns the succeeding id and reports every failed id together in one aggreg
     $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2, 3]);
 
     // Assert
-    expect($result)->toBe([2 => ['id' => 2]]);
+    expect($result->results)->toBe([2 => ['id' => 2]]);
     Exceptions::assertReported(
         fn (RuntimeException $e): bool => str_contains($e->getMessage(), 'failed ids: 1,3')
     );
