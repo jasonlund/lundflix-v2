@@ -12,6 +12,8 @@ final class DownloadSettings extends Settings
 
     public string $pass;
 
+    public string $rss_key;
+
     public static function group(): string
     {
         return 'download';
@@ -21,6 +23,6 @@ final class DownloadSettings extends Settings
     #[\Override]
     public static function encrypted(): array
     {
-        return ['pass'];
+        return ['pass', 'rss_key'];
     }
 }
