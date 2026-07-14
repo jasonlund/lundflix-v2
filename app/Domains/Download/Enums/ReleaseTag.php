@@ -25,6 +25,10 @@ enum ReleaseTag: string
         return self::None;
     }
 
+    /**
+     * TODO: retained for the upcoming download-picking logic (currently uncalled) —
+     * ranks cases so the best available release can be selected.
+     */
     public function priority(): int
     {
         return match ($this) {

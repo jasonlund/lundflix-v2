@@ -13,6 +13,7 @@ use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
 use App\Domains\Download\Enums\ReleaseTag;
 use App\Domains\Download\Enums\Source;
+use App\Domains\Download\Exceptions\DownloadDetailPageIncomplete;
 use App\Domains\Download\Exceptions\DownloadRequestFailed;
 use App\Domains\Download\Exceptions\InvalidDownloadCredentials;
 use App\Domains\Download\Settings\DownloadSettings;
@@ -38,11 +39,23 @@ final class DownloadService
      */
     private const string STORAGE_DIR = 'downloads/';
 
+    /**
+     * The download-title cell within a result row: `table#torrents` also holds a
+     * header row and interstitial rows, so a real result is identified by an
+     * anchor into `/t/{id}` inside its `td.al` name cell.
+     */
+    private const string TITLE_LINK = 'td.al a[href^="/t/"]';
+
     public function download(int $downloadId, string $filename): string
     {
         $response = $this->get('/download.php/'.$downloadId.'/'.$filename);
         $path = self::STORAGE_DIR.$filename;
-        Storage::put($path, $response->body());
+
+        // Storage::put returns false on a failed write — never report the path as
+        // stored when the bytes never landed on disk.
+        if (Storage::put($path, $response->body()) === false) {
+            throw DownloadRequestFailed::for($path);
+        }
 
         return $path;
     }
@@ -63,15 +76,10 @@ final class DownloadService
         $response = $this->get('/t.rss?u='.$uid.';tp='.$rssKey.';'.$category->value);
 
         return collect((new Crawler($response->body()))->filterXPath('//item'))
-            ->map(fn (\DOMNode $node): DownloadResult => $this->parseRssItem(new Crawler($node)));
+            ->map(fn (\DOMNode $node, int $index): ?DownloadResult => $this->parseRssItem(new Crawler($node), $index))
+            ->filter()
+            ->values();
     }
-
-    /**
-     * The download-title cell within a result row: `table#torrents` also holds a
-     * header row and interstitial rows, so a real result is identified by an
-     * anchor into `/t/{id}` inside its `td.al` name cell.
-     */
-    private const string TITLE_LINK = 'td.al a[href^="/t/"]';
 
     /**
      * Fetch one no-query HTML listing page and return a DownloadPage carrying the
@@ -99,18 +107,33 @@ final class DownloadService
     public function item(int $id, bool $withFiles = false): DownloadItem
     {
         $crawler = new Crawler($this->get('/t/'.$id)->body());
-        $name = trim($crawler->filter('h2')->first()->text());
+
+        $heading = $crawler->filter('h2');
+        if ($heading->count() === 0) {
+            throw DownloadDetailPageIncomplete::forDetailPage($id, 'name heading');
+        }
+        $name = trim($heading->first()->text());
 
         // The detail page carries several download links (this item plus related
         // releases), so scope to the anchor whose path is keyed to the current id.
-        $dlHref = $crawler->filter('a[href*="download.php/'.$id.'/"]')->first()->attr('href');
-        $filename = $this->downloadFilenameFrom((string) $dlHref);
+        $downloadAnchor = $crawler->filter('a[href*="download.php/'.$id.'/"]');
+        if ($downloadAnchor->count() === 0) {
+            throw DownloadDetailPageIncomplete::forDetailPage($id, 'download link');
+        }
+        $filename = $this->downloadFilenameFrom((string) $downloadAnchor->first()->attr('href'));
 
         preg_match('/Size:\s*([0-9.]+\s*[KMGT]?B)/', $crawler->text(), $sizeMatch);
 
-        // The two numbers in the `a.peer` block are, IN ORDER, availability then
-        // demand (the source's obfuscated up/down peer figures) — never re-sort.
-        preg_match_all('/\d+/', $crawler->filter('a.peer')->first()->text(), $peerMatch);
+        $peer = $crawler->filter('a.peer');
+        if ($peer->count() === 0) {
+            throw DownloadDetailPageIncomplete::forDetailPage($id, 'availability block');
+        }
+
+        // Strip thousands separators BEFORE extracting so a comma can never split
+        // one figure (`1,024`) into two. The two numbers are, IN ORDER,
+        // availability then demand (the source's obfuscated up/down counts) —
+        // never re-sort.
+        preg_match_all('/\d+/', str_replace(',', '', $peer->first()->text()), $peerMatch);
 
         return new DownloadItem(
             id: $id,
@@ -194,11 +217,21 @@ final class DownloadService
             return null;
         }
 
-        $downloadHref = (string) $row->filter('a[href^="/download.php/"]')->first()->attr('href');
+        // A row whose download anchor drifted away can't yield a filename; skip it
+        // (like the sibling guards) so one bad row can't abort the whole page, and
+        // log it loudly so the drift is visible.
+        $downloadAnchor = $row->filter('a[href^="/download.php/"]');
+        if ($downloadAnchor->count() === 0) {
+            Log::warning('Download listing row missing its download anchor — likely download-source markup drift or scraper break.', [
+                'downloadId' => (int) $idMatch[1],
+            ]);
+
+            return null;
+        }
 
         return $this->resultFromName(
             name: trim($anchor->text()),
-            filename: $this->downloadFilenameFrom($downloadHref),
+            filename: $this->downloadFilenameFrom((string) $downloadAnchor->first()->attr('href')),
             downloadId: (int) $idMatch[1],
             sizeBytes: $this->bytesFromSize($cells->eq(5)->text()),
             availability: $this->availabilityFrom($cells->eq(7)->text()),
@@ -274,20 +307,38 @@ final class DownloadService
         return (int) round((float) $value * 1024 ** $exponent);
     }
 
-    private function parseRssItem(Crawler $item): DownloadResult
+    /**
+     * Map ONE feed `<item>` to a DownloadResult, isolating its parse: a missing
+     * child node or an unparseable pubDate throws while reading this item, which
+     * would otherwise sink the whole feed's eager map. Catch it, skip the item
+     * (return null so the caller's ->filter() drops it), and log the drift loudly
+     * so one malformed item can't lose the rest of the feed.
+     */
+    private function parseRssItem(Crawler $item, int $index): ?DownloadResult
     {
-        preg_match('#/t/(\d+)#', $item->filterXPath('.//guid')->text(), $guidMatch);
-        preg_match('/\(S:(\d+)/', $item->filterXPath('.//description')->text(), $availabilityMatch);
-        $length = $item->filterXPath('.//enclosure')->attr('length') ?? '0';
+        try {
+            preg_match('#/t/(\d+)#', $item->filterXPath('.//guid')->text(), $guidMatch);
+            // Thousands are comma-grouped (`S:1,024`); capture the grouped run and
+            // strip the separators so the comma can't truncate the count.
+            preg_match('/\(S:([\d,]+)/', $item->filterXPath('.//description')->text(), $availabilityMatch);
+            $length = $item->filterXPath('.//enclosure')->attr('length') ?? '0';
 
-        return $this->resultFromName(
-            name: trim($item->filterXPath('.//title')->text()),
-            filename: $this->downloadFilenameFrom((string) $item->filterXPath('.//enclosure')->attr('url')),
-            downloadId: (int) ($guidMatch[1] ?? 0),
-            sizeBytes: (int) $length,
-            availability: (int) ($availabilityMatch[1] ?? 0),
-            publishedAt: CarbonImmutable::parse($item->filterXPath('.//pubDate')->text()),
-        );
+            return $this->resultFromName(
+                name: trim($item->filterXPath('.//title')->text()),
+                filename: $this->downloadFilenameFrom((string) $item->filterXPath('.//enclosure')->attr('url')),
+                downloadId: (int) ($guidMatch[1] ?? 0),
+                sizeBytes: (int) $length,
+                availability: (int) str_replace(',', '', $availabilityMatch[1] ?? '0'),
+                publishedAt: CarbonImmutable::parse($item->filterXPath('.//pubDate')->text()),
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Download RSS item skipped — likely download-source markup drift or scraper break.', [
+                'index' => $index,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**

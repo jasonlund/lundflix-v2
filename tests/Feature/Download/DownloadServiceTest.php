@@ -11,6 +11,7 @@ use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
 use App\Domains\Download\Enums\ReleaseTag;
 use App\Domains\Download\Enums\Source;
+use App\Domains\Download\Exceptions\DownloadDetailPageIncomplete;
 use App\Domains\Download\Exceptions\DownloadRequestFailed;
 use App\Domains\Download\Exceptions\InvalidDownloadCredentials;
 use App\Domains\Download\Exceptions\RateLimitExceeded;
@@ -189,6 +190,53 @@ it('maps a failed download to DownloadRequestFailed', function (): void {
 
     // Act & Assert
     expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(DownloadRequestFailed::class);
+});
+
+it('maps a failed disk write to DownloadRequestFailed', function (): void {
+    // Arrange
+    // Storage::put returns false when the write fails; the path must NOT be reported as success
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'cookie-uid';
+    $settings->pass = 'cookie-pass';
+    $settings->save();
+    Http::fake(['*' => Http::response('data', 200)]);
+    Storage::shouldReceive('put')->once()->andReturnFalse();
+
+    // Act & Assert
+    expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(DownloadRequestFailed::class);
+});
+
+/*
+|--------------------------------------------------------------------------
+| DownloadService — parse→download filename round-trip slice
+|--------------------------------------------------------------------------
+| The filename a parser stores on a result is extensionless (the parser strips
+| the trailing extension). Feeding that exact stored name back into download()
+| must reproduce it verbatim in the outbound `/download.php/<id>/<filename>`
+| path — the value round-trips unchanged, never re-extended or mangled. Parse
+| the real Movies listing (index_movies_p1.html), take the id-7563851 row's
+| filename, and drive download() with it.
+*/
+
+it('round-trips a parser-produced filename unchanged into the download request path', function (): void {
+    // Arrange
+    Storage::fake();
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake([
+        '*/download.php/*' => Http::response(fixtureBytes('Download/downloads/sample.bin'), 200),
+        '*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200),
+    ]);
+    $service = resolve(DownloadService::class);
+    $row = $service->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
+
+    // Act
+    $service->download($row->downloadId, $row->filename);
+
+    // Assert
+    Http::assertSent(fn ($request): bool => str_ends_with((string) $request->url(), '/download.php/'.$row->downloadId.'/'.$row->filename));
 });
 
 /*
@@ -494,6 +542,56 @@ it('falls back to the config rss_key when the stored value is blank', function (
 
 /*
 |--------------------------------------------------------------------------
+| DownloadService — rss() per-item resilience slice
+|--------------------------------------------------------------------------
+| One malformed <item> (a missing child node or an unparseable pubDate) must
+| not sink the whole ~100-item feed: the bad item is dropped and warned, the
+| rest survive. Availability is read from the description's `(S:<n>` figure,
+| whose thousands are comma-grouped like the HTML path — the comma must not
+| truncate the count.
+|
+| Fixture (synthetic drift, based on rss_movies.xml structure):
+|   tests/Fixtures/Download/downloads/rss_movies_drift.xml — one good item
+|     (id 9001, description `(S:1,024 L:23)`) + one item with an unparseable
+|     pubDate (id 9002).
+*/
+
+it('skips a malformed rss item and warns while the rest of the feed survives', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->rss_key = 'rsskey123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies_drift.xml'), 200)]);
+    Log::shouldReceive('warning')->once();
+
+    // Act
+    $results = resolve(DownloadService::class)->rss(Category::Movies);
+
+    // Assert
+    expect($results)->toHaveCount(1)
+        ->and($results->firstWhere('downloadId', 9001))->not->toBeNull()
+        ->and($results->firstWhere('downloadId', 9002))->toBeNull();
+});
+
+it('parses a comma-grouped S-count on an rss item', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->rss_key = 'rsskey123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies_drift.xml'), 200)]);
+    Log::shouldReceive('warning');
+
+    // Act
+    $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 9001);
+
+    // Assert
+    expect($result->availability)->toBe(1024);
+});
+
+/*
+|--------------------------------------------------------------------------
 | DownloadService — index() browse slice
 |--------------------------------------------------------------------------
 | index(Category, page) fetches ONE no-query HTML listing page from the
@@ -651,6 +749,60 @@ it('warns and returns an empty page when the results table is missing', function
 
 /*
 |--------------------------------------------------------------------------
+| DownloadService — index() row-resilience slice
+|--------------------------------------------------------------------------
+| A single drifted row must not abort the whole page parse: a row missing its
+| download anchor is skipped+warned like the sibling guards (short row, no id),
+| while the rest of the page still parses. availabilityFrom() strips thousands
+| separators and treats a non-numeric `-` cell as a deliberate 0.
+|
+| Fixtures (synthetic drift, based on index_movies_p1.html row structure):
+|   index_movies_p1_missing_download_anchor.html — 2 good rows (ids 2000, 2002)
+|     + 1 row with a title link but no download anchor (id 2001).
+|   index_movies_p1_availability_drift.html — a `1,024` availability row
+|     (id 3000), a `-` availability row (id 3001), and a short <9-cell row
+|     (id 3002).
+*/
+
+it('skips a row missing its download anchor and warns while the rest of the page parses', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_missing_download_anchor.html'), 200)]);
+    Log::shouldReceive('warning')->once();
+
+    // Act
+    $page = resolve(DownloadService::class)->index(Category::Movies);
+
+    // Assert
+    expect($page->results)->toHaveCount(2)
+        ->and($page->results->firstWhere('downloadId', 2000))->not->toBeNull()
+        ->and($page->results->firstWhere('downloadId', 2001))->toBeNull()
+        ->and($page->results->firstWhere('downloadId', 2002))->not->toBeNull();
+});
+
+it('skips a short row and parses comma-grouped and dash availability cells', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_availability_drift.html'), 200)]);
+
+    // Act
+    $page = resolve(DownloadService::class)->index(Category::Movies);
+
+    // Assert
+    expect($page->results)->toHaveCount(2)
+        ->and($page->results->firstWhere('downloadId', 3002))->toBeNull()
+        ->and($page->results->firstWhere('downloadId', 3000)->availability)->toBe(1024)
+        ->and($page->results->firstWhere('downloadId', 3001)->availability)->toBe(0);
+});
+
+/*
+|--------------------------------------------------------------------------
 | DownloadService — item() detail slice
 |--------------------------------------------------------------------------
 | item(int $id, bool $withFiles = false) fetches ONE HTML detail page from
@@ -774,4 +926,34 @@ it('sends one request and leaves files null when withFiles defaults to false', f
     // Assert
     expect($item->files)->toBeNull();
     Http::assertSentCount(1);
+});
+
+it('throws when a detail page is missing its required nodes', function (): void {
+    // Arrange
+    // a 200 stub (pulled/restricted page) carrying none of the required detail nodes
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_stub.html'), 200)]);
+
+    // Act & Assert
+    expect(fn () => resolve(DownloadService::class)->item(7537888))->toThrow(DownloadDetailPageIncomplete::class);
+});
+
+it('parses a comma-grouped availability figure on a detail page', function (): void {
+    // Arrange
+    // the `a.peer` up-count is `1,024`; the comma must not split it into 1 and 024
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_high_availability.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->availability)->toBe(1024)
+        ->and($item->demand)->toBe(0);
 });
