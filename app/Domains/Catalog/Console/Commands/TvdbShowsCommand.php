@@ -143,9 +143,10 @@ abstract class TvdbShowsCommand extends Command
     }
 
     /**
-     * Cap the streamed ids at `--limit`, stopping mid-crawl once enough ids are
-     * yielded rather than materializing the whole crawl before slicing. Null
-     * `--limit` yields every id.
+     * Cap how many ids are hydrated at `--limit`. For the seed crawl (`ids()`
+     * pages lazily) this also stops fetching mid-crawl; for the updates-feed sync
+     * the feed is walked into an array upstream, so `--limit` bounds hydration
+     * only, not fetch or memory. Null `--limit` yields every id.
      *
      * @param  iterable<int, int>  $ids
      * @return Generator<int, int>
@@ -157,13 +158,12 @@ abstract class TvdbShowsCommand extends Command
         $yielded = 0;
 
         foreach ($ids as $id) {
-            yield $id;
-
-            $yielded++;
-
             if ($limit !== null && $yielded >= $limit) {
                 return;
             }
+
+            yield $id;
+            $yielded++;
         }
     }
 

@@ -32,16 +32,16 @@ beforeEach(function (): void {
 |   tv.json — /tv/1399 (external_ids.imdb_id tt0944947).
 | tests/Fixtures/Catalog/tvdb/* — login JWT, chained /updates feed, and
 |   Breaking Bad's /series/434847/extended (_tvdb_id 81189, IMDB tt0903747).
-| tests/Fixtures/Catalog/tvdb/series_page1.json + series_empty.json — responses
-|   for the retired allSeries crawl (GET /series?page=0 then /series?page=1).
-|   --fresh no longer crawls, so these are stubbed only in
-|   fakeCatalogSyncFreshAndUpdates() as a should-not-fire guard: the test proves
-|   /series?page is never requested. They drive no crawl — Breaking Bad's
-|   extended payload is always served for updates recordId 434847.
+| tests/Fixtures/Catalog/tvdb/series_page1.json + series_empty.json — the full
+|   allSeries crawl (GET /series?page=0 then /series?page=1) that --fresh now
+|   drives via tvdb:seed-shows, faked in fakeCatalogSyncFreshAndUpdates().
 |
-| sync:catalog dispatches tmdb:sync-movies → tvdb:sync-shows →
-| tmdb:sync-shows → imdb:import-ratings. There is no title.basics import in the
-| flow, so title.basics is never requested and is not faked.
+| A default sync:catalog dispatches tmdb:sync-movies → tvdb:sync-shows →
+| tmdb:sync-shows → imdb:import-ratings (the updates feed). Under --fresh the TVDB
+| step swaps to the full crawl (tvdb:seed-shows) and --fresh is forwarded to both
+| TMDB syncs: tmdb:sync-movies --fresh → tvdb:seed-shows → tmdb:sync-shows --fresh
+| → imdb:import-ratings. There is no title.basics import in either flow, so
+| title.basics is never requested and is not faked.
 */
 
 /**
@@ -79,12 +79,12 @@ function fakeCatalogSync(): void
 }
 
 /**
- * The happy-path updates fake plus stubs for the retired allSeries crawl: both
- * TheTVDB's /updates feed AND /series?page=0|1 are faked. The page stubs exist
- * only so the test can prove --fresh never crawls them — a should-not-fire guard
- * — while the run stays on /updates. Breaking Bad's extended payload is served
- * for updates recordId 434847. The specific /series?page patterns precede the
- * wildcard extended-series pattern so Http::fake matches them correctly.
+ * The full-crawl fake for a --fresh run: TheTVDB's login, the allSeries crawl
+ * (/series?page=0|1), and Breaking Bad's extended payload for recordId 434847
+ * (404 for every other crawled id). The /updates feed is faked too, purely as a
+ * should-not-fire guard — under --fresh the TVDB step is the crawl, so the test
+ * proves /updates is never requested. The specific /series?page patterns precede
+ * the wildcard extended-series pattern so Http::fake matches them correctly.
  */
 function fakeCatalogSyncFreshAndUpdates(): void
 {
@@ -212,7 +212,7 @@ it('continues past a failing show command, exits FAILURE and reports', function 
             : Http::response('', 404),
     ]);
 
-    // Act
+    // Act & Assert
     $this->artisan('sync:catalog')->assertExitCode(Command::FAILURE);
 
     // Assert
@@ -220,26 +220,39 @@ it('continues past a failing show command, exits FAILURE and reports', function 
     expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
 });
 
-it('passing --fresh to sync:catalog no longer crawls TVDB', function (): void {
+it('under --fresh crawls the full TVDB seed and forwards --fresh to both TMDB syncs', function (): void {
     // Arrange
     fakeCatalogSyncFreshAndUpdates();
+    Movie::factory()->withTmdb()->create(['_tmdb_id' => 603]);
+    Show::factory()->withTmdb()->create(['_tmdb_id' => 1399]);
 
     // Act
     $this->artisan('sync:catalog', ['--fresh' => true]);
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series?page'));
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/updates'));
+    // --fresh swaps the TVDB step to the full crawl (/series?page) and never the
+    // updates feed; forwarding --fresh reprocesses the already-synced 603/1399
+    // rows that a plain run would skip, so both hydrations fire.
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/series?page'));
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/updates'));
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
 });
 
-it('uses the TVDB updates feed on a default run', function (): void {
+it('on a default run uses the TVDB updates feed and forwards no --fresh to the TMDB syncs', function (): void {
     // Arrange
     fakeCatalogSync();
+    Movie::factory()->withTmdb()->create(['_tmdb_id' => 603]);
+    Show::factory()->withTmdb()->create(['_tmdb_id' => 1399]);
 
     // Act
     $this->artisan('sync:catalog');
 
     // Assert
+    // No --fresh means the updates feed (never the crawl) and the already-synced
+    // 603/1399 rows are skipped, so neither hydration fires.
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/updates'));
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series?page'));
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
 });

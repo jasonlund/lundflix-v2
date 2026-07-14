@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domains\Catalog\Data;
+namespace App\Domains\Catalog\Support;
 
 use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
 

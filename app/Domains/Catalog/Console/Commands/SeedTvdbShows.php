@@ -51,7 +51,7 @@ class SeedTvdbShows extends TvdbShowsCommand
 
         while (($records = $api->allSeries($page)) !== []) {
             foreach ($records as $record) {
-                if (is_numeric($record['id'])) {
+                if (is_numeric($record['id'] ?? null)) {
                     yield (int) $record['id'];
                 }
             }

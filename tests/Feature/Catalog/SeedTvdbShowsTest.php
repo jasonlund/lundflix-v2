@@ -70,6 +70,30 @@ function fakeTvdbSeedCrawlWithMalformedId(): void
     ]);
 }
 
+function fakeTvdbSeedCrawlWithMissingId(): void
+{
+    // A record omitting the `id` key can't occur in the real byte-exact page
+    // fixtures, so this synthetic page injects one to prove the crawl skips it
+    // without raising an "Undefined array key" warning per malformed record.
+    $missingIdPage = json_encode([
+        'status' => 'success',
+        'data' => [
+            ['name' => 'No Id Key'],
+            ['id' => 70327, 'name' => 'Valid'],
+        ],
+        'links' => ['prev' => null, 'self' => null, 'next' => null, 'total_items' => 2, 'page_size' => 500],
+    ]);
+
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series?page=0*' => Http::response($missingIdPage),
+        '*api4.thetvdb.com/v4/series?page=1*' => Http::response(fixtureBytes('Catalog/tvdb/series_empty.json')),
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/70327/extended')
+            ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
+            : Http::response('', 404),
+    ]);
+}
+
 beforeEach(function (): void {
     Cache::flush();
     config(['services.tvdb.key' => 'test-key']);
@@ -120,6 +144,17 @@ it('caps hydrate calls and stops paging with --limit', function (): void {
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series?page=1'));
 });
 
+it('hydrates nothing with --limit=0', function (): void {
+    // Arrange
+    fakeTvdbSeedCrawl();
+
+    // Act
+    $this->artisan('tvdb:seed-shows', ['--limit' => 0]);
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/extended'));
+});
+
 it('skips a non-numeric crawl id without firing /series/0/extended', function (): void {
     // Arrange
     fakeTvdbSeedCrawlWithMalformedId();
@@ -129,6 +164,17 @@ it('skips a non-numeric crawl id without firing /series/0/extended', function ()
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series/0/extended'));
+});
+
+it('skips a crawl record missing its id key without raising a warning', function (): void {
+    // Arrange
+    fakeTvdbSeedCrawlWithMissingId();
+
+    // Act
+    $this->artisan('tvdb:seed-shows');
+
+    // Assert
+    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
 });
 
 it('exits SUCCESS', function (): void {
