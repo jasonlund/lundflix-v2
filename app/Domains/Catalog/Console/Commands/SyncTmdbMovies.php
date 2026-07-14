@@ -73,24 +73,33 @@ class SyncTmdbMovies extends Command
         $end = now()->utc()->format('Y-m-d');
         $start = now()->utc()->subDays(14)->format('Y-m-d');
 
-        // Report rather than propagate a changes-feed failure so a transient error
-        // paging the feed can't abort the whole command — the insert phase already
-        // ran, so we exit SUCCESS with what we have.
+        // Report rather than propagate a changes-feed or id-resolution failure so a
+        // transient error — paging the feed or querying our rows — can't abort the
+        // whole command; the insert phase already ran, so we exit SUCCESS with what
+        // we have.
         try {
             $changedIds = $api->changedMovieIds($start, $end);
+
+            // Only refresh ids we already hold — a changed id we've never synced is an
+            // insert candidate the export phase owns, not an update. The changes feed
+            // is unbounded, so resolve the intersection in BATCH_SIZE slices: a single
+            // whereIn over a busy window risks the packet/placeholder limit.
+            $ids = [];
+
+            foreach (array_chunk($changedIds, self::BATCH_SIZE) as $chunk) {
+                $resolved = Movie::query()
+                    ->whereNotNull('tmdb_synced_at')
+                    ->whereIn('_tmdb_id', $chunk)
+                    ->pluck('_tmdb_id')
+                    ->all();
+
+                $ids = array_merge($ids, $resolved);
+            }
         } catch (\Throwable $e) {
             report($e);
 
             return;
         }
-
-        // Only refresh ids we already hold — a changed id we've never synced is an
-        // insert candidate the export phase owns, not an update.
-        $ids = Movie::query()
-            ->whereNotNull('tmdb_synced_at')
-            ->whereIn('_tmdb_id', $changedIds)
-            ->pluck('_tmdb_id')
-            ->all();
 
         foreach (array_chunk($ids, self::BATCH_SIZE) as $chunk) {
             $this->syncChunkSafely($chunk, $api, $upsertMovies, $upsertImages);

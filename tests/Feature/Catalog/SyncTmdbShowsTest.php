@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
@@ -30,6 +32,11 @@ function fakeTmdbShowSync(): void
 {
     Http::fake([
         '*tv_series_ids*' => Http::response(fixtureBytes('Catalog/tmdb/tv_series_ids.json.gz')),
+        // A default run always hits the changes feed after the insert phase; an
+        // empty-results page drives the update phase through its success path
+        // (no swallowed exception, no stray stack trace). Listed before the
+        // generic detail stub since it lives on the same host.
+        '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/tv/1399')
             ? Http::response(fixtureBytes('Catalog/tmdb/tv.json'))
             : Http::response('', 404),
@@ -40,7 +47,8 @@ function fakeTmdbShowSync(): void
 | Fakes the three hosts the update-changed phase touches. The export is empty so
 | the insert-new phase is a no-op and can't interfere with the update phase.
 | tv_changes_page1.json declares total_pages:2, so the client pages through to
-| page 2 (tv_changes_page2.json) — both are byte-exact real feed slices. The
+| page 2 (tv_changes_page2.json) — both are hand-authored representative fixtures
+| approximating the /tv/changes wire format, not verbatim live captures. The
 | changes feed lives on the TMDB API host too, so its stub is listed BEFORE the
 | generic detail stub. The Game of Thrones detail body is re-keyed onto id 23310
 | (the only synthetic touch, an accepted pattern here) so the detail-upsert —
@@ -81,6 +89,7 @@ it('skips a non-numeric export id without hydrating it', function (): void {
 
     Http::fake([
         '*tv_series_ids*' => Http::response(gzencode($jsonl)),
+        '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/tv/1399')
             ? Http::response(fixtureBytes('Catalog/tmdb/tv.json'))
             : Http::response('', 404),
@@ -232,4 +241,35 @@ it('skips the update phase with --fresh', function (): void {
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
+});
+
+it('skips the update phase with --limit', function (): void {
+    // Arrange
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
+    fakeTmdbShowUpdateSync();
+
+    // Act
+    $this->artisan('tmdb:sync-shows', ['--limit' => 1]);
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
+});
+
+it('reports a persistent changes-feed failure and still exits SUCCESS', function (): void {
+    // Arrange
+    Exceptions::fake();
+    // Empty export → the insert phase is a no-op; the changes feed 404s on every
+    // page, which TMDB raises as a fatal TmdbRequestFailed the update phase must
+    // report rather than propagate.
+    Http::fake([
+        '*tv_series_ids*' => Http::response(gzencode('')),
+        '*/tv/changes*' => Http::response('', 404),
+        '*api.themoviedb.org*' => Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('tmdb:sync-shows')->assertExitCode(0);
+
+    // Assert
+    Exceptions::assertReported(TmdbRequestFailed::class);
 });
