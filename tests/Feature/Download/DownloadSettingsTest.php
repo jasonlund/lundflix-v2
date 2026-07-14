@@ -8,16 +8,27 @@ use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
-it('resolves provider cookie credentials seeded from env', function (): void {
+it('defaults credentials to empty when unset', function (): void {
     // Arrange
-    // seed migration runs under RefreshDatabase, sourcing DOWNLOADS_UID/PASS from phpunit.xml
+    // migration registers the keys with empty defaults; no operator value stored
 
     // Act
     $settings = resolve(DownloadSettings::class);
 
     // Assert
-    expect($settings->uid)->toBe('test-uid');
-    expect($settings->pass)->toBe('test-pass');
+    expect($settings->uid)->toBe('');
+    expect($settings->pass)->toBe('');
+});
+
+it('defaults rss_key to empty when unset', function (): void {
+    // Arrange
+    // migration registers the key with an empty default; no operator value stored
+
+    // Act
+    $settings = resolve(DownloadSettings::class);
+
+    // Assert
+    expect($settings->rss_key)->toBe('');
 });
 
 it('persists rotated credentials', function (): void {
@@ -38,7 +49,9 @@ it('persists rotated credentials', function (): void {
 
 it('stores the pass encrypted at rest', function (): void {
     // Arrange
-    resolve(DownloadSettings::class);
+    $settings = resolve(DownloadSettings::class);
+    $settings->pass = 'secret-pass';
+    $settings->save();
 
     // Act
     $passPayload = DB::table('settings')
@@ -47,6 +60,25 @@ it('stores the pass encrypted at rest', function (): void {
         ->value('payload');
 
     // Assert
-    expect($passPayload)->not->toContain('test-pass');
-    expect(resolve(DownloadSettings::class)->pass)->toBe('test-pass');
+    expect($passPayload)->not->toContain('secret-pass');
+    app()->forgetInstance(DownloadSettings::class);
+    expect(resolve(DownloadSettings::class)->pass)->toBe('secret-pass');
+});
+
+it('stores the rss_key encrypted at rest', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->rss_key = 'secret-rss';
+    $settings->save();
+
+    // Act
+    $rssKeyPayload = DB::table('settings')
+        ->where('group', 'download')
+        ->where('name', 'rss_key')
+        ->value('payload');
+
+    // Assert
+    expect($rssKeyPayload)->not->toContain('secret-rss');
+    app()->forgetInstance(DownloadSettings::class);
+    expect(resolve(DownloadSettings::class)->rss_key)->toBe('secret-rss');
 });

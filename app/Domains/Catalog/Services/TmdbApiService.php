@@ -42,7 +42,7 @@ final class TmdbApiService
     public function movies(array $ids): array
     {
         return $this->pooled($ids, fn (PendingRequest $request, int $id) => $request
-            ->get("/movie/{$id}", $this->detailQuery(self::MOVIE_APPEND)));
+            ->get("/movie/{$id}", $this->detailQuery(self::MOVIE_APPEND)))->results;
     }
 
     /**
@@ -63,7 +63,7 @@ final class TmdbApiService
     public function tvShows(array $ids): array
     {
         return $this->pooled($ids, fn (PendingRequest $request, int $id) => $request
-            ->get("/tv/{$id}", $this->detailQuery(self::TV_APPEND)));
+            ->get("/tv/{$id}", $this->detailQuery(self::TV_APPEND)))->results;
     }
 
     /**
@@ -88,7 +88,7 @@ final class TmdbApiService
     public function findManyByImdbId(array $imdbIds): array
     {
         return $this->pooled($imdbIds, fn (PendingRequest $request, string $imdbId) => $request
-            ->get("/find/{$imdbId}", ['external_source' => 'imdb_id']));
+            ->get("/find/{$imdbId}", ['external_source' => 'imdb_id']))->results;
     }
 
     /**

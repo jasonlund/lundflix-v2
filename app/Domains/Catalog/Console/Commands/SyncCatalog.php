@@ -14,24 +14,11 @@ use Throwable;
 #[Signature('sync:catalog {--fresh}')]
 class SyncCatalog extends Command
 {
-    /**
-     * The import commands to dispatch, in order: TMDB and TVDB establish the
-     * source-of-truth rows first, then IMDb ratings enrich them by _imdb_id last.
-     *
-     * @var list<class-string<Command>>
-     */
-    private const array COMMANDS = [SyncTmdbMovies::class, SyncTvdbShows::class, SyncTmdbShows::class, ImportImdbRatings::class];
-
     public function handle(): int
     {
         $failed = false;
 
-        foreach (self::COMMANDS as $command) {
-            // TODO: --fresh currently reaches only the tvdb sub-command; forward it to SyncTmdbMovies and SyncTmdbShows too (they honor it) so --fresh is a true full resync.
-            $arguments = $command === SyncTvdbShows::class && $this->option('fresh')
-                ? ['--fresh' => true]
-                : [];
-
+        foreach ($this->commands() as $command => $arguments) {
             try {
                 if (Artisan::call($command, $arguments, $this->output) !== self::SUCCESS) {
                     $failed = true;
@@ -43,5 +30,35 @@ class SyncCatalog extends Command
         }
 
         return $failed ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * The ordered command => arguments to dispatch: TMDB and TVDB establish the
+     * source-of-truth rows first, then IMDb ratings enrich them by _imdb_id last.
+     *
+     * `--fresh` forces a full re-seed: the TVDB step swaps from the updates-only
+     * sync to the full allSeries crawl, and --fresh is forwarded to both TMDB
+     * syncs to reprocess every already-synced row. Seed and ratings take no
+     * --fresh — passing it would error.
+     *
+     * @return array<class-string<Command>, array<string, bool>>
+     */
+    private function commands(): array
+    {
+        if ($this->option('fresh')) {
+            return [
+                SyncTmdbMovies::class => ['--fresh' => true],
+                SeedTvdbShows::class => [],
+                SyncTmdbShows::class => ['--fresh' => true],
+                ImportImdbRatings::class => [],
+            ];
+        }
+
+        return [
+            SyncTmdbMovies::class => [],
+            SyncTvdbShows::class => [],
+            SyncTmdbShows::class => [],
+            ImportImdbRatings::class => [],
+        ];
     }
 }
