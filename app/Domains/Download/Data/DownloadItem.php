@@ -8,22 +8,26 @@ use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
 use App\Domains\Download\Enums\ReleaseTag;
 use App\Domains\Download\Enums\Source;
-use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Spatie\LaravelData\Data;
 
-class DownloadResult extends Data
+class DownloadItem extends Data
 {
+    /**
+     * @param  Collection<int, DownloadFile>|null  $files
+     */
     public function __construct(
-        public int $downloadId,
+        public int $id,
         public string $name,
         public string $filename,
         public ?Quality $quality,
         public Codec $codec,
         public Source $source,
         public ReleaseTag $releaseTag,
-        public int $availability,
-        public int $sizeBytes,
         public bool $isRar,
-        public ?CarbonImmutable $publishedAt = null,
+        public int $sizeBytes,
+        public int $availability,
+        public int $demand,
+        public ?Collection $files = null,
     ) {}
 }

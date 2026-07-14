@@ -55,6 +55,7 @@ return [
     'downloads' => [
         'uid' => env('DOWNLOADS_UID'),
         'pass' => env('DOWNLOADS_PASS'),
+        'rss_key' => env('DOWNLOADS_RSS_KEY'),
     ],
 
     // Per-retry backoff multiplier for the global guzzle-retry middleware (escalating
