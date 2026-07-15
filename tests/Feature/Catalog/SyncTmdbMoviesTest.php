@@ -84,7 +84,7 @@ it('persists hydrated movies with _tmdb_ columns', function (): void {
     fakeTmdbSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies');
+    $this->artisan('catalog:sync-movies');
 
     // Assert
     $matrix = Movie::where('_tmdb_id', 603)->first();
@@ -97,7 +97,7 @@ it('persists the hydrated movie images into media', function (): void {
     fakeTmdbSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies');
+    $this->artisan('catalog:sync-movies');
 
     // Assert
     $matrix = Movie::where('_tmdb_id', 603)->firstOrFail();
@@ -111,7 +111,7 @@ it('exits SUCCESS and deletes the export temp file', function (): void {
     $before = $tempFiles();
 
     // Act
-    $this->artisan('tmdb:sync-movies')->assertExitCode(0);
+    $this->artisan('catalog:sync-movies')->assertExitCode(0);
 
     // Assert
     expect($tempFiles())->toBe($before);
@@ -122,7 +122,7 @@ it('writes _imdb_id from the payload on the upserted _tmdb_id row', function ():
     fakeTmdbSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies');
+    $this->artisan('catalog:sync-movies');
 
     // Assert
     $matrix = Movie::where('_tmdb_id', 603)->first();
@@ -135,7 +135,7 @@ it('caps processed ids with --limit', function (): void {
     fakeTmdbSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies', ['--limit' => 1]);
+    $this->artisan('catalog:sync-movies', ['--limit' => 1]);
 
     // Assert
     $hydrateCalls = 0;
@@ -155,7 +155,7 @@ it('skips an already-synced movie on a default run', function (): void {
     fakeTmdbSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies');
+    $this->artisan('catalog:sync-movies');
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
@@ -167,7 +167,7 @@ it('reprocesses an already-synced movie with --fresh', function (): void {
     fakeTmdbSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies', ['--fresh' => true]);
+    $this->artisan('catalog:sync-movies', ['--fresh' => true]);
 
     // Assert
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
@@ -191,7 +191,7 @@ it('prints a phase-labeled heartbeat every 1000th hydrated title', function (): 
     ]);
 
     // Act & Assert
-    $this->artisan('tmdb:sync-movies')->expectsOutputToContain('[movies 1000]');
+    $this->artisan('catalog:sync-movies')->expectsOutputToContain('[movies 1000]');
 });
 
 it('continues to the next batch when one batch throws', function (): void {
@@ -224,7 +224,7 @@ it('continues to the next batch when one batch throws', function (): void {
     // Act
     // The command reports a failing batch's TmdbRequestFailed rather than
     // throwing, so it runs to completion and processes batch 2 regardless.
-    $this->artisan('tmdb:sync-movies');
+    $this->artisan('catalog:sync-movies');
 
     // Assert
     expect(Movie::where('_tmdb_id', 1001)->exists())->toBeTrue();
@@ -237,7 +237,7 @@ it('refreshes an existing synced movie present in the changes feed', function ()
     fakeTmdbUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies');
+    $this->artisan('catalog:sync-movies');
 
     // Assert
     expect(Movie::where('_tmdb_id', 345)->first()->_tmdb_title)->toBe('The Matrix');
@@ -249,7 +249,7 @@ it('ignores a changed id not in the local catalog', function (): void {
     fakeTmdbUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies');
+    $this->artisan('catalog:sync-movies');
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/1648226'));
@@ -262,7 +262,7 @@ it('requests the rolling 14-day changes window', function (): void {
     fakeTmdbUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies');
+    $this->artisan('catalog:sync-movies');
 
     // Assert
     Http::assertSent(function (Request $request): bool {
@@ -282,7 +282,7 @@ it('skips the update phase with --fresh', function (): void {
     fakeTmdbUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies', ['--fresh' => true]);
+    $this->artisan('catalog:sync-movies', ['--fresh' => true]);
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/changes'));
@@ -294,7 +294,7 @@ it('skips the update phase with --limit', function (): void {
     fakeTmdbUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-movies', ['--limit' => 1]);
+    $this->artisan('catalog:sync-movies', ['--limit' => 1]);
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/changes'));
@@ -313,7 +313,7 @@ it('reports a persistent changes-feed failure and still exits SUCCESS', function
     ]);
 
     // Act
-    $this->artisan('tmdb:sync-movies')->assertExitCode(0);
+    $this->artisan('catalog:sync-movies')->assertExitCode(0);
 
     // Assert
     Exceptions::assertReported(TmdbRequestFailed::class);

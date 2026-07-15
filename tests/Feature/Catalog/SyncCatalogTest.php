@@ -34,18 +34,18 @@ beforeEach(function (): void {
 |   Breaking Bad's /series/434847/extended (_tvdb_id 81189, IMDB tt0903747).
 | tests/Fixtures/Catalog/tvdb/series_page1.json + series_empty.json — the full
 |   allSeries crawl (GET /series?page=0 then /series?page=1) that --fresh now
-|   drives via tvdb:seed-shows, faked in fakeCatalogSyncFreshAndUpdates().
+|   drives via catalog:seed-shows-tvdb, faked in fakeCatalogSyncFreshAndUpdates().
 |
-| A default sync:catalog dispatches tmdb:sync-movies → tvdb:sync-shows →
-| tmdb:sync-shows → imdb:import-ratings (the updates feed). Under --fresh the TVDB
-| step swaps to the full crawl (tvdb:seed-shows) and --fresh is forwarded to both
-| TMDB syncs: tmdb:sync-movies --fresh → tvdb:seed-shows → tmdb:sync-shows --fresh
-| → imdb:import-ratings. There is no title.basics import in either flow, so
+| A default catalog:sync dispatches catalog:sync-movies → catalog:sync-shows-tvdb →
+| catalog:sync-shows-tmdb → catalog:sync-ratings (the updates feed). Under --fresh the TVDB
+| step swaps to the full crawl (catalog:seed-shows-tvdb) and --fresh is forwarded to both
+| TMDB syncs: catalog:sync-movies --fresh → catalog:seed-shows-tvdb → catalog:sync-shows-tmdb --fresh
+| → catalog:sync-ratings. There is no title.basics import in either flow, so
 | title.basics is never requested and is not faked.
 */
 
 /**
- * Fake every host the sync:catalog flow touches with happy-path fixtures:
+ * Fake every host the catalog:sync flow touches with happy-path fixtures:
  * the IMDb ratings dataset, the TMDB movie + tv exports, the shared TMDB API
  * (The Matrix for id 603, Game of Thrones for id 1399, 404 else), and TheTVDB's
  * /updates path (login JWT, the chained updates feed, Breaking Bad's extended
@@ -132,7 +132,7 @@ it('is born a movie from TMDB', function (): void {
     fakeCatalogSync();
 
     // Act
-    $this->artisan('sync:catalog');
+    $this->artisan('catalog:sync');
 
     // Assert
     $matrix = Movie::where('_tmdb_id', 603)->first();
@@ -146,19 +146,20 @@ it('is born a show from TVDB, and TMDB inserts a tmdb-only show matching none', 
     fakeCatalogSync();
 
     // Act
-    $this->artisan('sync:catalog');
+    $this->artisan('catalog:sync');
 
     // Assert
-    // Breaking Bad is born from TVDB; Game of Thrones shares none of its source
-    // ids, so TMDB inserts it as its own tmdb-only row rather than dropping it —
-    // two independent shows, each source-of-truth for its own row.
+    // Breaking Bad is born from TVDB (tvdb 81189); Game of Thrones shares none of
+    // its source ids — its own tvdb crosswalk (121361, seeded from external_ids)
+    // differs from Breaking Bad's — so TMDB inserts it as its own row rather than
+    // false-merging: two independent shows, each source-of-truth for its own row.
     $breakingBad = Show::where('_tvdb_id', 81189)->first();
     expect($breakingBad)->not->toBeNull();
     expect($breakingBad->_imdb_id)->toBe('tt0903747');
 
     $gameOfThrones = Show::where('_tmdb_id', 1399)->first();
     expect($gameOfThrones)->not->toBeNull();
-    expect($gameOfThrones->_tvdb_id)->toBeNull();
+    expect($gameOfThrones->_tvdb_id)->toBe(121361);
     expect(Show::count())->toBe(2);
 });
 
@@ -167,7 +168,7 @@ it('applies IMDb ratings last by _imdb_id', function (): void {
     fakeCatalogSync();
 
     // Act
-    $this->artisan('sync:catalog');
+    $this->artisan('catalog:sync');
 
     // Assert
     $matrix = Movie::where('_imdb_id', 'tt0133093')->firstOrFail();
@@ -183,7 +184,7 @@ it('never runs the removed import-titles command', function (): void {
     fakeCatalogSync();
 
     // Act
-    $this->artisan('sync:catalog');
+    $this->artisan('catalog:sync');
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'title.basics'));
@@ -194,7 +195,7 @@ it('exits SUCCESS when every command succeeds', function (): void {
     fakeCatalogSync();
 
     // Act & Assert
-    $this->artisan('sync:catalog')->assertExitCode(Command::SUCCESS);
+    $this->artisan('catalog:sync')->assertExitCode(Command::SUCCESS);
 });
 
 it('continues past a failing show command, exits FAILURE and reports', function (): void {
@@ -225,7 +226,7 @@ it('continues past a failing show command, exits FAILURE and reports', function 
     ]);
 
     // Act & Assert
-    $this->artisan('sync:catalog')->assertExitCode(Command::FAILURE);
+    $this->artisan('catalog:sync')->assertExitCode(Command::FAILURE);
 
     // Assert
     Exceptions::assertReported(fn (RequestException $e): bool => true);
@@ -239,7 +240,7 @@ it('under --fresh crawls the full TVDB seed and forwards --fresh to both TMDB sy
     Show::factory()->withTmdb()->create(['_tmdb_id' => 1399]);
 
     // Act
-    $this->artisan('sync:catalog', ['--fresh' => true]);
+    $this->artisan('catalog:sync', ['--fresh' => true]);
 
     // Assert
     // --fresh swaps the TVDB step to the full crawl (/series?page) and never the
@@ -258,7 +259,7 @@ it('on a default run uses the TVDB updates feed and forwards no --fresh to the T
     Show::factory()->withTmdb()->create(['_tmdb_id' => 1399]);
 
     // Act
-    $this->artisan('sync:catalog');
+    $this->artisan('catalog:sync');
 
     // Assert
     // No --fresh means the updates feed (never the crawl) and the already-synced
@@ -274,7 +275,7 @@ it('exercises both TMDB changes feeds on a default run', function (): void {
     fakeCatalogSync();
 
     // Act
-    $this->artisan('sync:catalog');
+    $this->artisan('catalog:sync');
 
     // Assert
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/movie/changes'));

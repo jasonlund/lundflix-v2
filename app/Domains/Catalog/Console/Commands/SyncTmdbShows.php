@@ -16,7 +16,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\LazyCollection;
 
 #[Description('Two-phase TMDB show sync: insert-new from the tv-series-ids export (create-or-merge onto any matching source id), then update-changed from the rolling changes feed')]
-#[Signature('tmdb:sync-shows {--fresh} {--limit=}')]
+#[Signature('catalog:sync-shows-tmdb {--fresh} {--limit=}')]
 class SyncTmdbShows extends Command
 {
     /**
@@ -36,7 +36,7 @@ class SyncTmdbShows extends Command
         UpsertTmdbImages $upsertImages,
     ): int {
         // Plain writeln progress, not spin()/progress(): those fork a renderer
-        // that overwrites the terminal (and render nothing under sync:catalog's
+        // that overwrites the terminal (and render nothing under catalog:sync's
         // nested Artisan::call), which swallowed the per-batch heartbeat below.
         $this->output->writeln('Downloading tv-series-ids export…');
         $file = $export->download(TmdbExport::TvSeriesIds);
@@ -199,7 +199,7 @@ class SyncTmdbShows extends Command
         $upsertShows->handle($payloads);
 
         // Heartbeat: print every 1000th hydrated title. spin()/progress() render
-        // nothing under sync:catalog's nested Artisan::call, so this plain line
+        // nothing under catalog:sync's nested Artisan::call, so this plain line
         // is the only visible movement; the label distinguishes this phase.
         foreach ($payloads as $payload) {
             if (++$this->processed % 1000 === 0) {

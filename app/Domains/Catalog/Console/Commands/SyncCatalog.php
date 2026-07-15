@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Throwable;
 
 #[Description('Sync the catalog from TMDB and TVDB, then apply IMDb ratings, surviving any single failure')]
-#[Signature('sync:catalog {--fresh}')]
+#[Signature('catalog:sync {--fresh}')]
 class SyncCatalog extends Command
 {
     public function handle(): int
@@ -50,7 +50,7 @@ class SyncCatalog extends Command
                 SyncTmdbMovies::class => ['--fresh' => true],
                 SeedTvdbShows::class => [],
                 SyncTmdbShows::class => ['--fresh' => true],
-                ImportImdbRatings::class => [],
+                SyncImdbRatings::class => [],
             ];
         }
 
@@ -58,7 +58,7 @@ class SyncCatalog extends Command
             SyncTmdbMovies::class => [],
             SyncTvdbShows::class => [],
             SyncTmdbShows::class => [],
-            ImportImdbRatings::class => [],
+            SyncImdbRatings::class => [],
         ];
     }
 }

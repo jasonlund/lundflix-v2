@@ -160,6 +160,45 @@ it('leaves _imdb_id null on insert when no remoteIds entry has sourceName IMDB',
     expect($show->_imdb_id)->toBeNull();
 });
 
+it('seeds _tmdb_id from the remoteIds TheMovieDB.com entry on a fresh tvdb-only insert', function (): void {
+    // Arrange
+    $payloads = [tvdbSeries(['id' => 5551396, 'remoteIds' => [
+        ['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB'],
+        ['id' => '1396', 'type' => 12, 'sourceName' => 'TheMovieDB.com'],
+    ]])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 5551396)->firstOrFail();
+    expect($show->_tmdb_id)->toBe(1396);
+});
+
+it('leaves _tmdb_id null on insert when remoteIds has no TheMovieDB.com entry', function (): void {
+    // Arrange
+    $payloads = [tvdbSeries(['id' => 5551397])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 5551397)->firstOrFail();
+    expect($show->_tmdb_id)->toBeNull();
+});
+
+it('still seeds _imdb_id from the IMDB remoteId on the same insert', function (): void {
+    // Arrange
+    $payloads = [tvdbSeries(['id' => 5551398])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 5551398)->firstOrFail();
+    expect($show->_imdb_id)->toBe('tt0903747');
+});
+
 it('does not duplicate a tvdb-only show when the same payload is re-run', function (): void {
     // Arrange
     $payloads = [tvdbSeries(['id' => 702])];
@@ -186,6 +225,33 @@ it('writes one last-wins row when two payloads in one batch share an imdb_id', f
     expect(Show::query()->count())->toBe(1)
         ->and($fresh->_tvdb_id)->toBe(654321)
         ->and($fresh->_tvdb_name)->toBe('Winning Write');
+});
+
+it('persists both tvdb-only payloads that share one TheMovieDB.com id without a unique-constraint error', function (): void {
+    // Arrange
+    $tmdb = ['id' => '7778001', 'type' => 12, 'sourceName' => 'TheMovieDB.com'];
+    $a = tvdbSeries(['id' => 6663000, 'remoteIds' => [['id' => 'tt7778001', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
+    $b = tvdbSeries(['id' => 6664000, 'remoteIds' => [['id' => 'tt7778002', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([$a, $b]);
+
+    // Assert
+    expect(Show::query()->count())->toBe(2);
+});
+
+it('leaves the ambiguous _tmdb_id null on the colliding rows', function (): void {
+    // Arrange
+    $tmdb = ['id' => '7778001', 'type' => 12, 'sourceName' => 'TheMovieDB.com'];
+    $a = tvdbSeries(['id' => 6663000, 'remoteIds' => [['id' => 'tt7778001', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
+    $b = tvdbSeries(['id' => 6664000, 'remoteIds' => [['id' => 'tt7778002', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([$a, $b]);
+
+    // Assert
+    expect(Show::query()->where('_tvdb_id', 6663000)->value('_tmdb_id'))->toBeNull()
+        ->and(Show::query()->where('_tvdb_id', 6664000)->value('_tmdb_id'))->toBeNull();
 });
 
 it('returns 0 and persists nothing for empty input', function (): void {

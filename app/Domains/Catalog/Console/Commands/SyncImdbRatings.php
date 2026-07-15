@@ -10,9 +10,9 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Description('Download the IMDb title.ratings dataset and update ratings on catalog titles')]
-#[Signature('imdb:import-ratings')]
-class ImportImdbRatings extends Command
+#[Description('Sync IMDb ratings: re-download the title.ratings dataset and refresh votes/rating on every matching catalog title')]
+#[Signature('catalog:sync-ratings')]
+class SyncImdbRatings extends Command
 {
     /**
      * Flush the accumulated ratings buffer once it reaches this size.
@@ -36,7 +36,7 @@ class ImportImdbRatings extends Command
         $path = $this->datasets->download();
 
         // Plain writeln progress, not a progress bar: bars render nothing
-        // under sync:catalog's nested Artisan::call, so a per-flush heartbeat
+        // under catalog:sync's nested Artisan::call, so a per-flush heartbeat
         // is the only visible movement.
         $this->output->writeln('Importing IMDb ratings…');
 

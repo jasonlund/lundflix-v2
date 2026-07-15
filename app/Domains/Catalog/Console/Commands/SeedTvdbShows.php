@@ -13,7 +13,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 
 #[Description('Crawl every TheTVDB series and upsert shows with their artworks (one-time bootstrap)')]
-#[Signature('tvdb:seed-shows {--limit=}')]
+#[Signature('catalog:seed-shows-tvdb {--limit=}')]
 class SeedTvdbShows extends TvdbShowsCommand
 {
     public function handle(
@@ -29,7 +29,7 @@ class SeedTvdbShows extends TvdbShowsCommand
         $stillFailing = $failed === [] ? [] : $this->syncIds($failed, $api, $upsertShows, $upsertArtworks);
 
         $recovered = count($failed) - count($stillFailing);
-        $this->output->writeln("tvdb:seed-shows retry: {$recovered} recovered, ".count($stillFailing).' still failing');
+        $this->output->writeln("catalog:seed-shows-tvdb retry: {$recovered} recovered, ".count($stillFailing).' still failing');
 
         if ($stillFailing !== []) {
             $this->output->writeln('  unrecovered ids: '.implode(', ', $stillFailing));

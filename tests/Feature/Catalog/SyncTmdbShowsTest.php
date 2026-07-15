@@ -96,7 +96,7 @@ it('skips a non-numeric export id without hydrating it', function (): void {
     ]);
 
     // Act
-    $this->artisan('tmdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/0'));
@@ -108,7 +108,7 @@ it('enriches a matching TVDB show with _tmdb_ columns in place', function (): vo
     fakeTmdbShowSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
     $got = Show::where('_tmdb_id', 1399)->first();
@@ -123,7 +123,7 @@ it('persists the enriched show images into media', function (): void {
     fakeTmdbShowSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
     $got = Show::where('_tmdb_id', 1399)->firstOrFail();
@@ -137,7 +137,7 @@ it('exits SUCCESS and deletes the export temp file', function (): void {
     $before = $tempFiles();
 
     // Act
-    $this->artisan('tmdb:sync-shows')->assertExitCode(0);
+    $this->artisan('catalog:sync-shows-tmdb')->assertExitCode(0);
 
     // Assert
     expect($tempFiles())->toBe($before);
@@ -148,7 +148,7 @@ it('caps processed ids with --limit', function (): void {
     fakeTmdbShowSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows', ['--limit' => 1]);
+    $this->artisan('catalog:sync-shows-tmdb', ['--limit' => 1]);
 
     // Assert
     $hydrateCalls = 0;
@@ -168,7 +168,7 @@ it('skips an already-synced show on a default run', function (): void {
     fakeTmdbShowSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
@@ -180,7 +180,7 @@ it('reprocesses an already-synced show with --fresh', function (): void {
     fakeTmdbShowSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows', ['--fresh' => true]);
+    $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
 
     // Assert
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
@@ -192,7 +192,7 @@ it('refreshes an existing synced show present in the changes feed', function ():
     fakeTmdbShowUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
     expect(Show::where('_tmdb_id', 23310)->first()->_tmdb_name)->toBe('Game of Thrones');
@@ -204,7 +204,7 @@ it('ignores a changed tv id not in the local catalog', function (): void {
     fakeTmdbShowUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/325296'));
@@ -217,7 +217,7 @@ it('requests the rolling 14-day changes window', function (): void {
     fakeTmdbShowUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
     Http::assertSent(function (Request $request): bool {
@@ -237,7 +237,7 @@ it('skips the update phase with --fresh', function (): void {
     fakeTmdbShowUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows', ['--fresh' => true]);
+    $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
@@ -249,7 +249,7 @@ it('skips the update phase with --limit', function (): void {
     fakeTmdbShowUpdateSync();
 
     // Act
-    $this->artisan('tmdb:sync-shows', ['--limit' => 1]);
+    $this->artisan('catalog:sync-shows-tmdb', ['--limit' => 1]);
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
@@ -268,7 +268,7 @@ it('reports a persistent changes-feed failure and still exits SUCCESS', function
     ]);
 
     // Act
-    $this->artisan('tmdb:sync-shows')->assertExitCode(0);
+    $this->artisan('catalog:sync-shows-tmdb')->assertExitCode(0);
 
     // Assert
     Exceptions::assertReported(TmdbRequestFailed::class);
