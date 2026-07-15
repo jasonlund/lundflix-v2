@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Domains\Download\Data\DownloadFile;
-use App\Domains\Download\Data\DownloadItem;
 use App\Domains\Download\Data\DownloadPage;
 use App\Domains\Download\Data\DownloadResult;
 use App\Domains\Download\Enums\Category;
@@ -492,6 +491,36 @@ it('maps an item to a DownloadResult', function (): void {
         ->and($result->publishedAt->equalTo(CarbonImmutable::parse('Mon, 13 Jul 2026 17:48:43 +0000')))->toBeTrue();
 });
 
+it('carries the demand from the L-count on an rss item', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->rss_key = 'rsskey123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
+
+    // Act
+    $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563849);
+
+    // Assert
+    expect($result->demand)->toBe(23);
+});
+
+it('carries the subcategory from the description label on an rss item', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->rss_key = 'rsskey123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
+
+    // Act
+    $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563849);
+
+    // Assert
+    expect($result->subcategory)->toBe('Movie/HD/Bluray');
+});
+
 it('carries the download filename on an rss item', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
@@ -666,6 +695,51 @@ it('carries the download filename on a listing row', function (): void {
     expect($row->filename)->toBe('The.Crying.Game.1992.COMPLETE.UHD.BLURAY-B0MBARDiERS');
 });
 
+it('carries the demand distinct from availability on a listing row', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
+
+    // Act
+    $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
+
+    // Assert
+    expect($row->demand)->toBe(11)->and($row->availability)->toBe(1);
+});
+
+it('carries the subcategory from the row category image on a listing row', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
+
+    // Act
+    $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
+
+    // Assert
+    expect($row->subcategory)->toBe('Movie/BD-R');
+});
+
+it('carries the uploader from the row sub-line on a listing row', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
+
+    // Act
+    $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
+
+    // Assert
+    expect($row->uploader)->toBe('TvTeam');
+});
+
 it('requests the /t?72=&p=2 page and reports page 2', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
@@ -806,14 +880,17 @@ it('skips a short row and parses comma-grouped and dash availability cells', fun
 | DownloadService — item() detail slice
 |--------------------------------------------------------------------------
 | item(int $id, bool $withFiles = false) fetches ONE HTML detail page from
-| the download source (`/t/<id>`) and returns a DownloadItem carrying the
+| the download source (`/t/<id>`) and returns a DownloadResult carrying the
 | release fields derived from the page's <h2> name (quality/codec/source/
 | releaseTag/isRar) plus the parsed size and the .peer availability/demand.
 |
-| SCOPE NOTE (rescoped from FLIX-212): imdb/tmdb/title/year/rating/genres are
-| DROPPED from this slice — the DownloadItem carries NO such fields and the
-| tests below assert none of them. Only the release/name-derived fields, the
-| size, and the peer counts are in scope.
+| SCOPE NOTE (rescoped from FLIX-212): title/year/rating/genres are DROPPED from
+| this slice — the DownloadResult carries NO such fields and the tests below
+| assert none of them; Catalog owns those via the real APIs. The _imdb_id and
+| _tmdb_id ARE captured, scraped as cross-ref relation keys from the detail
+| page's external links (imdb.com/title/, themoviedb.org/movie|tv/), and the
+| tests below DO assert them. Otherwise only the release/name-derived fields,
+| the size, and the peer counts are in scope.
 |
 | .peer availability/demand mapping: the detail page's `a.peer` block holds
 | two numbers — the fa-angle-double-up (availability) count → availability, and
@@ -838,7 +915,7 @@ it('skips a short row and parses comma-grouped and dash availability cells', fun
 |     2 rows: …-HHWEB.mkv (7.91 GB) and …-HHWEB.mkv.nfo (809 B).
 */
 
-it('parses a movie detail into a DownloadItem', function (): void {
+it('parses a movie detail into a DownloadResult', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
     $settings->uid = 'u123';
@@ -850,8 +927,8 @@ it('parses a movie detail into a DownloadItem', function (): void {
     $item = resolve(DownloadService::class)->item(7537888);
 
     // Assert
-    expect($item)->toBeInstanceOf(DownloadItem::class)
-        ->and($item->id)->toBe(7537888)
+    expect($item)->toBeInstanceOf(DownloadResult::class)
+        ->and($item->downloadId)->toBe(7537888)
         ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB')
         ->and($item->filename)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB')
         ->and($item->quality)->toBe(Quality::P1080)
@@ -865,7 +942,117 @@ it('parses a movie detail into a DownloadItem', function (): void {
         ->and($item->files)->toBeNull();
 });
 
-it('parses a TV detail into a DownloadItem media-agnostically', function (): void {
+it('item() sets the subcategory from a movie detail page', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->subcategory)->toBe('Movie/HD/Bluray');
+});
+
+it('item() sets the uploader from a movie detail page', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->uploader)->toBe('Lama');
+});
+
+it('item() sets the imdbId from a movie detail page', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->imdbId)->toBe('tt0234215');
+});
+
+it('item() sets the tmdbId from a movie detail page', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->tmdbId)->toBe(604);
+});
+
+it('item() sets the tmdbId from a tv detail page /tv/ link', function (): void {
+    // Arrange
+    // the TV detail's TMDB cross-ref is a /tv/<id> link, not /movie/<id>
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_tv.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7563850);
+
+    // Assert
+    expect($item->tmdbId)->toBe(86833);
+});
+
+it('item() sets the publishedAt from a movie detail page', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->publishedAt->equalTo(CarbonImmutable::parse('Wednesday, July 1, 2026 at 12:23am')))->toBeTrue();
+});
+
+it('leaves the publishedAt null when the uploaded date title is unparseable', function (): void {
+    // Arrange
+    // detail_unparseable_date.html drifts the uploaded elapsedDate title to a
+    // non-Carbon-parseable relative phrase; the optional field degrades to null
+    // rather than letting Carbon's exception escape item()
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_unparseable_date.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->publishedAt)->toBeNull()
+        ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB');
+});
+
+it('parses a TV detail into a DownloadResult media-agnostically', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
     $settings->uid = 'u123';
@@ -956,4 +1143,72 @@ it('parses a comma-grouped availability figure on a detail page', function (): v
     // Assert
     expect($item->availability)->toBe(1024)
         ->and($item->demand)->toBe(0);
+});
+
+/*
+|--------------------------------------------------------------------------
+| DownloadService — item() description slice
+|--------------------------------------------------------------------------
+| item() fills description (a DownloadDescription VO of html + screenshots)
+| from the detail page's readme blockquote. When the page has no blockquote
+| the description stays null and item() still returns (name-derived fields
+| survive), so a missing readme is degradation, not a hard failure.
+|
+| Fixtures:
+|   detail.html — byte-exact real capture; its readme blockquote carries the
+|     `Title : The Matrix Reloaded` text and three lookpic screenshot URLs.
+|   detail_no_readme.html — synthetic drift from detail.html: both
+|     <blockquote> blocks stripped, everything else (h2, download anchor,
+|     a.peer) intact, so item() still returns with a null description.
+*/
+
+it('sets the description screenshots from a movie detail page', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->description->screenshots)->toBe([
+        'https://lookpic.com/cdn/i2/s/TheMatrixReloaded20031080pMAWEBDLH264DDP51HHWEBmkv07012026022312-001.jpg',
+        'https://lookpic.com/cdn/i2/s/TheMatrixReloaded20031080pMAWEBDLH264DDP51HHWEBmkv07012026022312-002.jpg',
+        'https://lookpic.com/cdn/i2/s/TheMatrixReloaded20031080pMAWEBDLH264DDP51HHWEBmkv07012026022312-003.jpg',
+    ]);
+});
+
+it('sets the description html from a movie detail page', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->description->html)->toContain('Title : The Matrix Reloaded')
+        ->and($item->description->html)->toContain('<br>');
+});
+
+it('leaves the description null when the detail page has no readme', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_no_readme.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->description)->toBeNull()
+        ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB');
 });
