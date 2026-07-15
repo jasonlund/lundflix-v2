@@ -9,7 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('resolves the Movie sharing its _imdb_id', function () {
+it('resolves the Movie sharing its _imdb_id', function (): void {
     // Arrange
     $movie = Movie::factory()->create(['_imdb_id' => 'tt1234567']);
     $download = Download::factory()->create(['_imdb_id' => 'tt1234567']);
@@ -21,7 +21,7 @@ it('resolves the Movie sharing its _imdb_id', function () {
     expect($resolved?->is($movie))->toBeTrue();
 });
 
-it('resolves the Show sharing its _imdb_id', function () {
+it('resolves the Show sharing its _imdb_id', function (): void {
     // Arrange
     $show = Show::factory()->create(['_imdb_id' => 'tt7654321']);
     $download = Download::factory()->create(['_imdb_id' => 'tt7654321']);
@@ -33,7 +33,7 @@ it('resolves the Show sharing its _imdb_id', function () {
     expect($resolved?->is($show))->toBeTrue();
 });
 
-it('resolves both relations to null for a null _imdb_id', function () {
+it('resolves both relations to null for a null _imdb_id', function (): void {
     // Arrange
     // an unmatched, index-sourced row carries no imdb id
 

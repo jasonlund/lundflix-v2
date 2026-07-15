@@ -36,24 +36,24 @@ function downloadResult(): DownloadResult
     );
 }
 
-it('inserts one row and returns a Download for an unseen provider id', function () {
+it('inserts one row and returns a Download for an unseen provider id', function (): void {
     // Arrange
     $result = downloadResult();
 
     // Act
-    $download = app(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
+    $download = resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
 
     // Assert
     expect($download)->toBeInstanceOf(Download::class);
     $this->assertDatabaseCount('downloads', 1);
 });
 
-it('writes provider and name-derived fields to their columns', function () {
+it('writes provider and name-derived fields to their columns', function (): void {
     // Arrange
     $result = downloadResult();
 
     // Act
-    $download = app(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
+    $download = resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
 
     // Assert
     $this->assertDatabaseHas('downloads', [
@@ -69,23 +69,23 @@ it('writes provider and name-derived fields to their columns', function () {
     expect($download->is_rar)->toBeTrue();
 });
 
-it('writes the Category argument to _provider_category', function () {
+it('writes the Category argument to _provider_category', function (): void {
     // Arrange
     $result = downloadResult();
 
     // Act
-    app(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
+    resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
 
     // Assert
     $this->assertDatabaseHas('downloads', ['_provider_category' => Category::Movies->value]);
 });
 
-it('stamps only index_synced_at for the Index channel', function () {
+it('stamps only index_synced_at for the Index channel', function (): void {
     // Arrange
     $result = downloadResult();
 
     // Act
-    $download = app(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
+    $download = resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
 
     // Assert
     expect($download->index_synced_at)->not->toBeNull();
@@ -94,66 +94,66 @@ it('stamps only index_synced_at for the Index channel', function () {
     expect($download->filelist_synced_at)->toBeNull();
 });
 
-it('updates the existing row in place for a repeated provider id', function () {
+it('updates the existing row in place for a repeated provider id', function (): void {
     // Arrange
-    app(UpsertDownloads::class)->handle(downloadResult(), Category::Movies, SyncChannel::Index);
+    resolve(UpsertDownloads::class)->handle(downloadResult(), Category::Movies, SyncChannel::Index);
 
     // Act
-    $download = app(UpsertDownloads::class)->handle(downloadResult(), Category::Movies, SyncChannel::Rss);
+    $download = resolve(UpsertDownloads::class)->handle(downloadResult(), Category::Movies, SyncChannel::Rss);
 
     // Assert
     $this->assertDatabaseCount('downloads', 1);
     expect($download->rss_synced_at)->not->toBeNull();
 });
 
-it('preserves a stored field when a later write carries null', function () {
+it('preserves a stored field when a later write carries null', function (): void {
     // Arrange
     $first = downloadResult();
     $first->uploader = 'someone';
-    app(UpsertDownloads::class)->handle($first, Category::Movies, SyncChannel::Index);
+    resolve(UpsertDownloads::class)->handle($first, Category::Movies, SyncChannel::Index);
     $second = downloadResult();
     $second->uploader = null;
 
     // Act
-    $download = app(UpsertDownloads::class)->handle($second, Category::Movies, SyncChannel::Index);
+    $download = resolve(UpsertDownloads::class)->handle($second, Category::Movies, SyncChannel::Index);
 
     // Assert
     expect($download->refresh()->_provider_uploader)->toBe('someone');
 });
 
-it('stamps filelist_synced_at when the result carries files', function () {
+it('stamps filelist_synced_at when the result carries files', function (): void {
     // Arrange
     $result = downloadResult();
     $result->files = collect([new DownloadFile('file.bin', 1_000_000)]);
 
     // Act
-    $download = app(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Detail);
+    $download = resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Detail);
 
     // Assert
     expect($download->filelist_synced_at)->not->toBeNull();
 });
 
-it('leaves filelist_synced_at null when the result carries no files', function () {
+it('leaves filelist_synced_at null when the result carries no files', function (): void {
     // Arrange
     $result = downloadResult();
 
     // Act
-    $download = app(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Detail);
+    $download = resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Detail);
 
     // Assert
     expect($download->filelist_synced_at)->toBeNull();
 });
 
-it('transforms the description value object and preserves it against a later null', function () {
+it('transforms the description value object and preserves it against a later null', function (): void {
     // Arrange
     $result = downloadResult();
     $result->description = new DownloadDescription(html: '<b>x</b>', screenshots: ['https://e.test/a.jpg']);
-    $download = app(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Detail);
+    $download = resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Detail);
     $followUp = downloadResult();
     $followUp->description = null;
 
     // Act
-    app(UpsertDownloads::class)->handle($followUp, Category::Movies, SyncChannel::Detail);
+    resolve(UpsertDownloads::class)->handle($followUp, Category::Movies, SyncChannel::Detail);
 
     // Assert
     expect($download->refresh()->_provider_description)->toBe([
