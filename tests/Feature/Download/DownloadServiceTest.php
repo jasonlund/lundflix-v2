@@ -884,10 +884,13 @@ it('skips a short row and parses comma-grouped and dash availability cells', fun
 | release fields derived from the page's <h2> name (quality/codec/source/
 | releaseTag/isRar) plus the parsed size and the .peer availability/demand.
 |
-| SCOPE NOTE (rescoped from FLIX-212): imdb/tmdb/title/year/rating/genres are
-| DROPPED from this slice — the DownloadResult carries NO such fields and the
-| tests below assert none of them. Only the release/name-derived fields, the
-| size, and the peer counts are in scope.
+| SCOPE NOTE (rescoped from FLIX-212): title/year/rating/genres are DROPPED from
+| this slice — the DownloadResult carries NO such fields and the tests below
+| assert none of them; Catalog owns those via the real APIs. The _imdb_id and
+| _tmdb_id ARE captured, scraped as cross-ref relation keys from the detail
+| page's external links (imdb.com/title/, themoviedb.org/movie|tv/), and the
+| tests below DO assert them. Otherwise only the release/name-derived fields,
+| the size, and the peer counts are in scope.
 |
 | .peer availability/demand mapping: the detail page's `a.peer` block holds
 | two numbers — the fa-angle-double-up (availability) count → availability, and
@@ -999,6 +1002,22 @@ it('item() sets the tmdbId from a movie detail page', function (): void {
     expect($item->tmdbId)->toBe(604);
 });
 
+it('item() sets the tmdbId from a tv detail page /tv/ link', function (): void {
+    // Arrange
+    // the TV detail's TMDB cross-ref is a /tv/<id> link, not /movie/<id>
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_tv.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7563850);
+
+    // Assert
+    expect($item->tmdbId)->toBe(86833);
+});
+
 it('item() sets the publishedAt from a movie detail page', function (): void {
     // Arrange
     $settings = resolve(DownloadSettings::class);
@@ -1012,6 +1031,25 @@ it('item() sets the publishedAt from a movie detail page', function (): void {
 
     // Assert
     expect($item->publishedAt->equalTo(CarbonImmutable::parse('Wednesday, July 1, 2026 at 12:23am')))->toBeTrue();
+});
+
+it('leaves the publishedAt null when the uploaded date title is unparseable', function (): void {
+    // Arrange
+    // detail_unparseable_date.html drifts the uploaded elapsedDate title to a
+    // non-Carbon-parseable relative phrase; the optional field degrades to null
+    // rather than letting Carbon's exception escape item()
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_unparseable_date.html'), 200)]);
+
+    // Act
+    $item = resolve(DownloadService::class)->item(7537888);
+
+    // Assert
+    expect($item->publishedAt)->toBeNull()
+        ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB');
 });
 
 it('parses a TV detail into a DownloadResult media-agnostically', function (): void {

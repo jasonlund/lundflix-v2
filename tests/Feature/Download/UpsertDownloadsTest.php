@@ -13,6 +13,7 @@ use App\Domains\Download\Enums\ReleaseTag;
 use App\Domains\Download\Enums\Source;
 use App\Domains\Download\Enums\SyncChannel;
 use App\Domains\Download\Models\Download;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -48,9 +49,27 @@ it('inserts one row and returns a Download for an unseen provider id', function 
     $this->assertDatabaseCount('downloads', 1);
 });
 
+it('inserts a brand-new row when subcategory and demand are both null', function (): void {
+    // Arrange
+    $result = downloadResult();
+    $result->subcategory = null;
+    $result->demand = null;
+
+    // Act
+    $download = resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
+
+    // Assert
+    $this->assertDatabaseCount('downloads', 1);
+    expect($download->refresh()->_provider_subcategory)->toBeNull();
+    expect($download->_provider_demand)->toBeNull();
+});
+
 it('writes provider and name-derived fields to their columns', function (): void {
     // Arrange
     $result = downloadResult();
+    $result->publishedAt = CarbonImmutable::parse('2026-01-15 12:00:00');
+    $result->imdbId = 'tt7654321';
+    $result->tmdbId = 12345;
 
     // Act
     $download = resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
@@ -61,6 +80,10 @@ it('writes provider and name-derived fields to their columns', function (): void
         '_provider_size_bytes' => 2_000_000_000,
         '_provider_availability' => 42,
         '_provider_demand' => 7,
+        '_provider_subcategory' => 'Movies/x264',
+        '_provider_published_at' => '2026-01-15 12:00:00',
+        '_imdb_id' => 'tt7654321',
+        '_tmdb_id' => 12345,
     ]);
     expect($download->quality)->toBe(Quality::P1080);
     expect($download->codec)->toBe(Codec::X264);
@@ -75,6 +98,17 @@ it('writes the Category argument to _provider_category', function (): void {
 
     // Act
     resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Index);
+
+    // Assert
+    $this->assertDatabaseHas('downloads', ['_provider_category' => Category::Movies->value]);
+});
+
+it('leaves _provider_category untouched on the Detail channel', function (): void {
+    // Arrange
+    resolve(UpsertDownloads::class)->handle(downloadResult(), Category::Movies, SyncChannel::Index);
+
+    // Act
+    resolve(UpsertDownloads::class)->handle(downloadResult(), Category::Tv, SyncChannel::Detail);
 
     // Assert
     $this->assertDatabaseHas('downloads', ['_provider_category' => Category::Movies->value]);
@@ -123,6 +157,7 @@ it('preserves a stored field when a later write carries null', function (): void
 
 it('stamps filelist_synced_at when the result carries files', function (): void {
     // Arrange
+    resolve(UpsertDownloads::class)->handle(downloadResult(), Category::Movies, SyncChannel::Index);
     $result = downloadResult();
     $result->files = collect([new DownloadFile('file.bin', 1_000_000)]);
 
@@ -135,6 +170,7 @@ it('stamps filelist_synced_at when the result carries files', function (): void 
 
 it('leaves filelist_synced_at null when the result carries no files', function (): void {
     // Arrange
+    resolve(UpsertDownloads::class)->handle(downloadResult(), Category::Movies, SyncChannel::Index);
     $result = downloadResult();
 
     // Act
@@ -146,6 +182,7 @@ it('leaves filelist_synced_at null when the result carries no files', function (
 
 it('transforms the description value object and preserves it against a later null', function (): void {
     // Arrange
+    resolve(UpsertDownloads::class)->handle(downloadResult(), Category::Movies, SyncChannel::Index);
     $result = downloadResult();
     $result->description = new DownloadDescription(html: '<b>x</b>', screenshots: ['https://e.test/a.jpg']);
     $download = resolve(UpsertDownloads::class)->handle($result, Category::Movies, SyncChannel::Detail);

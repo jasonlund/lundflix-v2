@@ -44,7 +44,12 @@ class UpsertDownloads
         // Reject only null (not falsey) so is_rar = false and 0 values still write.
         $columns = collect($columns)->reject(fn ($value): bool => $value === null)->all();
 
-        $columns['_provider_category'] = $category;
+        // Category is owned by the discovering listing walk (index/rss). A row only reaches
+        // Detail after that walk already set it authoritatively, so Detail must not touch it.
+        if ($channel !== SyncChannel::Detail) {
+            $columns['_provider_category'] = $category;
+        }
+
         $columns[$channel->syncedAtColumn()] = now();
 
         if ($result->files instanceof Collection) {

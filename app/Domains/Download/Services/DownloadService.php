@@ -153,7 +153,7 @@ final class DownloadService
             uploader: $this->uploaderFrom($uploaded),
             publishedAt: $this->uploadedAtFrom($uploaded),
             imdbId: $this->crossRefId($crawler, 'a[href*="imdb.com/title/"]', '/(tt\d+)/'),
-            tmdbId: ($tmdb = $this->crossRefId($crawler, 'a[href*="themoviedb.org/movie/"]', '#/movie/(\d+)#')) !== null ? (int) $tmdb : null,
+            tmdbId: ($tmdb = $this->crossRefId($crawler, 'a[href*="themoviedb.org/"]', '#/(?:movie|tv)/(\d+)#')) !== null ? (int) $tmdb : null,
             files: $withFiles ? $this->parseFiles($id) : null,
             description: $this->descriptionFrom($crawler),
         );
@@ -183,12 +183,18 @@ final class DownloadService
     }
 
     /**
-     * The `?` in the selector pins the tag to the browse/listing path (`/t?<query>`),
-     * keeping it off the `/t/<id>` related-release anchors.
+     * The subcategory link is structurally distinct from the rating/year/genre/
+     * quality pills that share the `a.v` class: its href is a BARE-NUMERIC browse
+     * query (`/t?<digits>`, e.g. `/t?48`), whereas every pill carries a keyed
+     * query (`/t?qf=ta;q=…`, `/t?q=…`). Scoping to the bare-numeric href pins the
+     * subcategory regardless of pill DOM order — `.first()` alone would latch onto
+     * a reordered pill. The `/t?` prefix also keeps it off the `/t/<id>`
+     * related-release anchors. No such anchor → null.
      */
     private function subcategoryFrom(Crawler $crawler): ?string
     {
-        $anchor = $crawler->filter('a.v[href^="/t?"]');
+        $anchor = $crawler->filter('a.v[href^="/t?"]')
+            ->reduce(fn (Crawler $node): bool => preg_match('#^/t\?\d+$#', (string) $node->attr('href')) === 1);
 
         return $anchor->count() > 0 ? trim($anchor->first()->text()) : null;
     }
@@ -220,7 +226,18 @@ final class DownloadService
         $elapsed = $block->filter('span.elapsedDate');
         $title = $elapsed->count() > 0 ? $elapsed->first()->attr('title') : null;
 
-        return $title !== null && trim($title) !== '' ? CarbonImmutable::parse($title) : null;
+        if ($title === null || trim($title) === '') {
+            return null;
+        }
+
+        // publishedAt is optional, so an unparseable title degrades to null like
+        // the missing-block case rather than letting Carbon's parse exception
+        // escape item() (mirrors parseRssItem's guard around the same parse()).
+        try {
+            return CarbonImmutable::parse($title);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

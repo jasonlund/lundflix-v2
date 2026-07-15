@@ -36,11 +36,13 @@ it('resolves the Show sharing its _imdb_id', function (): void {
 it('resolves both relations to null for a null _imdb_id', function (): void {
     // Arrange
     // an unmatched, index-sourced row carries no imdb id
-
-    // Act
     $download = Download::factory()->create(['_imdb_id' => null]);
 
+    // Act
+    $movie = $download->movie;
+    $show = $download->show;
+
     // Assert
-    expect($download->movie)->toBeNull();
-    expect($download->show)->toBeNull();
+    expect($movie)->toBeNull();
+    expect($show)->toBeNull();
 });

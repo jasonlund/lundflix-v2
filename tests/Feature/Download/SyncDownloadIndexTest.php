@@ -2,9 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Domains\Download\Enums\Category;
 use App\Domains\Download\Models\Download;
-use App\Domains\Download\Services\DownloadService;
 use App\Domains\Download\Settings\DownloadSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -98,8 +96,16 @@ it('stops a category once a fetched page yields no unseen ids', function (): voi
         '*73=&p=1' => Http::response(fixtureBytes('Download/downloads/index_tv_p1.html'), 200),
         '*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_no_table.html'), 200),
     ]);
-    $page1Ids = resolve(DownloadService::class)->index(Category::Movies)->results->pluck('downloadId');
-    $page1Ids->each(fn (int $id) => Download::factory()->create(['_provider_id' => $id]));
+    $seenPage1Ids = [
+        7563851, 7563849, 7563847, 7563846, 7563845, 7563830, 7563829, 7563828, 7563823, 7563814,
+        7563811, 7563810, 7563792, 7563790, 7563788, 7563787, 7563783, 7563782, 7563778, 7563777,
+        7563773, 7563772, 7563771, 7563769, 7563768, 7563767, 7563766, 7563765, 7563763, 7563762,
+        7563761, 7563760, 7563759, 7563758, 7563757, 7563756, 7563755, 7563754, 7563753, 7563752,
+        7563751, 7563750, 7563749, 7563748, 7563747, 7563746, 7563731, 7563728, 7563725, 7563724,
+    ];
+    foreach ($seenPage1Ids as $id) {
+        Download::factory()->create(['_provider_id' => $id]);
+    }
 
     // Act
     $this->artisan('download:sync-index')->assertSuccessful();

@@ -24,10 +24,10 @@ return new class extends Migration
             $table->string('_provider_name');
             $table->string('_provider_filename');
             $table->string('_provider_category');
-            $table->string('_provider_subcategory');
+            $table->string('_provider_subcategory')->nullable();
             $table->unsignedBigInteger('_provider_size_bytes');
             $table->unsignedInteger('_provider_availability');
-            $table->unsignedInteger('_provider_demand');
+            $table->unsignedInteger('_provider_demand')->nullable();
             $table->string('_provider_uploader')->nullable();
             $table->timestamp('_provider_published_at')->nullable();
             $table->json('_provider_files')->nullable();
