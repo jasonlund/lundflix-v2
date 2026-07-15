@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domains\Download\Services;
 
+use App\Domains\Download\Data\DownloadDescription;
 use App\Domains\Download\Data\DownloadFile;
-use App\Domains\Download\Data\DownloadItem;
 use App\Domains\Download\Data\DownloadPage;
 use App\Domains\Download\Data\DownloadResult;
 use App\Domains\Download\Enums\Category;
@@ -100,11 +100,11 @@ final class DownloadService
 
     /**
      * Fetch ONE HTML detail page (`/t/<id>`) and map its release fields, size, and
-     * peer availability/demand into a DownloadItem. When $withFiles is true, issue a
+     * peer availability/demand into a DownloadResult. When $withFiles is true, issue a
      * SECOND request to `/t/<id>/files` and attach the parsed file list; otherwise
      * files stays null.
      */
-    public function item(int $id, bool $withFiles = false): DownloadItem
+    public function item(int $id, bool $withFiles = false): DownloadResult
     {
         $crawler = new Crawler($this->get('/t/'.$id)->body());
 
@@ -135,20 +135,118 @@ final class DownloadService
         // never re-sort.
         preg_match_all('/\d+/', str_replace(',', '', $peer->first()->text()), $peerMatch);
 
-        return new DownloadItem(
-            id: $id,
+        $uploaded = $this->uploadedBlock($crawler);
+
+        return new DownloadResult(
+            downloadId: $id,
             name: $name,
             filename: $filename,
             quality: Quality::fromName($name),
             codec: Codec::fromName($name),
             source: Source::fromName($name),
             releaseTag: ReleaseTag::fromName($name),
-            isRar: $this->isRarRelease($name),
-            sizeBytes: $this->bytesFromSize($sizeMatch[1] ?? '0 B'),
             availability: (int) ($peerMatch[0][0] ?? 0),
+            sizeBytes: $this->bytesFromSize($sizeMatch[1] ?? '0 B'),
+            isRar: $this->isRarRelease($name),
             demand: (int) ($peerMatch[0][1] ?? 0),
+            subcategory: $this->subcategoryFrom($crawler),
+            uploader: $this->uploaderFrom($uploaded),
+            publishedAt: $this->uploadedAtFrom($uploaded),
+            imdbId: $this->crossRefId($crawler, 'a[href*="imdb.com/title/"]', '/(tt\d+)/'),
+            tmdbId: ($tmdb = $this->crossRefId($crawler, 'a[href*="themoviedb.org/movie/"]', '#/movie/(\d+)#')) !== null ? (int) $tmdb : null,
             files: $withFiles ? $this->parseFiles($id) : null,
+            description: $this->descriptionFrom($crawler),
         );
+    }
+
+    /**
+     * Map the release's readme blockquote into a DownloadDescription. The page
+     * carries a trailing EMPTY blockquote, so pick the FIRST whose trimmed text
+     * is non-empty; no such node → null.
+     */
+    private function descriptionFrom(Crawler $crawler): ?DownloadDescription
+    {
+        foreach ($crawler->filter('blockquote') as $node) {
+            if (trim($node->textContent) === '') {
+                continue;
+            }
+
+            $blockquote = new Crawler($node);
+
+            return new DownloadDescription(
+                html: $blockquote->html(),
+                screenshots: $blockquote->filter('img')->each(fn (Crawler $img): string => (string) $img->attr('src')),
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * The `?` in the selector pins the tag to the browse/listing path (`/t?<query>`),
+     * keeping it off the `/t/<id>` related-release anchors.
+     */
+    private function subcategoryFrom(Crawler $crawler): ?string
+    {
+        $anchor = $crawler->filter('a.v[href^="/t?"]');
+
+        return $anchor->count() > 0 ? trim($anchor->first()->text()) : null;
+    }
+
+    private function uploaderFrom(?Crawler $block): ?string
+    {
+        if (! $block instanceof Crawler) {
+            return null;
+        }
+
+        // The block leads with an empty avatar anchor before the named one, so
+        // skip blank anchors and take the first with text.
+        foreach ($block->filter('a[href^="/u/"]') as $node) {
+            $text = trim($node->textContent);
+            if ($text !== '') {
+                return $text;
+            }
+        }
+
+        return null;
+    }
+
+    private function uploadedAtFrom(?Crawler $block): ?CarbonImmutable
+    {
+        if (! $block instanceof Crawler) {
+            return null;
+        }
+
+        $elapsed = $block->filter('span.elapsedDate');
+        $title = $elapsed->count() > 0 ? $elapsed->first()->attr('title') : null;
+
+        return $title !== null && trim($title) !== '' ? CarbonImmutable::parse($title) : null;
+    }
+
+    /**
+     * The "Uploaded:" block, scoped by leading text to dodge the per-comment
+     * `.elapsedDate` spans and the `/u/` nav links elsewhere on the page.
+     */
+    private function uploadedBlock(Crawler $crawler): ?Crawler
+    {
+        $blocks = $crawler->filter('div.sub')
+            ->reduce(fn (Crawler $block): bool => str_starts_with(trim($block->text()), 'Uploaded'));
+
+        return $blocks->count() > 0 ? $blocks->first() : null;
+    }
+
+    /**
+     * Pull an external cross-reference id from the first anchor matching $selector,
+     * applying $pattern to its href. Missing anchor or no match → null.
+     */
+    private function crossRefId(Crawler $crawler, string $selector, string $pattern): ?string
+    {
+        $anchor = $crawler->filter($selector);
+        if ($anchor->count() === 0) {
+            return null;
+        }
+
+        return preg_match($pattern, (string) $anchor->first()->attr('href'), $match) === 1 ? $match[1] : null;
     }
 
     /**
@@ -234,8 +332,38 @@ final class DownloadService
             filename: $this->downloadFilenameFrom((string) $downloadAnchor->first()->attr('href')),
             downloadId: (int) $idMatch[1],
             sizeBytes: $this->bytesFromSize($cells->eq(5)->text()),
+            // Availability and demand sit in adjacent trailing cells, in that order.
             availability: $this->availabilityFrom($cells->eq(7)->text()),
+            demand: $this->availabilityFrom($cells->eq(8)->text()),
+            subcategory: $this->subcategoryFromRow($row),
+            uploader: $this->uploaderFromRow($row),
         );
+    }
+
+    /**
+     * The listing row leads with a category icon whose alt text names the
+     * subcategory.
+     */
+    private function subcategoryFromRow(Crawler $row): ?string
+    {
+        $image = $row->filter('img');
+
+        return $image->count() > 0 ? trim((string) $image->first()->attr('alt')) : null;
+    }
+
+    /**
+     * Scope the uploader to the row's own sub-line: the column sort headers
+     * ("by size", "by snatches", …) carry the same `by` token but live outside
+     * the row, so an unscoped match could latch onto a header anchor instead.
+     */
+    private function uploaderFromRow(Crawler $row): ?string
+    {
+        $subLine = $row->filter('td.al div.sub');
+
+        return $subLine->count() > 0
+            && preg_match('/\bby\s+(\S+)\s*$/', trim($subLine->first()->text()), $match) === 1
+            ? $match[1]
+            : null;
     }
 
     /**
@@ -318,9 +446,18 @@ final class DownloadService
     {
         try {
             preg_match('#/t/(\d+)#', $item->filterXPath('.//guid')->text(), $guidMatch);
-            // Thousands are comma-grouped (`S:1,024`); capture the grouped run and
-            // strip the separators so the comma can't truncate the count.
-            preg_match('/\(S:([\d,]+)/', $item->filterXPath('.//description')->text(), $availabilityMatch);
+            $description = $item->filterXPath('.//description')->text();
+            // Availability (`S:`) and demand (`L:`) are comma-grouped (`S:1,024`);
+            // strip the separators after capture so a comma can't truncate the
+            // count. No match → null, so an absent count reads as the caller's
+            // default (0 for availability, null for the optional demand).
+            $countMatching = fn (string $pattern): ?int => preg_match($pattern, $description, $match) === 1
+                ? (int) str_replace(',', '', $match[1])
+                : null;
+            // The subcategory label sits between the size and the `(S: …)` block.
+            $subcategory = preg_match('/;\s*([^(]+?)\s*\(/', $description, $subcategoryMatch) === 1
+                ? trim($subcategoryMatch[1])
+                : null;
             $length = $item->filterXPath('.//enclosure')->attr('length') ?? '0';
 
             return $this->resultFromName(
@@ -328,7 +465,9 @@ final class DownloadService
                 filename: $this->downloadFilenameFrom((string) $item->filterXPath('.//enclosure')->attr('url')),
                 downloadId: (int) ($guidMatch[1] ?? 0),
                 sizeBytes: (int) $length,
-                availability: (int) str_replace(',', '', $availabilityMatch[1] ?? '0'),
+                availability: $countMatching('/\(S:([\d,]+)/') ?? 0,
+                demand: $countMatching('/L:([\d,]+)/'),
+                subcategory: $subcategory,
                 publishedAt: CarbonImmutable::parse($item->filterXPath('.//pubDate')->text()),
             );
         } catch (\Throwable $e) {
@@ -353,6 +492,9 @@ final class DownloadService
         int $downloadId,
         int $sizeBytes,
         int $availability,
+        ?int $demand = null,
+        ?string $subcategory = null,
+        ?string $uploader = null,
         ?CarbonImmutable $publishedAt = null,
     ): DownloadResult {
         return new DownloadResult(
@@ -366,6 +508,9 @@ final class DownloadService
             availability: $availability,
             sizeBytes: $sizeBytes,
             isRar: $this->isRarRelease($name),
+            demand: $demand,
+            subcategory: $subcategory,
+            uploader: $uploader,
             publishedAt: $publishedAt,
         );
     }

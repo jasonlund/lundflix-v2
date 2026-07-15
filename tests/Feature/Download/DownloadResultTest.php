@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Download\Data\DownloadDescription;
 use App\Domains\Download\Data\DownloadResult;
 use App\Domains\Download\Enums\Codec;
 use App\Domains\Download\Enums\Quality;
@@ -37,6 +38,46 @@ it('exposes every property unchanged from direct construction', function (): voi
         ->and($result->sizeBytes)->toBe(4_294_967_296)
         ->and($result->isRar)->toBeTrue()
         ->and($result->releaseTag)->toBe(ReleaseTag::None);
+});
+
+it('defaults every enrichment field to null when constructed from required args only', function (): void {
+    // Arrange
+    // enum-and-scalar DTO, no state to set up
+
+    // Act
+    $result = new DownloadResult(
+        downloadId: 42,
+        name: 'Some.Release.1080p.x265',
+        filename: 'Some.Release.1080p.x265',
+        quality: Quality::P1080,
+        codec: Codec::Hevc,
+        source: Source::WebDl,
+        releaseTag: ReleaseTag::None,
+        availability: 17,
+        sizeBytes: 4_294_967_296,
+        isRar: true,
+    );
+
+    // Assert
+    expect($result->demand)->toBeNull()
+        ->and($result->subcategory)->toBeNull()
+        ->and($result->uploader)->toBeNull()
+        ->and($result->imdbId)->toBeNull()
+        ->and($result->tmdbId)->toBeNull()
+        ->and($result->files)->toBeNull()
+        ->and($result->description)->toBeNull();
+});
+
+it('exposes html and screenshots on a DownloadDescription', function (): void {
+    // Arrange
+    // scalar-and-array DTO, no state to set up
+
+    // Act
+    $d = new DownloadDescription(html: '<b>x</b><br>', screenshots: ['a.jpg', 'b.jpg']);
+
+    // Assert
+    expect($d->html)->toBe('<b>x</b><br>')
+        ->and($d->screenshots)->toBe(['a.jpg', 'b.jpg']);
 });
 
 it('hydrates from an array casting enum strings', function (): void {
