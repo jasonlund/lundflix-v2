@@ -148,3 +148,42 @@ it('drops no rows through the incremental stop logic', function (): void {
     $this->assertDatabaseHas('downloads', ['_provider_id' => 7563851]);
     $this->assertDatabaseHas('downloads', ['_provider_id' => 7563723]);
 });
+
+it('prints an intro and outro around the index walk', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    Http::fake([
+        '*72=&p=1' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200),
+        '*72=&p=2' => Http::response(fixtureBytes('Download/downloads/index_movies_p2.html'), 200),
+        '*73=&p=1' => Http::response(fixtureBytes('Download/downloads/index_tv_p1.html'), 200),
+        '*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_no_table.html'), 200),
+    ]);
+
+    // Act & Assert
+    $this->artisan('download:sync-index', ['--fresh' => true])
+        ->expectsOutputToContain('Syncing download index…')
+        ->expectsOutputToContain('Done.')
+        ->assertSuccessful();
+});
+
+it('prints a category-labeled heartbeat every 10th page walked', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->pass = 'p123';
+    $settings->save();
+    $fakes = [];
+    for ($p = 1; $p <= 10; $p++) {
+        $fakes["*72=&p={$p}"] = Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200);
+    }
+    $fakes['*'] = Http::response(fixtureBytes('Download/downloads/index_movies_p1_no_table.html'), 200);
+    Http::fake($fakes);
+
+    // Act & Assert
+    $this->artisan('download:sync-index', ['--fresh' => true])
+        ->expectsOutputToContain('[index Movies p10]')
+        ->assertSuccessful();
+});

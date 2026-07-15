@@ -73,3 +73,21 @@ it('stamps only the rss channel timestamp on an ingested row', function (): void
     expect($row->index_synced_at)->toBeNull();
     expect($row->detail_synced_at)->toBeNull();
 });
+
+it('prints an intro and outro around the rss walk', function (): void {
+    // Arrange
+    $settings = resolve(DownloadSettings::class);
+    $settings->uid = 'u123';
+    $settings->rss_key = 'rsskey123';
+    $settings->save();
+    Http::fake([
+        '*;72' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200),
+        '*;73' => Http::response(fixtureBytes('Download/downloads/rss_tv.xml'), 200),
+    ]);
+
+    // Act & Assert
+    $this->artisan('download:sync-rss')
+        ->expectsOutputToContain('Syncing download RSS…')
+        ->expectsOutputToContain('Done.')
+        ->assertSuccessful();
+});

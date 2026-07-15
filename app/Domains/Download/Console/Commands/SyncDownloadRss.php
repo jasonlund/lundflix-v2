@@ -18,11 +18,15 @@ class SyncDownloadRss extends Command
 {
     public function handle(DownloadService $downloads, UpsertDownloads $upsert): int
     {
+        $this->output->writeln('Syncing download RSS…');
+
         foreach (Category::cases() as $category) {
             foreach ($downloads->rss($category) as $result) {
                 $upsert->handle($result, $category, SyncChannel::Rss);
             }
         }
+
+        $this->output->writeln('Done.');
 
         return self::SUCCESS;
     }

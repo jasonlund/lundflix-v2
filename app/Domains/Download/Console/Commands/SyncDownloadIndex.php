@@ -21,9 +21,13 @@ class SyncDownloadIndex extends Command
     {
         $fresh = (bool) $this->option('fresh');
 
+        $this->output->writeln('Syncing download index…');
+
         foreach (Category::cases() as $category) {
             $this->syncCategory($downloads, $upsert, $category, $fresh);
         }
+
+        $this->output->writeln('Done.');
 
         return self::SUCCESS;
     }
@@ -60,6 +64,12 @@ class SyncDownloadIndex extends Command
             // ids, everything older has been synced, so stop this category.
             if (! $fresh && $pageIds->diff($seen)->isEmpty()) {
                 break;
+            }
+
+            // Heartbeat: a deep category walk is otherwise silent for minutes, so
+            // periodically prove the walk is still advancing under a given category.
+            if ($pageNumber % 10 === 0) {
+                $this->output->writeln("  [index {$category->name} p{$pageNumber}]");
             }
 
             $pageNumber++;
