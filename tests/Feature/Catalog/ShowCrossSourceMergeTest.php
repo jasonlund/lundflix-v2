@@ -59,10 +59,10 @@ it('merges a TVDB show onto a TMDB-first row sharing only the tvdb id into one r
     $tmdb['id'] = 5559001;
     $tmdb['external_ids']['tvdb_id'] = 8880001;
     unset($tmdb['external_ids']['imdb_id']);
-    resolve(UpsertTmdbShows::class)->handle([$tmdb]);
     $tvdb = crossSourceTvdbSeries(['id' => 8880001, 'remoteIds' => []]);
 
     // Act
+    resolve(UpsertTmdbShows::class)->handle([$tmdb]);
     resolve(UpsertTvdbShows::class)->handle([$tvdb]);
 
     // Assert
@@ -77,12 +77,12 @@ it('merges a TMDB show onto a TVDB-first row sharing only the tmdb id into one r
     $tvdb = crossSourceTvdbSeries(['id' => 8880002, 'remoteIds' => [
         ['id' => '5559002', 'type' => 12, 'sourceName' => 'TheMovieDB.com'],
     ]]);
-    resolve(UpsertTvdbShows::class)->handle([$tvdb]);
     $tmdb = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
     $tmdb['id'] = 5559002;
     unset($tmdb['external_ids']['imdb_id'], $tmdb['external_ids']['tvdb_id']);
 
     // Act
+    resolve(UpsertTvdbShows::class)->handle([$tvdb]);
     resolve(UpsertTmdbShows::class)->handle([$tmdb]);
 
     // Assert
