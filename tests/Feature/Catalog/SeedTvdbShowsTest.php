@@ -104,7 +104,7 @@ it('crawls allSeries pages and persists hydrated shows with _tvdb_ columns', fun
     fakeTvdbSeedCrawl();
 
     // Act
-    $this->artisan('tvdb:seed-shows');
+    $this->artisan('catalog:seed-shows-tvdb');
 
     // Assert
     $show = Show::where('_tvdb_id', 81189)->first();
@@ -117,7 +117,7 @@ it('persists the hydrated series artworks into media', function (): void {
     fakeTvdbSeedCrawl();
 
     // Act
-    $this->artisan('tvdb:seed-shows');
+    $this->artisan('catalog:seed-shows-tvdb');
 
     // Assert
     $show = Show::where('_tvdb_id', 81189)->firstOrFail();
@@ -129,7 +129,7 @@ it('caps hydrate calls and stops paging with --limit', function (): void {
     fakeTvdbSeedCrawl();
 
     // Act
-    $this->artisan('tvdb:seed-shows', ['--limit' => 1]);
+    $this->artisan('catalog:seed-shows-tvdb', ['--limit' => 1]);
 
     // Assert
     $hydrateCalls = 0;
@@ -149,7 +149,7 @@ it('hydrates nothing with --limit=0', function (): void {
     fakeTvdbSeedCrawl();
 
     // Act
-    $this->artisan('tvdb:seed-shows', ['--limit' => 0]);
+    $this->artisan('catalog:seed-shows-tvdb', ['--limit' => 0]);
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/extended'));
@@ -160,7 +160,7 @@ it('skips a non-numeric crawl id without firing /series/0/extended', function ()
     fakeTvdbSeedCrawlWithMalformedId();
 
     // Act
-    $this->artisan('tvdb:seed-shows');
+    $this->artisan('catalog:seed-shows-tvdb');
 
     // Assert
     Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series/0/extended'));
@@ -171,7 +171,7 @@ it('skips a crawl record missing its id key without raising a warning', function
     fakeTvdbSeedCrawlWithMissingId();
 
     // Act
-    $this->artisan('tvdb:seed-shows');
+    $this->artisan('catalog:seed-shows-tvdb');
 
     // Assert
     expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
@@ -182,7 +182,7 @@ it('exits SUCCESS', function (): void {
     fakeTvdbSeedCrawl();
 
     // Act & Assert
-    $this->artisan('tvdb:seed-shows')->assertExitCode(0);
+    $this->artisan('catalog:seed-shows-tvdb')->assertExitCode(0);
 });
 
 it('announces it is starting before the pipeline runs', function (): void {
@@ -190,7 +190,7 @@ it('announces it is starting before the pipeline runs', function (): void {
     fakeTvdbSeedCrawl();
 
     // Act & Assert
-    $this->artisan('tvdb:seed-shows')->expectsOutputToContain('Syncing shows…');
+    $this->artisan('catalog:seed-shows-tvdb')->expectsOutputToContain('Syncing shows…');
 });
 
 it('persists an id that fails its first hydrate then succeeds on the retry pass', function (): void {
@@ -208,7 +208,7 @@ it('persists an id that fails its first hydrate then succeeds on the retry pass'
     ]);
 
     // Act
-    $this->artisan('tvdb:seed-shows');
+    $this->artisan('catalog:seed-shows-tvdb');
 
     // Assert
     expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
@@ -227,7 +227,7 @@ it('reports an id that fails both the crawl pass and the retry pass', function (
     ]);
 
     // Act
-    $this->artisan('tvdb:seed-shows');
+    $this->artisan('catalog:seed-shows-tvdb');
 
     // Assert
     Exceptions::assertReported(fn (TvdbRequestFailed $e): bool => str_contains($e->getMessage(), '70327'));
@@ -245,7 +245,7 @@ it('prints an end-of-run summary line naming the still-failing ids', function ()
     ]);
 
     // Act & Assert
-    $this->artisan('tvdb:seed-shows')
+    $this->artisan('catalog:seed-shows-tvdb')
         ->expectsOutputToContain('still failing')
         ->expectsOutputToContain('70327')
         ->assertExitCode(0);

@@ -118,7 +118,7 @@ abstract class TvdbShowsCommand extends Command
         $upsertShows->handle($payloads);
 
         // Heartbeat: print every 1000th hydrated title. spin()/progress() render
-        // nothing under sync:catalog's nested Artisan::call, so this plain line
+        // nothing under catalog:sync's nested Artisan::call, so this plain line
         // is the only visible movement; the label distinguishes this phase.
         foreach ($payloads as $payload) {
             if (++$this->processed % 1000 === 0) {

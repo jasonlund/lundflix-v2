@@ -34,22 +34,22 @@ verbatim; derive/normalize downstream, not on ingest.
   `TmdbRequestFailed`, so single-request and batch callers see the same typed
   failure.
 
-## Sync ordering (`tmdb:sync-shows`)
+## Sync ordering (`catalog:sync-shows-tmdb`)
 
-- `tmdb:sync-shows` create-or-merge — it matches an existing show by **any**
+- `catalog:sync-shows-tmdb` create-or-merge — it matches an existing show by **any**
   source id (`_imdb_id`, `_tmdb_id`, or `_tvdb_id`, including the IMDb id nested
   in `external_ids`) and merges its `_tmdb_*` columns onto it; when nothing
   matches it inserts a tmdb-only row (seeding `_imdb_id` when the payload carries
-  one). It no longer depends on `tvdb:sync-shows` having run first.
+  one). It no longer depends on `catalog:sync-shows-tvdb` having run first.
 
-## TVDB sync split (`tvdb:seed-shows` / `tvdb:sync-shows`)
+## TVDB sync split (`catalog:seed-shows-tvdb` / `catalog:sync-shows-tvdb`)
 
-- `tvdb:seed-shows` — one-time manual bootstrap that crawls **every** TheTVDB
+- `catalog:seed-shows-tvdb` — one-time manual bootstrap that crawls **every** TheTVDB
   series and upserts each. TheTVDB offers no re-download list, so failures heal
   **within the run**: one retry pass over the crawl's failures, then report the
   remainder. No persisted skip state.
-- `tvdb:sync-shows` — the rolling 14-day `/updates`-feed sync, wired into
-  `sync:catalog`. The 14-day overlap window **is** the self-heal: idempotent
+- `catalog:sync-shows-tvdb` — the rolling 14-day `/updates`-feed sync, wired into
+  `catalog:sync`. The 14-day overlap window **is** the self-heal: idempotent
   upserts re-cover any dropped update on a later run, so it needs no persisted
   marker.
 - `seriesMany(array $ids)` returns a `PooledResult` — the input-ordered id →

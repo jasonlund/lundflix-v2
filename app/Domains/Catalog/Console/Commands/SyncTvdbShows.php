@@ -12,7 +12,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 
 #[Description('Sync TheTVDB shows from the rolling 14-day updates feed')]
-#[Signature('tvdb:sync-shows {--limit=}')]
+#[Signature('catalog:sync-shows-tvdb {--limit=}')]
 class SyncTvdbShows extends TvdbShowsCommand
 {
     /**

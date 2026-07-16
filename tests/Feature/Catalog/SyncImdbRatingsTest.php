@@ -29,7 +29,7 @@ it('populates ratings on pre-seeded titles', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
 
     // Act
-    $this->artisan('imdb:import-ratings');
+    $this->artisan('catalog:sync-ratings');
 
     // Assert
     $matrix->refresh();
@@ -50,7 +50,7 @@ it('exits SUCCESS', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
 
     // Act & Assert
-    $this->artisan('imdb:import-ratings')->assertExitCode(0);
+    $this->artisan('catalog:sync-ratings')->assertExitCode(0);
 });
 
 it('emits a progress heartbeat', function (): void {
@@ -58,7 +58,7 @@ it('emits a progress heartbeat', function (): void {
     Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
 
     // Act & Assert
-    $this->artisan('imdb:import-ratings')->expectsOutputToContain('[imdb ratings');
+    $this->artisan('catalog:sync-ratings')->expectsOutputToContain('[imdb ratings');
 });
 
 it('deletes the temp file afterward', function (): void {
@@ -68,7 +68,7 @@ it('deletes the temp file afterward', function (): void {
     $before = $tempFiles();
 
     // Act
-    $this->artisan('imdb:import-ratings');
+    $this->artisan('catalog:sync-ratings');
 
     // Assert
     expect($tempFiles())->toBe($before);

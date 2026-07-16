@@ -85,7 +85,7 @@ final readonly class UpsertTmdbShows
             $tmdbOnlyRows[] = $this->rawTmdbRow($payload, $now);
         }
 
-        $touchedIds = array_merge($touchedIds, $this->insertTmdbOnly($tmdbOnlyRows));
+        $touchedIds = array_merge($touchedIds, $this->insertTmdbOnly($this->nullAmbiguousTvdbIds($tmdbOnlyRows)));
 
         Show::query()->whereIn('id', $touchedIds)->searchable();
 
@@ -164,6 +164,28 @@ final readonly class UpsertTmdbShows
     }
 
     /**
+     * Null `_tvdb_id` on every row that shares it with another row in the batch:
+     * dirty source data can repeat a cross-id, and the unique `_tvdb_id` column
+     * would otherwise reject the whole batch while a fabricated crosswalk would
+     * false-merge two distinct shows. Nobody claims an ambiguous crosswalk.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function nullAmbiguousTvdbIds(array $rows): array
+    {
+        $counts = array_count_values(array_filter(array_column($rows, '_tvdb_id')));
+
+        return array_map(static function (array $row) use ($counts): array {
+            if (($counts[$row['_tvdb_id']] ?? 0) > 1) {
+                $row['_tvdb_id'] = null;
+            }
+
+            return $row;
+        }, $rows);
+    }
+
+    /**
      * Insert the payloads that matched no existing show via a cast-bypassing
      * `Model::upsert()`, then return the ids of the affected shows (so they can
      * be reindexed). Returns no ids when there are no tmdb-only rows.
@@ -217,6 +239,10 @@ final readonly class UpsertTmdbShows
         // TMDB tv carries IMDb's identity key nested in external_ids; copy it raw
         // so the `_tmdb_id` upsert also seeds `_imdb_id` (null when absent).
         $row['_imdb_id'] = $this->imdbIdFrom($payload);
+
+        // TMDB tv also carries TVDB's identity key in external_ids; seed the tvdb
+        // crosswalk so a later TVDB run matches this row instead of duplicating it.
+        $row['_tvdb_id'] = $this->tvdbIdFrom($payload);
 
         foreach (self::JSON_COLUMNS as $column) {
             $row[$column] = $row[$column] === null ? null : json_encode($row[$column]);

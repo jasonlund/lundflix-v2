@@ -139,6 +139,47 @@ it('seeds _imdb_id from nested external_ids.imdb_id on a fresh tmdb-only insert'
         ->and($show->_tmdb_id)->toBe(1234567);
 });
 
+it('seeds _tvdb_id from external_ids.tvdb_id on a fresh tmdb-only insert', function (): void {
+    // Arrange
+    $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $payload['id'] = 5551399;
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+    // Assert
+    $show = Show::query()->where('_tmdb_id', 5551399)->firstOrFail();
+    expect($show->_tvdb_id)->toBe((int) $payload['external_ids']['tvdb_id']);
+});
+
+it('leaves _tvdb_id null when external_ids carries no tvdb_id', function (): void {
+    // Arrange
+    $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $payload['id'] = 5551400;
+    unset($payload['external_ids']['tvdb_id']);
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+    // Assert
+    $show = Show::query()->where('_tmdb_id', 5551400)->firstOrFail();
+    expect($show->_tvdb_id)->toBeNull();
+});
+
+it('still seeds _imdb_id on the same insert that seeds _tvdb_id', function (): void {
+    // Arrange
+    $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $payload['id'] = 5551401;
+    $payload['external_ids']['imdb_id'] = 'tt0944947';
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+    // Assert
+    $show = Show::query()->where('_tmdb_id', 5551401)->firstOrFail();
+    expect($show->_imdb_id)->toBe('tt0944947');
+});
+
 it('does not duplicate a tmdb-only show when the same payload is re-run', function (): void {
     // Arrange
     $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
@@ -170,6 +211,43 @@ it('writes one last-wins row when two payloads in one batch share an imdb_id', f
     expect(Show::query()->count())->toBe(1)
         ->and($fresh->_tmdb_id)->toBe(7654321)
         ->and($fresh->_tmdb_name)->toBe('Winning Write');
+});
+
+it('persists both tmdb-only payloads sharing one external_ids.tvdb_id without a unique-constraint error', function (): void {
+    // Arrange
+    $a = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $a['id'] = 6661399;
+    $a['external_ids']['tvdb_id'] = 7770001;
+    unset($a['external_ids']['imdb_id']);
+    $b = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $b['id'] = 6662000;
+    $b['external_ids']['tvdb_id'] = 7770001;
+    unset($b['external_ids']['imdb_id']);
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$a, $b]);
+
+    // Assert
+    expect(Show::query()->count())->toBe(2);
+});
+
+it('leaves the ambiguous _tvdb_id null on the colliding rows', function (): void {
+    // Arrange
+    $a = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $a['id'] = 6661399;
+    $a['external_ids']['tvdb_id'] = 7770001;
+    unset($a['external_ids']['imdb_id']);
+    $b = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $b['id'] = 6662000;
+    $b['external_ids']['tvdb_id'] = 7770001;
+    unset($b['external_ids']['imdb_id']);
+
+    // Act
+    resolve(UpsertTmdbShows::class)->handle([$a, $b]);
+
+    // Assert
+    expect(Show::query()->where('_tmdb_id', 6661399)->firstOrFail()->_tvdb_id)->toBeNull()
+        ->and(Show::query()->where('_tmdb_id', 6662000)->firstOrFail()->_tvdb_id)->toBeNull();
 });
 
 it('persists a blank TMDB first_air_date as null, not an empty string', function (): void {

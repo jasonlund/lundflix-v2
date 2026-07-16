@@ -14,7 +14,7 @@ uses(RefreshDatabase::class);
 |--------------------------------------------------------------------------
 | Fixtures (byte-exact real TheTVDB v4 slices)
 |--------------------------------------------------------------------------
-| tvdb:sync-shows is updates-only — it hydrates ids from the /updates feed
+| catalog:sync-shows-tvdb is updates-only — it hydrates ids from the /updates feed
 | since `now − 14 days` and upserts them. No crawl, no --fresh, no skip-synced.
 |
 | tests/Fixtures/Catalog/tvdb/login.json — POST /login → data.token JWT;
@@ -56,7 +56,7 @@ it('hydrates ids from the updates feed and persists them', function (): void {
     fakeTvdbUpdates();
 
     // Act
-    $this->artisan('tvdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tvdb');
 
     // Assert
     expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
@@ -68,7 +68,7 @@ it('queries /updates with since = now minus 14 days', function (): void {
     fakeTvdbUpdates();
 
     // Act
-    $this->artisan('tvdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tvdb');
 
     // Assert
     Http::assertSent(fn (Request $request): bool => str_contains(urldecode((string) $request->url()), 'since='.now()->subDays(14)->timestamp));
@@ -79,7 +79,7 @@ it('uses the updates feed only and never crawls /series?page', function (): void
     fakeTvdbUpdates();
 
     // Act
-    $this->artisan('tvdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tvdb');
 
     // Assert
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/updates'));
@@ -91,7 +91,7 @@ it('caps hydrate calls with --limit', function (): void {
     fakeTvdbUpdates();
 
     // Act
-    $this->artisan('tvdb:sync-shows', ['--limit' => 1]);
+    $this->artisan('catalog:sync-shows-tvdb', ['--limit' => 1]);
 
     // Assert
     $hydrateCalls = 0;
@@ -111,7 +111,7 @@ it('re-hydrates an already-synced show that appears in the window', function ():
     fakeTvdbUpdates();
 
     // Act
-    $this->artisan('tvdb:sync-shows');
+    $this->artisan('catalog:sync-shows-tvdb');
 
     // Assert
     Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/series/434847/extended'));
@@ -122,7 +122,7 @@ it('exits SUCCESS', function (): void {
     fakeTvdbUpdates();
 
     // Act & Assert
-    $this->artisan('tvdb:sync-shows')->assertExitCode(0);
+    $this->artisan('catalog:sync-shows-tvdb')->assertExitCode(0);
 });
 
 it('announces it is starting before the pipeline runs', function (): void {
@@ -130,5 +130,5 @@ it('announces it is starting before the pipeline runs', function (): void {
     fakeTvdbUpdates();
 
     // Act & Assert
-    $this->artisan('tvdb:sync-shows')->expectsOutputToContain('Syncing shows…');
+    $this->artisan('catalog:sync-shows-tvdb')->expectsOutputToContain('Syncing shows…');
 });
