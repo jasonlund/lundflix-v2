@@ -27,7 +27,7 @@ beforeEach(function (): void {
 |   tt0137523 8.8/2615814, tt0816692 8.7/2541567, tt0000001 5.7/2211
 |   (no tt0903747 row, so Breaking Bad never gets ranked).
 | tests/Fixtures/Catalog/tmdb/movie_ids.json.gz — daily export incl. id 603
-|   (The Matrix); tv_series_ids.json.gz — incl. id 1399 (Game of Thrones).
+|   (The Matrix).
 | tests/Fixtures/Catalog/tmdb/movie.json — /movie/603 (imdb_id tt0133093);
 |   tv.json — /tv/1399 (external_ids.imdb_id tt0944947).
 | tests/Fixtures/Catalog/tvdb/* — login JWT, chained /updates feed, and
@@ -56,7 +56,6 @@ function fakeCatalogSync(): void
     Http::fake([
         '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
-        '*tv_series_ids*' => Http::response(fixtureBytes('Catalog/tmdb/tv_series_ids.json.gz')),
         // Both TMDB commands hit their changes feed after the insert phase on a
         // default run; empty-results pages drive the update phase through its
         // success path (no swallowed exception, no stray stack trace). Listed
@@ -97,7 +96,6 @@ function fakeCatalogSyncFreshAndUpdates(): void
     Http::fake([
         '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
-        '*tv_series_ids*' => Http::response(fixtureBytes('Catalog/tmdb/tv_series_ids.json.gz')),
         // Both TMDB commands hit their changes feed after the insert phase on a
         // default run; empty-results pages drive the update phase through its
         // success path (no swallowed exception, no stray stack trace). Listed
@@ -141,7 +139,7 @@ it('is born a movie from TMDB', function (): void {
     expect(Movie::count())->toBe(1);
 });
 
-it('is born a show from TVDB, and TMDB inserts a tmdb-only show matching none', function (): void {
+it('is born a show from TVDB; TMDB does not create a show it cannot match', function (): void {
     // Arrange
     fakeCatalogSync();
 
@@ -149,18 +147,18 @@ it('is born a show from TVDB, and TMDB inserts a tmdb-only show matching none', 
     $this->artisan('catalog:sync');
 
     // Assert
-    // Breaking Bad is born from TVDB (tvdb 81189); Game of Thrones shares none of
-    // its source ids — its own tvdb crosswalk (121361, seeded from external_ids)
-    // differs from Breaking Bad's — so TMDB inserts it as its own row rather than
-    // false-merging: two independent shows, each source-of-truth for its own row.
+    // TVDB is the single source of truth for creating shows: Breaking Bad is born
+    // from TVDB (tvdb 81189) carrying its imdb crosswalk tt0903747 and its
+    // remoteIds TheMovieDB.com id 1396. TMDB only hydrates existing shows by id —
+    // it never creates a show it can't match, so Game of Thrones (tmdb 1399) is
+    // never inserted and Breaking Bad is the only row.
     $breakingBad = Show::where('_tvdb_id', 81189)->first();
     expect($breakingBad)->not->toBeNull();
     expect($breakingBad->_imdb_id)->toBe('tt0903747');
+    expect($breakingBad->_tmdb_id)->toBe(1396);
 
-    $gameOfThrones = Show::where('_tmdb_id', 1399)->first();
-    expect($gameOfThrones)->not->toBeNull();
-    expect($gameOfThrones->_tvdb_id)->toBe(121361);
-    expect(Show::count())->toBe(2);
+    expect(Show::where('_tmdb_id', 1399)->first())->toBeNull();
+    expect(Show::count())->toBe(1);
 });
 
 it('applies IMDb ratings last by _imdb_id', function (): void {
@@ -198,13 +196,12 @@ it('exits SUCCESS when every command succeeds', function (): void {
     $this->artisan('catalog:sync')->assertExitCode(Command::SUCCESS);
 });
 
-it('continues past a failing show command, exits FAILURE and reports', function (): void {
+it('continues past a failing ratings command, exits FAILURE and reports', function (): void {
     // Arrange
     Exceptions::fake();
     Http::fake([
-        '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
+        '*title.ratings*' => Http::response('', 500),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
-        '*tv_series_ids*' => Http::response('', 500),
         '*api.themoviedb.org*' => function (Request $request) {
             if (str_contains($request->url(), '/movie/603')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));

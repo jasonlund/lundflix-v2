@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
+use App\Domains\Catalog\Exceptions\TmdbShowCrosswalkCollision;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -16,30 +17,45 @@ uses(RefreshDatabase::class);
 |--------------------------------------------------------------------------
 | Fixtures (byte-exact real TMDB slices)
 |--------------------------------------------------------------------------
-| tests/Fixtures/Catalog/tmdb/tv_series_ids.json.gz — gz JSONL daily export of
-|   real rows {"id":int,"original_name":string,"popularity":float}, including
-|   id 1399 (Game of Thrones), alongside the other real export ids.
-| tests/Fixtures/Catalog/tmdb/tv.json — the /tv/1399 detail response (Game of
-|   Thrones, _tmdb_name "Game of Thrones") with an images block.
+| Phase 1 hydrates OUR OWN not-yet-synced shows, matched by id — it never
+| walks the daily export. A row already carrying _tmdb_id hydrates directly via
+| /tv/{id}; an imdb-only row (_tmdb_id null) reconciles through
+| /find/{imdbId}?external_source=imdb_id, stamping tv_results[0].id before it
+| hydrates. Empty tv_results → the row stays TVDB-only (no hydrate, no error).
 |
-| The export host and the TMDB API host are distinct, and stray requests are
-| globally prevented, so both hosts are faked. The API closure serves Game of
-| Thrones only for id 1399 and 404s every other exported id, exercising the
-| pooled-miss path.
+| find_tv_by_imdb.json — real /find/tt0903747 capture; tv_results[0].id 1396
+|   (Breaking Bad), movie_results empty.
+| find_by_imdb.json — real /find/tt0133093 capture (The Matrix); tv_results
+|   EMPTY → the imdb-only row stays TVDB-only.
+| tv.json — the /tv/1399 detail response (Game of Thrones, _tmdb_name
+|   "Game of Thrones") with an images block. Its body is re-keyed onto id 1396
+|   to serve the reconcile hydrate (the only synthetic touch, accepted here).
+|
+| The TMDB API host is faked and stray requests are globally prevented.
 */
 
 function fakeTmdbShowSync(): void
 {
     Http::fake([
-        '*tv_series_ids*' => Http::response(fixtureBytes('Catalog/tmdb/tv_series_ids.json.gz')),
-        // A default run always hits the changes feed after the insert phase; an
-        // empty-results page drives the update phase through its success path
-        // (no swallowed exception, no stray stack trace). Listed before the
-        // generic detail stub since it lives on the same host.
+        '*/find/tt0903747*' => Http::response(fixtureBytes('Catalog/tmdb/find_tv_by_imdb.json')),
+        '*/find/tt0133093*' => Http::response(fixtureBytes('Catalog/tmdb/find_by_imdb.json')),
         '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
-        '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/tv/1399')
-            ? Http::response(fixtureBytes('Catalog/tmdb/tv.json'))
-            : Http::response('', 404),
+        '*api.themoviedb.org*' => function (Request $request) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, '/tv/1399')) {
+                return Http::response(fixtureBytes('Catalog/tmdb/tv.json'));
+            }
+            if (str_ends_with($path, '/tv/1396')) {
+                // Re-key the Game of Thrones body onto id 1396 so the reconcile
+                // hydrate (which keys on the payload's id) lands on the row.
+                $body = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+                $body['id'] = 1396;
+
+                return Http::response(json_encode($body));
+            }
+
+            return Http::response('', 404);
+        },
     ]);
 }
 
@@ -62,7 +78,6 @@ function fakeTmdbShowUpdateSync(): void
     $detailBody = json_encode($decoded);
 
     Http::fake([
-        '*tv_series_ids*' => Http::response(gzencode('')),
         '*/tv/changes*' => function (Request $request) {
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
 
@@ -79,47 +94,54 @@ function fakeTmdbShowUpdateSync(): void
     ]);
 }
 
-it('skips a non-numeric export id without hydrating it', function (): void {
+it('hydrates a not-yet-synced show carrying a _tmdb_id directly', function (): void {
     // Arrange
-    // A non-numeric id can't occur in the byte-exact export fixture, so this
-    // synthetic gz export injects one to prove the stream skips it rather than
-    // casting it to 0 and firing a wasted /tv/0 hydration.
-    $jsonl = '{"id":"not-a-number","original_name":"Malformed","popularity":1.0}'."\n"
-        .'{"id":1399,"original_name":"Game of Thrones","popularity":1.0}'."\n";
-
-    Http::fake([
-        '*tv_series_ids*' => Http::response(gzencode($jsonl)),
-        '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
-        '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/tv/1399')
-            ? Http::response(fixtureBytes('Catalog/tmdb/tv.json'))
-            : Http::response('', 404),
-    ]);
-
-    // Act
-    $this->artisan('catalog:sync-shows-tmdb');
-
-    // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/0'));
-});
-
-it('enriches a matching TVDB show with _tmdb_ columns in place', function (): void {
-    // Arrange
-    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0944947']);
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
     fakeTmdbShowSync();
 
     // Act
     $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
-    $got = Show::where('_tmdb_id', 1399)->first();
-    expect($got)->not->toBeNull();
-    expect($got->_tmdb_name)->toBe('Game of Thrones');
+    expect(Show::where('_tmdb_id', 1399)->firstOrFail()->_tmdb_name)->toBe('Game of Thrones');
     expect(Show::count())->toBe(1);
 });
 
-it('persists the enriched show images into media', function (): void {
+it('reconciles an imdb-only show by resolving its tmdb id via /find', function (): void {
     // Arrange
-    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0944947']);
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+    fakeTmdbShowSync();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    $got = Show::firstOrFail();
+    expect($got->_tmdb_id)->toBe(1396);
+    expect($got->_tmdb_name)->not->toBeNull();
+});
+
+it('leaves an imdb-only show TVDB-only when /find returns no tv results', function (): void {
+    // Arrange
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0133093', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+    fakeTmdbShowSync();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    $got = Show::firstOrFail();
+    expect($got->_tmdb_id)->toBeNull();
+    expect($got->tmdb_synced_at)->toBeNull();
+    Http::assertNotSent(fn (Request $request): bool => (bool) preg_match(
+        '#/tv/\d+$#',
+        (string) parse_url($request->url(), PHP_URL_PATH),
+    ));
+});
+
+it('persists the hydrated show images into media', function (): void {
+    // Arrange
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
     fakeTmdbShowSync();
 
     // Act
@@ -130,21 +152,24 @@ it('persists the enriched show images into media', function (): void {
     expect($got->media()->where('is_active', true)->count())->toBeGreaterThan(0);
 });
 
-it('exits SUCCESS and deletes the export temp file', function (): void {
+it('creates no identity-less rows while hydrating existing shows', function (): void {
     // Arrange
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
     fakeTmdbShowSync();
-    $tempFiles = fn (): array => glob(sys_get_temp_dir().'/tmdb_*');
-    $before = $tempFiles();
+    $before = Show::count();
 
     // Act
-    $this->artisan('catalog:sync-shows-tmdb')->assertExitCode(0);
+    $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
-    expect($tempFiles())->toBe($before);
+    expect(Show::count())->toBe($before);
 });
 
-it('caps processed ids with --limit', function (): void {
+it('caps hydrated shows with --limit', function (): void {
     // Arrange
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1396, 'tmdb_synced_at' => null]);
     fakeTmdbShowSync();
 
     // Act
@@ -153,7 +178,7 @@ it('caps processed ids with --limit', function (): void {
     // Assert
     $hydrateCalls = 0;
     Http::assertSent(function (Request $request) use (&$hydrateCalls): bool {
-        if (str_contains($request->url(), 'api.themoviedb.org/3/tv/')) {
+        if (preg_match('#/3/tv/\d+$#', (string) parse_url($request->url(), PHP_URL_PATH))) {
             $hydrateCalls++;
         }
 
@@ -262,7 +287,6 @@ it('reports a persistent changes-feed failure and still exits SUCCESS', function
     // page, which TMDB raises as a fatal TmdbRequestFailed the update phase must
     // report rather than propagate.
     Http::fake([
-        '*tv_series_ids*' => Http::response(gzencode('')),
         '*/tv/changes*' => Http::response('', 404),
         '*api.themoviedb.org*' => Http::response('', 404),
     ]);
@@ -272,4 +296,47 @@ it('reports a persistent changes-feed failure and still exits SUCCESS', function
 
     // Assert
     Exceptions::assertReported(TmdbRequestFailed::class);
+});
+
+it('leaves the imdb-only show TVDB-only when its resolved tmdb id collides', function (): void {
+    // Arrange
+    fakeTmdbShowSync();
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1396, 'tmdb_synced_at' => null, '_tmdb_name' => null]);
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    $rowB = Show::where('_imdb_id', 'tt0903747')->firstOrFail();
+    expect($rowB->_tmdb_id)->toBeNull();
+    expect($rowB->tmdb_synced_at)->toBeNull();
+});
+
+it('still hydrates the colliding id\'s owning row and inserts nothing', function (): void {
+    // Arrange
+    fakeTmdbShowSync();
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1396, 'tmdb_synced_at' => null, '_tmdb_name' => null]);
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    expect(Show::where('_tmdb_id', 1396)->firstOrFail()->_tmdb_name)->toBe('Game of Thrones');
+    expect(Show::count())->toBe(2);
+});
+
+it('reports the crosswalk collision', function (): void {
+    // Arrange
+    Exceptions::fake();
+    fakeTmdbShowSync();
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1396, 'tmdb_synced_at' => null, '_tmdb_name' => null]);
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    Exceptions::assertReported(TmdbShowCrosswalkCollision::class);
 });
