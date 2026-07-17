@@ -2,10 +2,18 @@
 
 declare(strict_types=1);
 
-use App\Domains\Catalog\Enums\Genre;
 use App\Domains\Catalog\Models\Movie;
-use Illuminate\Database\QueryException;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
+
+it('has an _imdb_id column but no imdb_id column', function (): void {
+    // Arrange & Act
+    $hasPrefixed = Schema::hasColumn('movies', '_imdb_id');
+    $hasUnprefixed = Schema::hasColumn('movies', 'imdb_id');
+
+    // Assert
+    expect($hasPrefixed)->toBeTrue()
+        ->and($hasUnprefixed)->toBeFalse();
+});
 
 it('persists a movie row to the database', function (): void {
     // Arrange
@@ -17,54 +25,32 @@ it('persists a movie row to the database', function (): void {
     // Assert
     $this->assertDatabaseHas('movies', [
         'id' => $movie->id,
-        'imdb_id' => $movie->imdb_id,
-        'title' => $movie->title,
+        '_imdb_id' => $movie->_imdb_id,
     ]);
 });
 
-it('rejects a duplicate imdb_id', function (): void {
+it('allows two movies to share the same _imdb_id', function (): void {
     // Arrange
-    Movie::factory()->create(['imdb_id' => 'tt1234567']);
+    Movie::factory()->create(['_imdb_id' => 'tt0000001']);
 
-    // Act / Assert
-    expect(fn () => Movie::factory()->create(['imdb_id' => 'tt1234567']))
-        ->toThrow(QueryException::class);
+    // Act
+    Movie::factory()->create(['_imdb_id' => 'tt0000001']);
+
+    // Assert
+    expect(Movie::query()->where('_imdb_id', 'tt0000001')->count())->toBe(2);
 });
 
 it('casts typed attributes when fetched fresh from the database', function (): void {
     // Arrange
     $movie = Movie::factory()->create([
-        'year' => 1999,
-        'runtime' => 136,
-        'num_votes' => 1_800_000,
-        'average_rating' => 8.7,
-        'genres' => [Genre::Action, Genre::Drama],
+        '_imdb_num_votes' => 1_800_000,
+        '_imdb_average_rating' => 8.7,
     ]);
 
     // Act
     $fresh = Movie::query()->findOrFail($movie->id);
 
     // Assert
-    expect($fresh->year)->toBeInt()
-        ->and($fresh->runtime)->toBeInt()
-        ->and($fresh->num_votes)->toBeInt()
-        ->and($fresh->average_rating)->toBeFloat()
-        ->and($fresh->genres)->toBeInstanceOf(Collection::class)
-        ->and($fresh->genres[0])->toBeInstanceOf(Genre::class);
-});
-
-it('exposes only the searchable keys with matching values', function (): void {
-    // Arrange
-    $movie = Movie::factory()->create();
-
-    // Act
-    $searchable = $movie->toSearchableArray();
-
-    // Assert
-    expect(array_keys($searchable))->toEqualCanonicalizing(['id', 'imdb_id', 'title', 'year', 'num_votes'])
-        ->and($searchable['id'])->toBe($movie->id)
-        ->and($searchable['imdb_id'])->toBe($movie->imdb_id)
-        ->and($searchable['title'])->toBe($movie->title)
-        ->and($searchable['year'])->toBe($movie->year)
-        ->and($searchable['num_votes'])->toBe($movie->num_votes);
+    expect($fresh->_imdb_num_votes)->toBeInt()
+        ->and($fresh->_imdb_average_rating)->toBeFloat();
 });

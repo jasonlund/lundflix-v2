@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([
         __DIR__.'/../app/Domains/Catalog/Console/Commands',
+        __DIR__.'/../app/Domains/Download/Console/Commands',
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [

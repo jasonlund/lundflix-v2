@@ -1,0 +1,353 @@
+{
+  "MediaContainer": {
+    "size": 3,
+    "totalSize": 100,
+    "offset": 0,
+    "allowSync": true,
+    "art": "/:/resources/show-fanart.jpg",
+    "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 2,
+    "librarySectionTitle": "TV Shows",
+    "librarySectionUUID": "0be8114b-46ad-4ca1-872d-bb587e638350",
+    "mediaTagPrefix": "/system/bundle/media/flags/",
+    "mediaTagVersion": 1777730215,
+    "mixedParents": true,
+    "nocache": true,
+    "thumb": "/:/resources/show.png",
+    "title1": "TV Shows",
+    "title2": "Recently Added",
+    "viewGroup": "episode",
+    "viewMode": 65592,
+    "Metadata": [
+      {
+        "ratingKey": "35833",
+        "key": "/library/metadata/35833",
+        "parentRatingKey": "34905",
+        "grandparentRatingKey": "34904",
+        "guid": "plex://episode/69f347c56dc82fd7c32ffd7c",
+        "parentGuid": "plex://season/69cce66d6a84eb94ea034c5e",
+        "grandparentGuid": "plex://show/669991528f3a271830c3f4d2",
+        "grandparentSlug": "guy-montgomerys-guy-mont-spelling-bee-au-1",
+        "type": "episode",
+        "title": "There's no C!",
+        "grandparentKey": "/library/metadata/34904",
+        "parentKey": "/library/metadata/34905",
+        "grandparentTitle": "Guy Montgomery’s Guy Mont Spelling Bee (AU)",
+        "parentTitle": "Season 3",
+        "originalTitle": "Episode #3.9",
+        "summary": "Colin Lane, Anisa Nandaula and Tom Cashman step up, all gunning to snatch the throne from the carry-over champ, while battling a terrible bartender, baffling smells, and the world's fastest game of blackjack.",
+        "index": 9,
+        "parentIndex": 3,
+        "year": 2026,
+        "thumb": "/library/metadata/35833/thumb/1782297393",
+        "art": "/library/metadata/34904/art/1781252053",
+        "parentThumb": "/library/metadata/34905/thumb/1777928987",
+        "grandparentThumb": "/library/metadata/34904/thumb/1781252053",
+        "grandparentArt": "/library/metadata/34904/art/1781252053",
+        "duration": 2654080,
+        "originallyAvailableAt": "2026-06-24",
+        "addedAt": 1782297390,
+        "updatedAt": 1782297393,
+        "Media": [
+          {
+            "id": 50541,
+            "duration": 2654080,
+            "bitrate": 2189,
+            "width": 1280,
+            "height": 720,
+            "aspectRatio": 1.78,
+            "audioChannels": 2,
+            "audioCodec": "aac",
+            "videoCodec": "h264",
+            "videoResolution": "720",
+            "container": "mkv",
+            "videoFrameRate": "PAL",
+            "audioProfile": "lc",
+            "videoProfile": "high",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 93745,
+                "key": "/library/parts/93745/1782297353/file.mkv",
+                "duration": 2654080,
+                "file": "/data/media/TV Shows/Guy Montgomery's Guy Mont Spelling Bee (AU)/Season 03/Guy Montgomery's Guy Mont Spelling Bee (AU) - S03E09 - There's no C.mkv",
+                "size": 726117217,
+                "audioProfile": "lc",
+                "container": "mkv",
+                "videoProfile": "high"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "There's no C!",
+            "type": "coverPoster",
+            "url": "/library/metadata/34904/thumb/1781252053"
+          },
+          {
+            "alt": "There's no C!",
+            "type": "snapshot",
+            "url": "/library/metadata/35833/thumb/1782297393"
+          },
+          {
+            "alt": "There's no C!",
+            "type": "background",
+            "url": "/library/metadata/34904/art/1781252053"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "5b0701",
+          "topRight": "4c230b",
+          "bottomRight": "920a14",
+          "bottomLeft": "7c251d"
+        },
+        "Role": [
+          {
+            "tag": "Guy Montgomery"
+          },
+          {
+            "tag": "Sam Campbell"
+          },
+          {
+            "tag": "Demi Adejuyigbe"
+          }
+        ]
+      },
+      {
+        "ratingKey": "35820",
+        "key": "/library/metadata/35820",
+        "parentRatingKey": "35814",
+        "grandparentRatingKey": "35813",
+        "guid": "plex://episode/68e06802aa5bbb2162cbe9cf",
+        "parentGuid": "plex://season/66fa5806d63b1d7b7302084f",
+        "grandparentGuid": "plex://show/66fa5804d63b1d7b73020804",
+        "grandparentSlug": "riot-women",
+        "type": "episode",
+        "title": "Episode 6",
+        "grandparentKey": "/library/metadata/35813",
+        "parentKey": "/library/metadata/35814",
+        "grandparentTitle": "Riot Women",
+        "parentTitle": "Season 1",
+        "originalTitle": "Episode #1.6",
+        "summary": "Beth tries to help Tom and Kitty reconcile amid ongoing struggles. Holly handles Rudy creatively. The Riot Women record, bringing Holly a shock. Kitty faces court for the Jag incident while Keith arrives with news.",
+        "index": 6,
+        "parentIndex": 1,
+        "audienceRating": 9.3,
+        "year": 2025,
+        "thumb": "/library/metadata/35820/thumb/1782165583",
+        "art": "/library/metadata/35813/art/1782165557",
+        "parentThumb": "/library/metadata/35814/thumb/1782165559",
+        "grandparentThumb": "/library/metadata/35813/thumb/1782165557",
+        "grandparentArt": "/library/metadata/35813/art/1782165557",
+        "duration": 3779040,
+        "originallyAvailableAt": "2025-10-12",
+        "addedAt": 1782165582,
+        "updatedAt": 1782165583,
+        "audienceRatingImage": "themoviedb://image.rating",
+        "Media": [
+          {
+            "id": 50511,
+            "duration": 3779040,
+            "bitrate": 879,
+            "width": 1920,
+            "height": 872,
+            "aspectRatio": 2.2,
+            "audioChannels": 2,
+            "audioCodec": "aac",
+            "videoCodec": "hevc",
+            "videoResolution": "1080",
+            "container": "mkv",
+            "videoFrameRate": "PAL",
+            "audioProfile": "lc",
+            "videoProfile": "main 10",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 93715,
+                "key": "/library/parts/93715/1782165556/file.mkv",
+                "duration": 3779040,
+                "file": "/data/media/TV Shows/Riot Women/Season 01/Riot Women - S01E06 - Episode 6.mkv",
+                "size": 415072038,
+                "audioProfile": "lc",
+                "container": "mkv",
+                "videoProfile": "main 10"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Episode 6",
+            "type": "coverPoster",
+            "url": "/library/metadata/35813/thumb/1782165557"
+          },
+          {
+            "alt": "Episode 6",
+            "type": "snapshot",
+            "url": "/library/metadata/35820/thumb/1782165583"
+          },
+          {
+            "alt": "Episode 6",
+            "type": "background",
+            "url": "/library/metadata/35813/art/1782165557"
+          },
+          {
+            "alt": "Episode 6",
+            "type": "clearLogo",
+            "url": "/library/metadata/35813/clearLogo/1782165557"
+          },
+          {
+            "alt": "Episode 6",
+            "type": "backgroundSquare",
+            "url": "/library/metadata/35813/squareArt/1782165557"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "280916",
+          "topRight": "6e2437",
+          "bottomRight": "a7233b",
+          "bottomLeft": "9a392a"
+        },
+        "Director": [
+          {
+            "tag": "Amanda Brotchie"
+          }
+        ],
+        "Writer": [
+          {
+            "tag": "Sally Wainwright"
+          }
+        ],
+        "Role": [
+          {
+            "tag": "Joanna Scanlan"
+          },
+          {
+            "tag": "Rosalie Craig"
+          },
+          {
+            "tag": "Tamsin Greig"
+          }
+        ]
+      },
+      {
+        "ratingKey": "35819",
+        "key": "/library/metadata/35819",
+        "parentRatingKey": "35814",
+        "grandparentRatingKey": "35813",
+        "guid": "plex://episode/68e06802aa5bbb2162cbe9d5",
+        "parentGuid": "plex://season/66fa5806d63b1d7b7302084f",
+        "grandparentGuid": "plex://show/66fa5804d63b1d7b73020804",
+        "grandparentSlug": "riot-women",
+        "type": "episode",
+        "title": "Episode 5",
+        "grandparentKey": "/library/metadata/35813",
+        "parentKey": "/library/metadata/35814",
+        "grandparentTitle": "Riot Women",
+        "parentTitle": "Season 1",
+        "originalTitle": "Episode #1.5",
+        "summary": "Kitty's in custody with a broken hand as Beth and Tom discuss her fate. Jess can't remember last night's agreement. Holly gets shocked visiting Nisha. Jenny wants to manage Riot Women amid uncertainty.",
+        "index": 5,
+        "parentIndex": 1,
+        "audienceRating": 8.0,
+        "year": 2025,
+        "thumb": "/library/metadata/35819/thumb/1782165576",
+        "art": "/library/metadata/35813/art/1782165557",
+        "parentThumb": "/library/metadata/35814/thumb/1782165559",
+        "grandparentThumb": "/library/metadata/35813/thumb/1782165557",
+        "grandparentArt": "/library/metadata/35813/art/1782165557",
+        "duration": 3547880,
+        "originallyAvailableAt": "2025-10-12",
+        "addedAt": 1782165575,
+        "updatedAt": 1782165576,
+        "audienceRatingImage": "themoviedb://image.rating",
+        "Media": [
+          {
+            "id": 50510,
+            "duration": 3547880,
+            "bitrate": 720,
+            "width": 1920,
+            "height": 872,
+            "aspectRatio": 2.2,
+            "audioChannels": 2,
+            "audioCodec": "aac",
+            "videoCodec": "hevc",
+            "videoResolution": "1080",
+            "container": "mkv",
+            "videoFrameRate": "PAL",
+            "audioProfile": "lc",
+            "videoProfile": "main 10",
+            "hasVoiceActivity": false,
+            "Part": [
+              {
+                "id": 93714,
+                "key": "/library/parts/93714/1782165547/file.mkv",
+                "duration": 3547880,
+                "file": "/data/media/TV Shows/Riot Women/Season 01/Riot Women - S01E05 - Episode 5.mkv",
+                "size": 319165878,
+                "audioProfile": "lc",
+                "container": "mkv",
+                "videoProfile": "main 10"
+              }
+            ]
+          }
+        ],
+        "Image": [
+          {
+            "alt": "Episode 5",
+            "type": "coverPoster",
+            "url": "/library/metadata/35813/thumb/1782165557"
+          },
+          {
+            "alt": "Episode 5",
+            "type": "snapshot",
+            "url": "/library/metadata/35819/thumb/1782165576"
+          },
+          {
+            "alt": "Episode 5",
+            "type": "background",
+            "url": "/library/metadata/35813/art/1782165557"
+          },
+          {
+            "alt": "Episode 5",
+            "type": "clearLogo",
+            "url": "/library/metadata/35813/clearLogo/1782165557"
+          },
+          {
+            "alt": "Episode 5",
+            "type": "backgroundSquare",
+            "url": "/library/metadata/35813/squareArt/1782165557"
+          }
+        ],
+        "UltraBlurColors": {
+          "topLeft": "133146",
+          "topRight": "28547b",
+          "bottomRight": "7c3633",
+          "bottomLeft": "2f6a5b"
+        },
+        "Director": [
+          {
+            "tag": "Amanda Brotchie"
+          }
+        ],
+        "Writer": [
+          {
+            "tag": "Sally Wainwright"
+          }
+        ],
+        "Role": [
+          {
+            "tag": "Joanna Scanlan"
+          },
+          {
+            "tag": "Rosalie Craig"
+          },
+          {
+            "tag": "Tamsin Greig"
+          }
+        ]
+      }
+    ]
+  }
+}

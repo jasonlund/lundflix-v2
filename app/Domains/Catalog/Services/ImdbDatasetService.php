@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services;
 
-use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Exceptions\CannotOpenImdbDatasetArchive;
 use App\Domains\Catalog\Exceptions\CorruptImdbDatasetArchive;
 use Illuminate\Support\Facades\Http;
@@ -15,15 +14,25 @@ final class ImdbDatasetService
 {
     private const string BASE_URL = 'https://datasets.imdbws.com';
 
-    public function download(ImdbDataset $dataset): string
+    private const string FILENAME = 'title.ratings.tsv.gz';
+
+    /**
+     * Columns needing a cast; everything else stays string|null.
+     *
+     * @var array<string, string>
+     */
+    private const array CASTS = ['averageRating' => 'float', 'numVotes' => 'int'];
+
+    public function download(): string
     {
         $path = tempnam(sys_get_temp_dir(), 'imdb_');
 
         try {
             Http::sink($path)
                 ->timeout(600)
+                ->withOptions(['retry_enabled' => false])
                 ->retry(3, 1000)
-                ->get(self::BASE_URL.'/'.$dataset->filename())
+                ->get(self::BASE_URL.'/'.self::FILENAME)
                 ->throw();
         } catch (Throwable $e) {
             @unlink($path);
@@ -37,26 +46,21 @@ final class ImdbDatasetService
     /**
      * Count the data rows that rows() would actually yield.
      *
-     * Applies the SAME includes() filter as rows() so the returned total equals
-     * the number of rows that will be advanced over downstream — keeping a
-     * progress bar's total honest (it reaches 100% exactly, not ~72% then snap).
-     * A dataset whose includes() always returns true counts every non-blank row.
+     * Skips the header and every blank line, so the total equals the number of
+     * rows rows() advances over downstream — keeping a progress bar's total
+     * honest (it reaches 100% exactly, not ~72% then snap).
      */
-    public function count(string $path, ?ImdbDataset $dataset = null): int
+    public function count(string $path): int
     {
         $handle = $this->open($path);
 
         try {
-            $header = $this->fields($this->readHeader($handle, $path));
+            $this->readHeader($handle, $path);
 
             $count = 0;
 
             while (($line = gzgets($handle)) !== false) {
                 if (rtrim($line, "\r\n") === '') {
-                    continue;
-                }
-
-                if ($dataset instanceof ImdbDataset && ! $dataset->includes($this->mapRow($header, $this->fields($line)))) {
                     continue;
                 }
 
@@ -77,9 +81,9 @@ final class ImdbDatasetService
      * consume the returned collection (e.g. ->all(), or a foreach to the end);
      * abandoning it part-way leaves the gz handle open until GC reclaims it.
      */
-    public function rows(string $path, ImdbDataset $dataset): LazyCollection
+    public function rows(string $path): LazyCollection
     {
-        return LazyCollection::make(function () use ($path, $dataset) {
+        return LazyCollection::make(function () use ($path) {
             $handle = $this->open($path);
 
             try {
@@ -92,13 +96,7 @@ final class ImdbDatasetService
 
                     $raw = $this->mapRow($header, $this->fields($line));
 
-                    if (! $dataset->includes($raw)) {
-                        continue;
-                    }
-
-                    unset($raw['isAdult']);
-
-                    yield $this->cast($raw, $dataset->casts());
+                    yield $this->cast($raw, self::CASTS);
                 }
             } finally {
                 gzclose($handle);

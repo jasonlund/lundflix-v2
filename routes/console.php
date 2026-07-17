@@ -10,4 +10,4 @@ Artisan::command('inspire', function (): void {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('sync:catalog')->twiceDaily(0, 12)->timezone('America/Los_Angeles')->withoutOverlapping();
+Schedule::command('catalog:sync')->twiceDaily(0, 12)->timezone('America/Los_Angeles')->withoutOverlapping();

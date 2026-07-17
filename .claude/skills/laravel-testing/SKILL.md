@@ -63,6 +63,12 @@ shape (fabricated fixtures drift from what the API actually emits and still pass
   any un-faked external request fails the test. Fake every external call.
 - Synthetic bodies are allowed **only** for inputs that can't exist in real data:
   malformed/corrupt payloads, blank lines, HTTP error statuses.
+- Keep fixtures minimal in bytes — only **required** whitespace, no needless data. A
+  real capture is committed exactly as the API emits it (usually already one line, no
+  pretty-print). A **constructed** body (a synthetic shape, or real members you splice
+  together) gets minified to a single line the same way — no indentation, no trailing
+  whitespace — so it diffs cleanly and matches the sibling fixtures. Don't pad it with
+  fields beyond what the captured/spliced members already carry.
 - NB: the "never raw inserts or fixtures" rule below is about **DB state** (use
   factories) — it does not apply to these external-response fixtures.
 
@@ -84,12 +90,40 @@ $this->get(route('movies.index'))
 This verifies the backend contract the React page depends on — pair it with the
 frontend `react-testing` cycle for full-stack features.
 
+## Test-comment standard (strict)
+
+Unlike production code (where comments are trimmed to non-obvious *why*), test
+comments are **deliberate and mandatory**. One canonical form, strictly enforced
+by `tests/Unit/TestCommentStandardTest.php`:
+
+1. **AAA labels are mandatory, one per block, label-only line.** `// Arrange`,
+   `// Act`, `// Assert` — each on its own line carrying ONLY the label (or a
+   collapsed concat, see #2). Never append prose to the label line.
+2. **Collapse only when one statement serves two roles** (e.g. an exception test
+   where `expect(fn () => …)->toThrow(...)` both acts and asserts). Use a single
+   concatenated label joined by ` & ` (space-ampersand-space): `// Arrange & Act`,
+   `// Act & Assert`. Only `&` — never `/` or a no-space variant.
+3. **Missing / unneeded block → never silently absent.** Keep the label, put the
+   reason on the next line (two lines):
+
+   ```php
+   // Arrange
+   // enum under test, no state to set up
+   ```
+4. **Why-prose always on its own line(s), above the label it explains.** The AAA
+   line stays label-only — never the fused `// Arrange: a query that…` form.
+5. **Strict-keep (protected — endorse, never trim):**
+   - **Fixture-provenance header banners** — byte-exact-vs-hand-authored, dedupe
+     counts, why-faked-per-file.
+   - **Inline why-comments** for non-obvious mechanics (binding-drop bugs,
+     leak-under-test, on-demand-parsing proofs).
+
 ## RED checklist (for tdd-test-writer)
 
 - A small cohesive set (2–6) of failing tests for one behavior slice; each describes
   one user-observable behavior.
 - **Arrange–Act–Assert (mandatory):** three blank-line-separated blocks, one Act
-  per test.
+  per test. Label form per the strict standard above.
 
 ```php
 it('stores a movie', function () {

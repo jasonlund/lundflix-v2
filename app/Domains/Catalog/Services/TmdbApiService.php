@@ -4,18 +4,20 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services;
 
+use App\Domains\Catalog\Exceptions\PooledIdFailed;
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
+use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\Pool;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
 final class TmdbApiService
 {
+    use PoolsIdBatches;
+
     private const string BASE_URL = 'https://api.themoviedb.org/3';
 
     private const string MOVIE_APPEND = 'release_dates,images';
@@ -31,9 +33,8 @@ final class TmdbApiService
     }
 
     /**
-     * Batch-fetch movie details, one request per id via a single connection
-     * pool. Returns a map of input id to its raw payload (null for a 404),
-     * preserving the input order; a single id's 404 does not sink the others.
+     * Batch /movie/{id} keyed by movie id. See {@see pooled} for the shared
+     * order/404/failure contract.
      *
      * @param  array<int, int>  $ids
      * @return array<int, array<string, mixed>|null>
@@ -41,7 +42,7 @@ final class TmdbApiService
     public function movies(array $ids): array
     {
         return $this->pooled($ids, fn (PendingRequest $request, int $id) => $request
-            ->get("/movie/{$id}", $this->detailQuery(self::MOVIE_APPEND)));
+            ->get("/movie/{$id}", $this->detailQuery(self::MOVIE_APPEND)))->results;
     }
 
     /**
@@ -53,9 +54,8 @@ final class TmdbApiService
     }
 
     /**
-     * Batch-fetch tv details, one request per id via a single connection pool.
-     * Returns a map of input id to its raw payload (null for a 404), preserving
-     * the input order; a single id's 404 does not sink the others.
+     * Batch /tv/{id} keyed by tv id. See {@see pooled} for the shared
+     * order/404/failure contract.
      *
      * @param  array<int, int>  $ids
      * @return array<int, array<string, mixed>|null>
@@ -63,7 +63,7 @@ final class TmdbApiService
     public function tvShows(array $ids): array
     {
         return $this->pooled($ids, fn (PendingRequest $request, int $id) => $request
-            ->get("/tv/{$id}", $this->detailQuery(self::TV_APPEND)));
+            ->get("/tv/{$id}", $this->detailQuery(self::TV_APPEND)))->results;
     }
 
     /**
@@ -79,9 +79,8 @@ final class TmdbApiService
     }
 
     /**
-     * Batch-resolve IMDb ids, one /find request per id via a single connection
-     * pool. Returns a map of input IMDb id to its raw /find payload (null for a
-     * 404), preserving input order; a single id's 404 does not sink the others.
+     * Batch /find/{imdbId} keyed by IMDb id. See {@see pooled} for the shared
+     * order/404/failure contract.
      *
      * @param  array<int, string>  $imdbIds
      * @return array<string, array<string, mixed>|null>
@@ -89,7 +88,7 @@ final class TmdbApiService
     public function findManyByImdbId(array $imdbIds): array
     {
         return $this->pooled($imdbIds, fn (PendingRequest $request, string $imdbId) => $request
-            ->get("/find/{$imdbId}", ['external_source' => 'imdb_id']));
+            ->get("/find/{$imdbId}", ['external_source' => 'imdb_id']))->results;
     }
 
     /**
@@ -119,85 +118,40 @@ final class TmdbApiService
             ?? throw TmdbRequestFailed::for((string) $response->effectiveUri());
     }
 
-    /**
-     * Batch-fetch one request per id, fanning out one {@see Http::pool} per
-     * chunk from {@see chunkIds} so at most `concurrency` requests are in flight
-     * at once; responses accumulate across chunks (each named after its id via
-     * {@see configure}'s shared auth/retry), then decode in input order. A
-     * single id's 404 decodes to null without sinking its siblings.
-     *
-     * Request failures don't short-circuit the batch: both a connection-level
-     * failure (a pool entry that comes back as a {@see Throwable} instead of a
-     * {@see Response}) and a response that stays failed after retries (e.g. a
-     * persistent 5xx) are collected per-id, the rest are still decoded, and once
-     * the loop completes any failed ids are surfaced together as a single
-     * aggregate {@see TmdbRequestFailed::forIds}. A 404 still decodes to null (a
-     * per-id miss, not a failure); a 401 still throws immediately, since auth is
-     * fatal for the whole batch rather than a per-id condition.
-     *
-     * @template TKey of int|string
-     *
-     * @param  array<int, TKey>  $ids
-     * @param  callable(PendingRequest, TKey): Response  $build
-     * @return array<TKey, array<string, mixed>|null>
-     */
-    private function pooled(array $ids, callable $build): array
+    private function poolConcurrency(): int
     {
-        $ids = array_values(array_unique($ids));
-
-        $responses = [];
-
-        foreach ($this->chunkIds($ids) as $chunk) {
-            $responses += Http::pool(fn (Pool $pool): array => array_map(
-                fn (int|string $id) => $build($this->configure($pool->as((string) $id)), $id),
-                $chunk,
-            ));
-        }
-
-        $results = [];
-        $failedIds = [];
-
-        foreach ($ids as $id) {
-            $response = $responses[(string) $id];
-
-            if (! $response instanceof Response) {
-                $failedIds[] = $id;
-
-                continue;
-            }
-
-            if ($response->failed() && ! $response->notFound() && $response->status() !== 401) {
-                $failedIds[] = $id;
-
-                continue;
-            }
-
-            $results[$id] = $this->decode($response);
-        }
-
-        if ($failedIds !== []) {
-            throw TmdbRequestFailed::forIds($failedIds);
-        }
-
-        return $results;
+        return (int) config('services.tmdb.concurrency');
     }
 
     /**
-     * Split the input ids into ordered chunks sized by the configured
-     * concurrency, so each {@see pooled} fan-out dispatches at most one
-     * chunk's worth of concurrent requests. Order is preserved and the final
-     * chunk holds the remainder.
+     * Per-id pooled decision for TMDB: a persistent non-404, non-401 failure is
+     * collected per-id (signalled via {@see PooledIdFailed}); a 401 flows to
+     * {@see decode}, which throws {@see TmdbAuthenticationFailed} immediately
+     * (auth is fatal for the whole batch). An undecodable 200 makes {@see decode}
+     * throw {@see TmdbRequestFailed}, which is caught and re-signalled as a
+     * per-id failure so it aggregates rather than sinking the batch's good rows.
      *
-     * @template TKey of int|string
-     *
-     * @param  array<int, TKey>  $ids
-     * @return array<int, array<int, TKey>>
+     * @return array<string, mixed>|null
      */
-    private function chunkIds(array $ids): array
+    private function resolvePooled(Response $response): ?array
     {
-        $size = (int) config('services.tmdb.concurrency');
+        if ($response->failed() && ! $response->notFound() && $response->status() !== 401) {
+            throw new PooledIdFailed;
+        }
 
-        return array_chunk($ids, max(1, $size));
+        try {
+            return $this->decode($response);
+        } catch (TmdbRequestFailed) {
+            throw new PooledIdFailed;
+        }
+    }
+
+    /**
+     * @param  array<int, int|string>  $failedIds
+     */
+    private function pooledFailure(array $failedIds): Throwable
+    {
+        return TmdbRequestFailed::forIds($failedIds);
     }
 
     /**
@@ -292,9 +246,10 @@ final class TmdbApiService
     /**
      * Perform a single configured GET, normalizing a post-retry connection
      * failure into a {@see TmdbRequestFailed} so single-request callers see the
-     * same typed failure the batch ({@see pooled}) paths raise. `retry(...,
-     * throw: false)` suppresses a failed *response* but still lets a
-     * {@see ConnectionException} propagate raw, so it is caught here.
+     * same typed failure the batch ({@see pooled}) paths raise. Retries are
+     * applied globally by the registered retry middleware; a
+     * {@see ConnectionException} that survives those retries propagates raw, so
+     * it is caught here.
      *
      * @param  array<string, mixed>  $query
      */
@@ -313,47 +268,14 @@ final class TmdbApiService
     }
 
     /**
-     * Apply the shared TMDB auth, headers, and retry policy to a pending
-     * request (used both for single calls and pooled batch requests).
+     * Apply the shared TMDB auth and headers to a pending request (used both
+     * for single calls and pooled batch requests). Retries are applied
+     * globally by the registered retry middleware, not here.
      */
     private function configure(PendingRequest $request): PendingRequest
     {
         return $request->withToken(config('services.tmdb.token'))
             ->baseUrl(self::BASE_URL)
-            ->acceptJson()
-            ->retry(2, $this->retryDelay(...), $this->shouldRetry(...), throw: false);
-    }
-
-    /**
-     * Delay before a retry, in milliseconds: honor the server's Retry-After
-     * header (seconds) on a 429/503 when present, otherwise fall back to a
-     * 1000ms base delay. Laravel's retry closure returns milliseconds.
-     */
-    private function retryDelay(int $attempt, Throwable $exception): int
-    {
-        if ($exception instanceof RequestException) {
-            $retryAfter = $exception->response->header('Retry-After');
-
-            if (is_numeric($retryAfter)) {
-                return (int) $retryAfter * 1000;
-            }
-        }
-
-        return 1000;
-    }
-
-    /**
-     * Retry connection errors and transient HTTP failures (429, 5xx), but not
-     * a definitive response such as a 404.
-     */
-    private function shouldRetry(Throwable $exception): bool
-    {
-        if (! $exception instanceof RequestException) {
-            return true;
-        }
-
-        $status = $exception->response->status();
-
-        return $status === 429 || $status >= 500;
+            ->acceptJson();
     }
 }

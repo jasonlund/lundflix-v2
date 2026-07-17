@@ -73,7 +73,7 @@ named constructor (`::at($path)`) for the message is fine.
 
 Logic over an enum's **own cases** (validating, parsing, normalizing raw values
 against the case set) lives as **static methods on the enum**, not a trait,
-helper, or action — e.g. `Genre::knownValues(array $raw): array`. Don't reach for
+helper, or action — e.g. `Genre::fromRawValues(array $raw): list<Genre>`. Don't reach for
 a shared `Concerns/` trait when a static enum method shares just as well and
 keeps the knowledge on the type.
 
@@ -109,7 +109,9 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
 
 - **AAA, always.** Three blocks in order — arrange, **one** act, assert —
   separated by blank lines. One Act per test; need a second action → second test.
-  Keep Arrange minimal (factories/props).
+  Keep Arrange minimal (factories/props). Label form is a **strict, enforced
+  standard** (mandatory label-only lines, ` & ` collapse only, protected
+  banners) — see the testing skills; guarded by `tests/Unit/TestCommentStandardTest.php`.
 - **Test behavior through public interfaces**, not implementation — tests survive
   refactoring. A slice = one behavior + its obvious variants.
 - **Tests mirror the domain tree:** `tests/Feature/{Domain}/` and
@@ -143,6 +145,23 @@ them in the DDD structure by passing the domain path, e.g.
 target the domain path, generate then move the file and fix its namespace. Never
 break the DDD layout to satisfy a generator's default location.
 
+### Filament pages
+
+**Never hand-write a page's Blade view for a standard form/table page.** Every
+Filament page renders through its `content(Schema $schema)` method, not a bespoke
+template — override `content()` and drop the `$view` property entirely. The base
+`Page` already renders `{{ $this->content }}` via `filament-panels::pages.page`,
+so a custom `.blade.php` under `resources/views/filament/` is templated
+boilerplate that duplicates what the schema gives for free.
+
+- Embed the page's form in `content()` the way Filament's own auth pages do:
+  `Form::make([EmbeddedSchema::make('form')])->livewireSubmitHandler('save')`
+  with the submit button as an `Actions`/`Action` in the form `->footer([...])`.
+  (`EditProfile`/`Login` in `filament/filament` are the reference.)
+- A custom Blade view is justified **only** for genuinely non-schema markup a
+  `content()` schema can't express — and even then prefer `getHeader()`/
+  `getFooter()` view slots over replacing the whole page view.
+
 ### Comments
 
 - **Comment the *why*, let tests pin the *what*.** A comment earns its place by
@@ -153,6 +172,53 @@ break the DDD layout to satisfy a generator's default location.
   summary lines that restate the method name, `@param`/`@var` that add nothing
   past the native type hint, and framework stubs (a `@var string` that only
   restates a typed property).
+
+## Persistence: third-party API columns (raw-source prefix)
+
+A DB column populated directly by a third-party API's attribute is **prefixed
+with its source** — `_{source}_{rawAttribute}` — and stores the value **raw, as
+the API returned it**:
+
+- `_imdb_runtime`, `_tmdb_original_title`, `_tvdb_overview`.
+- **No transform at ingest.** Persist the raw value unmodified. Any
+  crosswalk/enum mapping/normalization (e.g. TMDB `"Science Fiction"` →
+  `Genre::SciFi`, or unioning sources into a display value) happens at **read
+  time**, never at write time.
+- **Group columns by source, order sources `imdb → tmdb → tvdb`** in migrations
+  and model definitions, so each source's fields sit together in a predictable
+  order.
+- **Source identity & discriminators ARE prefixed** — they are source-owned, not
+  app bookkeeping. The unique source identifier is the one **naming exception**:
+  always `_{source}_id` (e.g. `_imdb_id`, even though IMDb's raw attribute is
+  `tconst`), and **listed first** in that source's block. A source-provided
+  discriminator is prefixed too — e.g. `Media._tvdb_type` (TVDB's raw
+  artwork-type code, cast `'integer'`), kept separate from the app's own derived,
+  source-agnostic dimension in the unprefixed `type` column (cast to
+  `ArtworkType`), so no single source owns the app's own dimension.
+- **App-owned bookkeeping columns are NOT prefixed** — the surrogate PK `id`,
+  foreign/morph keys, `*_synced_at`, `is_active`, `created_at`/`updated_at`, and
+  any column the app computes or owns. (The *source* identity key is **not** one of
+  these — it is `_{source}_id`, above.)
+
+This is deliberate: each source owns its own namespaced columns, so there are no
+cross-source value "conflicts" to resolve at ingest (e.g. `_imdb_runtime` and
+`_tmdb_runtime` coexist rather than fighting over one `runtime` column). The
+source of truth is chosen per read, not baked into the schema.
+
+## Persistence: Eloquent is globally unguarded
+
+Eloquent runs **unguarded application-wide** by deliberate decision (FLIX-153):
+`Model::unguard()` in `AppServiceProvider::boot()`, and models intentionally
+carry **no** `#[Fillable]` / `$fillable` / `$guarded`. Every column is
+mass-assignable; write paths whitelist attributes **explicitly at the callsite**
+(e.g. Fortify actions pass keyed arrays; ingest actions pass fixed column lists).
+
+- **Do not** re-add per-model `#[Fillable]`/`$guarded`, and do not "scope" the
+  unguard to one flow — global is the chosen design.
+- This is **not** a mass-assignment vulnerability to flag: no `$request->all()`
+  / `->validated()` is ever spread into a model. A reviewer raising "unguard
+  removes mass-assignment protection" or "model is missing `$fillable`" is a
+  known false positive — the protection lives at the callsite by convention.
 
 ## Linting & formatting (finalize gates)
 
@@ -175,6 +241,14 @@ touched — scoped to your changed work, never a repo-wide sweep (a bare
   doesn't vary by environment — commit it as a `private const` on the calling
   service. Reserve `config`/`env` for secrets and genuinely per-environment
   values.
+- **Name a credential's config key after the provider's own doc verbiage.** A
+  credential's `config`/`env` key uses the term that provider's API docs use —
+  don't force one shared word across providers. TMDB's "API Read Access Token" →
+  `services.tmdb.token` / `TMDB_TOKEN`; TheTVDB's "apikey" → `services.tvdb.key`
+  / `TVDB_KEY`. A short-lived value *derived* from the stored credential (e.g.
+  the JWT TheTVDB returns from `POST /login`) is internal — cache it, never put
+  it in `config`/`env`. So `key`/`token` names what you store; the bearer you
+  send may be that same value (TMDB) or one exchanged for it (TVDB).
 - **Only *required* env vars belong in `.env.example`** — a secret/credential the
   app needs to run. Optional tunables that read `env()` with a `config/` default
   stay out; the default is the documentation.
@@ -211,3 +285,9 @@ cross-reference — don't duplicate.
 - **No ticket yet → prompt to create one** before proceeding.
 - **Work deviates → confirm first, then update the ticket** and mark it a
   deviation.
+- **Planning artifacts live in Linear, not in the repo.** PRDs, plans, slice
+  backlogs, and decomposition notes belong in the relevant Linear issue —
+  never committed as repo files. Don't create a `docs/plans` or `.ai/plans`
+  tree; a plan on disk drifts from the ticket and biases future agents who read
+  it as a convention. Bars *version-controlled* planning files only — gitignored
+  scratch space (e.g. `.context`) is fine; it never enters the repo.

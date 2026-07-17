@@ -9,6 +9,9 @@ vi.mock('@inertiajs/react', () => ({
 
 describe('Welcome page', () => {
     it('renders the lundflix heading', () => {
+        // Arrange
+        // no props or state to set up — pure static render
+
         // Act
         render(<Welcome />);
 

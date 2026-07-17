@@ -27,13 +27,19 @@ if [[ "${CONDUCTOR_IS_LOCAL:-1}" == "1" ]] && command -v herd >/dev/null 2>&1; t
 fi
 
 # DB — TODO(FLIX-126): provision a PER-WORKSPACE db (create + migrate + seed).
-# For now: share the root checkout's default sqlite file across all workspaces.
-# No root db on a fresh machine -> first workspace creates + migrates it; later ones share.
-touch "$ROOT/database/database.sqlite"
-grep -q '^DB_DATABASE=' .env \
-  && sed -i '' "s#^DB_DATABASE=.*#DB_DATABASE=$ROOT/database/database.sqlite#" .env \
-  || printf 'DB_DATABASE=%s\n' "$ROOT/database/database.sqlite" >> .env
-php artisan migrate --force
+# For now all workspaces SHARE the root checkout's MySQL db (name + creds from the
+# copied root .env). Setup only ensures the db EXISTS — it deliberately does NOT
+# migrate: a workspace on a branch with new migrations would apply them to the
+# shared db and break every other workspace. Run `php artisan migrate` by hand
+# when you actually want to move the shared schema.
+DB_NAME="$(grep -E '^DB_DATABASE=' .env | head -1 | cut -d= -f2-)"
+DB_HOST="$(grep -E '^DB_HOST=' .env | head -1 | cut -d= -f2-)"
+DB_PORT="$(grep -E '^DB_PORT=' .env | head -1 | cut -d= -f2-)"
+DB_USER="$(grep -E '^DB_USERNAME=' .env | head -1 | cut -d= -f2-)"
+DB_PASS="$(grep -E '^DB_PASSWORD=' .env | head -1 | cut -d= -f2-)"
+mysql -h"${DB_HOST:-127.0.0.1}" -P"${DB_PORT:-3306}" -u"${DB_USER:-root}" \
+  ${DB_PASS:+-p"$DB_PASS"} \
+  -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 php artisan optimize:clear
 echo "✅  $WORKSPACE ready → https://$SITE.test"

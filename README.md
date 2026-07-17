@@ -121,6 +121,19 @@ they work. After `composer setup`, fill in every key below:
 | Env var | Required for | How to obtain |
 | --- | --- | --- |
 | `TMDB_TOKEN` | Catalog — TMDB movie/TV metadata | A TMDB API Read Access Token from your [themoviedb.org](https://www.themoviedb.org/settings/api) account settings |
+| `TVDB_KEY` | Catalog — TheTVDB movie/TV metadata | A TheTVDB v4 apikey from the [thetvdb.com](https://thetvdb.com/api-information) API information page (free tier requires TheTVDB attribution) |
+| `DOWNLOADS_UID` | Download — provider authentication | The `uid` browser cookie value from a logged-in provider session. Seeds the initial value; rotate later in the admin panel without a redeploy |
+| `DOWNLOADS_PASS` | Download — provider authentication | The `pass` browser cookie value from a logged-in provider session. Seeds the initial value; rotate later in the admin panel without a redeploy |
+| `DOWNLOADS_RSS_KEY` | Download — RSS feed authentication | The account-level `tp` token from the provider's Generate RSS page. Seeds the initial value; rotate later in the admin panel without a redeploy |
+
+### MCP servers (Claude Code)
+
+The repo commits a project-scoped `.mcp.json` registering the **Laravel Boost**
+MCP server (`php artisan boost:mcp`), which gives Claude Code the Boost tools
+(`search-docs`, `tinker`, `database-schema`, …) on top of the generated
+guidelines block. Because it is project-scoped, **the first Claude Code session in
+any new checkout or Conductor workspace prompts you to approve it** — approve it
+once and restart the session for the Boost tools to connect.
 
 ### Running locally
 

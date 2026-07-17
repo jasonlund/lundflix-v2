@@ -42,4 +42,28 @@ return [
         'concurrency' => env('TMDB_CONCURRENCY', 20),
     ],
 
+    'tvdb' => [
+        'key' => env('TVDB_KEY'),
+        'concurrency' => env('TVDB_CONCURRENCY', 10),
+    ],
+
+    'plex' => [
+        'client_identifier' => env('PLEX_CLIENT_IDENTIFIER', 'lundflix'),
+        'server_identifier' => env('PLEX_SERVER_IDENTIFIER'),
+    ],
+
+    'downloads' => [
+        'uid' => env('DOWNLOADS_UID'),
+        'pass' => env('DOWNLOADS_PASS'),
+        'rss_key' => env('DOWNLOADS_RSS_KEY'),
+    ],
+
+    // Per-retry backoff multiplier for the global guzzle-retry middleware (escalating
+    // semantics in HttpClientServiceProvider::retryOptions). Per-environment because
+    // guzzle-retry sleeps via its own usleep and bypasses Sleep::fake() — phpunit.xml
+    // pins this to 0 so retry tests don't really sleep.
+    'http_retry' => [
+        'retry_multiplier' => env('HTTP_RETRY_MULTIPLIER', 1.0),
+    ],
+
 ];
