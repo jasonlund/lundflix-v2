@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services;
 
-use App\Domains\Catalog\Enums\TmdbExport;
 use App\Domains\Catalog\Exceptions\CannotCreateTmdbTempFile;
 use App\Domains\Catalog\Exceptions\CannotOpenTmdbExportArchive;
 use App\Domains\Catalog\Exceptions\CorruptTmdbExportArchive;
@@ -18,8 +17,8 @@ final class TmdbExportService
     private const string BASE_URL = 'https://files.tmdb.org/p/exports';
 
     /**
-     * Download the most-recent daily export for the given kind to a temp file,
-     * returning its path; the kind defaults to the movie-ids export.
+     * Download the most-recent daily export named by $export to a temp file,
+     * returning its path ($export is the export name, e.g. `movie_ids`).
      *
      * TMDB publishes each day's date-stamped export by 08:00 UTC (the export job
      * starts ~07:00 UTC), so the most-recent published date is today (UTC) once
@@ -29,20 +28,21 @@ final class TmdbExportService
      * a successful download — a failed attempt unlinks its own temp file before
      * throwing.
      */
-    public function download(TmdbExport $kind = TmdbExport::MovieIds): string
+    public function download(string $export): string
     {
         $now = now()->utc();
         $date = $now->hour >= 8 ? $now : $now->copy()->subDay();
 
-        return $this->fetch($kind, $date->format('m_d_Y'));
+        return $this->fetch($export, $date->format('m_d_Y'));
     }
 
     /**
-     * Download the export for one date to a temp file, returning the temp path.
+     * Download the export named by $export for one date to a temp file, returning
+     * the temp path ($export is the export name, e.g. `movie_ids`).
      *
      * Any failure unlinks the temp file and rethrows.
      */
-    private function fetch(TmdbExport $kind, string $date): string
+    private function fetch(string $export, string $date): string
     {
         $path = tempnam(sys_get_temp_dir(), 'tmdb_');
 
@@ -55,7 +55,7 @@ final class TmdbExportService
                 ->timeout(600)
                 ->withOptions(['retry_enabled' => false])
                 ->retry(3, 1000, throw: false)
-                ->get(self::BASE_URL.'/'.$kind->filename($date));
+                ->get(self::BASE_URL.'/'."{$export}_{$date}.json.gz");
 
             $response->throw();
         } catch (Throwable $e) {
