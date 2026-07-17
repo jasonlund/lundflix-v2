@@ -63,6 +63,27 @@ test('shows the movies returned by the server', () => {
   `Link`, `useForm`, or `usePage` so you test the component's behavior, not Inertia
   internals. Pass page data through props rather than a real Inertia visit.
 
+## Test-comment standard (strict)
+
+Test comments are **deliberate and mandatory** — one canonical form, strictly
+enforced (the Pest guard `tests/Unit/TestCommentStandardTest.php` scans
+`resources/js` too):
+
+1. **AAA labels mandatory, one per block, label-only line.** `// Arrange`,
+   `// Act`, `// Assert` — each alone on its line, no prose appended.
+2. **Collapse only when one statement serves two roles**, joined by ` & `
+   (space-ampersand-space): `// Arrange & Act`, `// Act & Assert`. Only `&` —
+   never `/` or a no-space variant.
+3. **Missing / unneeded block → label + reason on the next line**, never silently
+   absent:
+
+   ```tsx
+   // Arrange
+   // no props or state to set up — pure static render
+   ```
+4. **Why-prose on its own line(s), above the label it explains.** The AAA line
+   stays label-only.
+
 ## RED checklist (for tdd-test-writer)
 
 - A small cohesive set (2–6) of failing tests for one behavior slice; each describes

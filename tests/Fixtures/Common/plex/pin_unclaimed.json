@@ -1,0 +1,26 @@
+{
+  "id": 538114995,
+  "code": "m6mijjn177ut0qaz02b9iedof",
+  "product": "lundflix",
+  "trusted": false,
+  "qr": "https://plex.tv/api/v2/pins/qr/m6mijjn177ut0qaz02b9iedof",
+  "clientIdentifier": "lundflix-fixture-capture",
+  "location": {
+    "code": "US",
+    "european_union_member": false,
+    "continent_code": "NA",
+    "country": "United States",
+    "city": null,
+    "time_zone": null,
+    "postal_code": null,
+    "in_privacy_restricted_country": false,
+    "in_privacy_restricted_region": false,
+    "subdivisions": null,
+    "coordinates": null
+  },
+  "expiresIn": 1799,
+  "createdAt": "2026-06-24T16:13:31Z",
+  "expiresAt": "2026-06-24T16:43:31Z",
+  "authToken": null,
+  "newRegistration": null
+}

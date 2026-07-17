@@ -9,6 +9,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![Tailwind v4](https://img.shields.io/badge/Tailwind-v4-06B6D4?logo=tailwindcss&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow)
+[![CI](https://github.com/jasonlund/lundflix-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/jasonlund/lundflix-v2/actions/workflows/ci.yml)
 
 ## Overview
 
@@ -100,6 +101,45 @@ composer setup
 copies `.env`, generates the app key, runs migrations, and builds frontend
 assets.
 
+### Using Conductor (parallel agent workspaces)
+
+Each Conductor workspace is its own git worktree; setup/teardown is automated by
+`.conductor/`:
+
+- **Create** → `.conductor/setup.sh` installs deps, builds assets, links a
+  per-workspace Herd site (`https://<workspace>.test`), and points the app at the
+  shared local SQLite db.
+- **Run** → `npm run dev` (Vite); Herd serves the PHP app. One workspace at a time
+  (`run_mode = "nonconcurrent"`).
+- **Merge** → the workspace auto-archives on PR merge, `.conductor/archive.sh`
+  unlinks the Herd site, and the branch is deleted.
+
+**Env vars under Conductor:** new workspaces copy `.env` from the repository's
+**root checkout** (`~/conductor/repos/lundflix-v2/.env`), *not* from
+`.env.example` — so a new required var must be added to that root `.env` too.
+
+### Required API keys
+
+Some features call third-party APIs and need credentials in your `.env` before
+they work. After `composer setup`, fill in every key below:
+
+| Env var | Required for | How to obtain |
+| --- | --- | --- |
+| `TMDB_TOKEN` | Catalog — TMDB movie/TV metadata | A TMDB API Read Access Token from your [themoviedb.org](https://www.themoviedb.org/settings/api) account settings |
+| `TVDB_KEY` | Catalog — TheTVDB movie/TV metadata | A TheTVDB v4 apikey from the [thetvdb.com](https://thetvdb.com/api-information) API information page (free tier requires TheTVDB attribution) |
+| `DOWNLOADS_UID` | Download — provider authentication | The `uid` browser cookie value from a logged-in provider session. Seeds the initial value; rotate later in the admin panel without a redeploy |
+| `DOWNLOADS_PASS` | Download — provider authentication | The `pass` browser cookie value from a logged-in provider session. Seeds the initial value; rotate later in the admin panel without a redeploy |
+| `DOWNLOADS_RSS_KEY` | Download — RSS feed authentication | The account-level `tp` token from the provider's Generate RSS page. Seeds the initial value; rotate later in the admin panel without a redeploy |
+
+### MCP servers (Claude Code)
+
+The repo commits a project-scoped `.mcp.json` registering the **Laravel Boost**
+MCP server (`php artisan boost:mcp`), which gives Claude Code the Boost tools
+(`search-docs`, `tinker`, `database-schema`, …) on top of the generated
+guidelines block. Because it is project-scoped, **the first Claude Code session in
+any new checkout or Conductor workspace prompts you to approve it** — approve it
+once and restart the session for the Boost tools to connect.
+
 ### Running locally
 
 ```bash
@@ -109,12 +149,63 @@ composer dev
 Starts the PHP server, queue worker, log tailer (Pail), and Vite dev server
 together. Visit the app at the URL printed by `php artisan serve`.
 
+In a Conductor workspace, the app is served by Herd at `https://<workspace>.test`
+and `npm run dev` (the Run button) only starts Vite.
+
 ### Running tests
 
 ```bash
 php artisan test   # backend (Pest)
 npm test           # frontend (Vitest)
 ```
+
+## Configuration
+
+`.env.example` holds **local development** values only — it is the one env file
+committed to the repo, and it is an example of a *local* setup, **not**
+production. Copy it to `.env` and you have a working local environment.
+
+Real environments are gitignored: `.env` (local) and `.env.production` (prod).
+Production values are set on the host platform (Laravel Cloud), not committed to
+the repo, so they do not live in any file you can read here.
+
+**Production diverges from `.env.example`.** When investigating a production
+issue, you cannot assume production uses the same values as `.env.example` —
+verify against the production environment, and consult the table below for the
+keys that intentionally differ.
+
+| Key | Local (`.env.example`) | Production |
+| --- | --- | --- |
+| `SCOUT_DRIVER` | `database` (search indexed in the local DB via SQL — no extra service) | `typesense` (dedicated search engine) |
+| `NIGHTWATCH_TOKEN` | empty (agent does not run locally) | set (monitoring agent runs in prod) |
+| `QUEUE_CONNECTION` | `sync` (jobs run inline; no worker/redis needed) | `redis` (jobs processed by Horizon) |
+| `SCOUT_QUEUE` | unset → `false` (catalog commands index synchronously) | `true` — the catalog is large enough that inline indexing would serialize millions of writes into the import, so writes are queued (requires Horizon running) |
+
+## Continuous Integration
+
+Every push to `main` and every pull request runs `.github/workflows/ci.yml`,
+which gates merges on four parallel jobs:
+
+- **Backend tests** — builds frontend assets (for the Vite manifest), then runs
+  Pest (`php artisan test`).
+- **PHP code quality** — Pint style check (`vendor/bin/pint --test`) and a
+  Composer security audit.
+- **Frontend code quality** — ESLint, Prettier format check, TypeScript type
+  check, and an npm audit of production dependencies.
+- **Frontend tests** — Vitest and a production build.
+
+Run the same checks locally:
+
+```bash
+composer test:lint   # Pint (style, check-only)
+composer test:refactor  # Rector (dry run; not yet a CI gate)
+npm run lint:check   # ESLint (check-only)
+npm run format:check # Prettier
+npm run types        # tsc --noEmit
+```
+
+Dependency updates are proposed weekly by Dependabot (`.github/dependabot.yml`)
+for Composer, npm, and GitHub Actions.
 
 ## License
 
