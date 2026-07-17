@@ -309,6 +309,10 @@ cross-reference — don't duplicate.
 
 - **Always use the `mcp__linear-server__*` tools** for every lookup/create/update
   — never assume or hand-edit ticket state.
+- **Write to the ticket body, never comment.** When recording progress, plans,
+  results, or deviations, replace or append the ticket's **description**
+  (`save_issue` with `description`) — keep it the single source of truth, not
+  `save_comment`.
 - **Every branch maps to ≥1 ticket**; the branch name includes every ticket id,
   drops the `jasonlund/` prefix, ≤40 chars (e.g. `flix-123-scaffold-new-app`).
 - **No ticket yet → prompt to create one** before proceeding.
@@ -414,13 +418,6 @@ This application is a Laravel application and its main Laravel ecosystems packag
 # Deployment
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
-
-=== herd rules ===
-
-# Laravel Herd
-
-- The application is served by Laravel Herd at `https?://[kebab-case-project-dir].test`. Use the `get-absolute-url` tool to generate valid URLs. Never run commands to serve the site. It is always available.
-- Use the `herd` CLI to manage services, PHP versions, and sites (e.g. `herd sites`, `herd services:start <service>`, `herd php:list`). Run `herd list` to discover all available commands.
 
 === tests rules ===
 
