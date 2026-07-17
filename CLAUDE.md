@@ -151,6 +151,10 @@ provides detailed usage separately).
 
 - **Always use the Linear MCP tools** for every lookup/create/update — never
   assume or hand-edit ticket state.
+- **Write to the ticket body, never comment.** When recording progress, plans,
+  results, or deviations, replace or append the ticket's **description**
+  (`save_issue` with `description`) — keep it the single source of truth. Do not
+  use `save_comment` / post comments for this.
 - **Every branch maps to ≥1 ticket**, and the branch name includes every ticket
   id it addresses. Use Linear's branch name but drop the user prefix
   (`jasonlund/`) and shorten to ≤40 chars — e.g. `flix-123-scaffold-new-app`.
