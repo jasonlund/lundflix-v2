@@ -255,6 +255,22 @@ fails on any that slip in, so you rarely hand-write the native form.
   (`collect($x)->map(...)->filter(...)->pluck(...)`) over chained `array_*` calls.
   Convention only (not Rector-enforced); existing arrays are left as-is.
 
+## Persistence: iterating rows you write to → `chunkById`
+
+When a loop **writes to the DB rows it is iterating** (stamping a column,
+flipping a flag, reconciling a crosswalk), walk the query with **`chunkById()`**,
+not `chunk()`, `get()`, or `lazy()`. `chunkById` paginates by primary key, so
+mutating a **non-key** column mid-iteration cannot skip or double-process a
+row — the failure mode `chunk()` (offset-paginated) and a materialized `get()`
+both invite. This is the default for any iterate-and-write path; deviate only for
+a **distinct, stated reason** (e.g. a read-only walk, or a set small and bounded
+enough that materializing is provably fine — say why in a comment).
+
+- Read-only iteration with no writes → `lazy()`/`cursor()` is fine (streams
+  without the PK-pagination overhead).
+- `--limit`-style caps don't compose with `chunkById` directly — track a
+  processed count and `return false` from the closure to halt early.
+
 ## Linting & formatting (finalize gates)
 
 Before finalizing **any** change, run every linter/formatter for the files you
@@ -315,6 +331,10 @@ cross-reference — don't duplicate.
 
 - **Always use the `mcp__linear-server__*` tools** for every lookup/create/update
   — never assume or hand-edit ticket state.
+- **Write to the ticket body, never comment.** When recording progress, plans,
+  results, or deviations, replace or append the ticket's **description**
+  (`save_issue` with `description`) — keep it the single source of truth, not
+  `save_comment`.
 - **Every branch maps to ≥1 ticket**; the branch name includes every ticket id,
   drops the `jasonlund/` prefix, ≤40 chars (e.g. `flix-123-scaffold-new-app`).
 - **No ticket yet → prompt to create one** before proceeding.

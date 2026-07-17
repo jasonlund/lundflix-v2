@@ -24,6 +24,11 @@ class SyncTmdbMovies extends Command
     private const int BATCH_SIZE = 1000;
 
     /**
+     * TMDB daily export name for movies.
+     */
+    private const string EXPORT = 'movie_ids';
+
+    /**
      * Running count of hydrated movies, for the every-1000th progress heartbeat.
      */
     private int $processed = 0;
@@ -38,7 +43,7 @@ class SyncTmdbMovies extends Command
         // that overwrites the terminal (and render nothing under catalog:sync's
         // nested Artisan::call), which swallowed the per-batch heartbeat below.
         $this->output->writeln('Downloading movie-ids export…');
-        $file = $export->download();
+        $file = $export->download(self::EXPORT);
 
         try {
             $this->output->writeln('Syncing movies…');
@@ -184,7 +189,12 @@ class SyncTmdbMovies extends Command
         UpsertTmdbMovies $upsertMovies,
         UpsertTmdbImages $upsertImages,
     ): void {
-        $payloads = array_values(array_filter($api->movies($ids)));
+        // Drop 404 (null) payloads, and video:true entries — a video:true TMDB
+        // record is a promo/trailer, not a real film, so it never gets ingested.
+        $payloads = array_values(array_filter(
+            $api->movies($ids),
+            static fn (?array $payload): bool => $payload !== null && empty($payload['video']),
+        ));
 
         if ($payloads === []) {
             return;

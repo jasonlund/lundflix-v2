@@ -67,7 +67,12 @@ Built **test-first (TDD)**, and the architecture defends itself:
 
 - **A RED → GREEN → REFACTOR workflow** drives feature work — one behavior slice
   at a time, each phase handled by an isolated agent so tests are written before
-  the code (see the `tdd` skill in `.claude/skills/tdd`).
+  the code (see the `tdd` skill in `.claude/skills/tdd`). Ahead of it, the
+  `plan-draft` skill turns a rough Linear ticket into one concrete, decision-locked
+  plan through an interactive interview; `plan-breakdown` decomposes a large
+  plan/PRD into parallelizable Linear tickets; and `tdd-plan` turns each
+  ticket/plan into an ordered, test-first slice backlog to feed it
+  (`.claude/skills/{plan-draft,plan-breakdown,tdd-plan}`).
 - **Backend:** feature and unit tests via **Pest v4**, run with `php artisan test`.
 - **Frontend:** component/page tests via **Vitest + React Testing Library**, run
   with `npm test`.

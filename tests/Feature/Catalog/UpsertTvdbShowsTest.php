@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Domains\Catalog\Actions\UpsertTmdbShows;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Support\Facades\DB;
@@ -13,9 +12,11 @@ use Illuminate\Support\Facades\DB;
 | byte-exact from the committed fixture
 | tests/Fixtures/Catalog/tvdb/series_extended.json (a real TVDB API response
 | for "Breaking Bad", id 81189) — the action consumes the inner `data` object,
-| the native wire shape, NOT a hand-fabricated array. Unlike TMDB, the IMDb id
-| is NOT a top-level key: it lives in remoteIds[] as the entry whose
-| sourceName == "IMDB" (id "tt0903747"). The tvdb-only dedupe key is _tvdb_id.
+| the native wire shape, NOT a hand-fabricated array. TVDB is the sole creator
+| of `shows` rows: every payload upserts by `_tvdb_id`, seeding the _imdb_id /
+| _tmdb_id crosswalks raw from remoteIds[] (the IMDB entry id "tt0903747", the
+| TheMovieDB.com entry id "1396"). There is NO cross-source merge — _imdb_id is
+| indexed, not unique, so two payloads sharing one imdb id yield two rows.
 |--------------------------------------------------------------------------
 */
 
@@ -53,9 +54,9 @@ it('stores _tvdb_remoteIds and _tvdb_genres raw, byte-for-byte the source json',
 
 /**
  * Build a minimal-but-complete TVDB series: only id / remoteIds carry the
- * dedupe- and merge-relevant values per test; the remaining keys are harmless
- * filler so the column mapper has every field it reads (keeping the failure on
- * the dedupe/merge assertion, not a missing-key crash).
+ * crosswalk- and dedupe-relevant values per test; the remaining keys are
+ * harmless filler so the column mapper has every field it reads (keeping the
+ * failure on the row-count/crosswalk assertion, not a missing-key crash).
  *
  * @param  array<string, mixed>  $overrides
  * @return array<string, mixed>
@@ -80,87 +81,7 @@ function tvdbSeries(array $overrides = []): array
     ], $overrides);
 }
 
-it('merges onto an existing imdb show, pulling imdb_id from the remoteIds IMDB entry, without clobbering imdb columns', function (): void {
-    // Arrange
-    $existing = Show::factory()->create(['_imdb_id' => 'tt0903747']);
-    $originalVotes = $existing->_imdb_num_votes;
-    $originalRating = $existing->_imdb_average_rating;
-
-    // Act
-    resolve(UpsertTvdbShows::class)->handle([
-        tvdbSeries(['id' => 81189, 'remoteIds' => [['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB']]]),
-    ]);
-
-    // Assert
-    $fresh = Show::query()->where('_imdb_id', 'tt0903747')->firstOrFail();
-    expect(Show::query()->count())->toBe(1)
-        ->and($fresh->_tvdb_id)->toBe(81189)
-        ->and($fresh->_imdb_num_votes)->toBe($originalVotes)
-        ->and($fresh->_imdb_average_rating)->toBe($originalRating);
-});
-
-it('coalesces sequential tvdb-then-tmdb upserts onto one imdb-anchored row carrying both source blocks', function (): void {
-    // Arrange
-    Show::factory()->create(['_imdb_id' => 'tt0903747']);
-    $tmdbPayload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
-    $tmdbPayload['external_ids']['imdb_id'] = 'tt0903747';
-
-    // Act
-    resolve(UpsertTvdbShows::class)->handle([tvdbSeries(['id' => 81189])]);
-    resolve(UpsertTmdbShows::class)->handle([$tmdbPayload]);
-
-    // Assert
-    $fresh = Show::query()->where('_imdb_id', 'tt0903747')->firstOrFail();
-    expect(Show::query()->count())->toBe(1)
-        ->and($fresh->_tvdb_id)->toBe(81189)
-        ->and($fresh->_tvdb_name)->toBe('Breaking Bad')
-        ->and($fresh->_tmdb_id)->toBe(1399)
-        ->and($fresh->_tmdb_name)->toBe('Game of Thrones');
-});
-
-it('merges the extended series onto an existing tmdb-only row via the TheMovieDB.com remoteId when imdb matches nothing', function (): void {
-    // Arrange
-    $series = json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)['data'];
-    $existing = Show::factory()->withTmdb()->create(['_imdb_id' => null, '_tmdb_id' => 1396]);
-    $originalTmdbName = $existing->_tmdb_name;
-
-    // Act
-    resolve(UpsertTvdbShows::class)->handle([$series]);
-
-    // Assert
-    $fresh = Show::query()->where('_tmdb_id', 1396)->firstOrFail();
-    expect(Show::query()->count())->toBe(1)
-        ->and($fresh->_tvdb_id)->toBe(81189)
-        ->and($fresh->_tmdb_id)->toBe(1396)
-        ->and($fresh->_tmdb_name)->toBe($originalTmdbName);
-});
-
-it('inserts a new tvdb row seeding _imdb_id from the remoteIds IMDB entry when no existing show matches', function (): void {
-    // Arrange
-    $payloads = [tvdbSeries(['id' => 700, 'remoteIds' => [['id' => 'tt9999999', 'type' => 2, 'sourceName' => 'IMDB']]])];
-
-    // Act
-    resolve(UpsertTvdbShows::class)->handle($payloads);
-
-    // Assert
-    $show = Show::query()->where('_tvdb_id', 700)->firstOrFail();
-    expect($show->_imdb_id)->toBe('tt9999999')
-        ->and($show->_tvdb_id)->toBe(700);
-});
-
-it('leaves _imdb_id null on insert when no remoteIds entry has sourceName IMDB', function (): void {
-    // Arrange
-    $payloads = [tvdbSeries(['id' => 701, 'remoteIds' => [['id' => '1396', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]])];
-
-    // Act
-    resolve(UpsertTvdbShows::class)->handle($payloads);
-
-    // Assert
-    $show = Show::query()->where('_tvdb_id', 701)->firstOrFail();
-    expect($show->_imdb_id)->toBeNull();
-});
-
-it('seeds _tmdb_id from the remoteIds TheMovieDB.com entry on a fresh tvdb-only insert', function (): void {
+it('seeds _imdb_id and _tmdb_id crosswalks from remoteIds on a fresh insert', function (): void {
     // Arrange
     $payloads = [tvdbSeries(['id' => 5551396, 'remoteIds' => [
         ['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB'],
@@ -172,34 +93,11 @@ it('seeds _tmdb_id from the remoteIds TheMovieDB.com entry on a fresh tvdb-only 
 
     // Assert
     $show = Show::query()->where('_tvdb_id', 5551396)->firstOrFail();
-    expect($show->_tmdb_id)->toBe(1396);
+    expect($show->_imdb_id)->toBe('tt0903747')
+        ->and($show->_tmdb_id)->toBe(1396);
 });
 
-it('leaves _tmdb_id null on insert when remoteIds has no TheMovieDB.com entry', function (): void {
-    // Arrange
-    $payloads = [tvdbSeries(['id' => 5551397])];
-
-    // Act
-    resolve(UpsertTvdbShows::class)->handle($payloads);
-
-    // Assert
-    $show = Show::query()->where('_tvdb_id', 5551397)->firstOrFail();
-    expect($show->_tmdb_id)->toBeNull();
-});
-
-it('still seeds _imdb_id from the IMDB remoteId on the same insert', function (): void {
-    // Arrange
-    $payloads = [tvdbSeries(['id' => 5551398])];
-
-    // Act
-    resolve(UpsertTvdbShows::class)->handle($payloads);
-
-    // Assert
-    $show = Show::query()->where('_tvdb_id', 5551398)->firstOrFail();
-    expect($show->_imdb_id)->toBe('tt0903747');
-});
-
-it('does not duplicate a tvdb-only show when the same payload is re-run', function (): void {
+it('updates in place when the same _tvdb_id is re-run, leaving one row', function (): void {
     // Arrange
     $payloads = [tvdbSeries(['id' => 702])];
     resolve(UpsertTvdbShows::class)->handle($payloads);
@@ -211,47 +109,32 @@ it('does not duplicate a tvdb-only show when the same payload is re-run', functi
     expect(Show::query()->where('_tvdb_id', 702)->count())->toBe(1);
 });
 
-it('writes one last-wins row when two payloads in one batch share an imdb_id', function (): void {
+it('persists both payloads sharing one TheMovieDB.com id, nulling the ambiguous _tmdb_id on both rows', function (): void {
+    // Arrange
+    $tmdb = ['id' => '7778001', 'type' => 12, 'sourceName' => 'TheMovieDB.com'];
+    $a = tvdbSeries(['id' => 6663000, 'remoteIds' => [['id' => 'tt7778001', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
+    $b = tvdbSeries(['id' => 6664000, 'remoteIds' => [['id' => 'tt7778002', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([$a, $b]);
+
+    // Assert
+    expect(Show::query()->count())->toBe(2)
+        ->and(Show::query()->where('_tvdb_id', 6663000)->value('_tmdb_id'))->toBeNull()
+        ->and(Show::query()->where('_tvdb_id', 6664000)->value('_tmdb_id'))->toBeNull();
+});
+
+it('inserts two rows when two payloads share one imdb id', function (): void {
     // Arrange
     $imdb = [['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB']];
     $first = tvdbSeries(['id' => 81189, 'remoteIds' => $imdb]);
-    $last = tvdbSeries(['id' => 654321, 'name' => 'Winning Write', 'remoteIds' => $imdb]);
+    $second = tvdbSeries(['id' => 654321, 'name' => 'Second Show', 'remoteIds' => $imdb]);
 
     // Act
-    resolve(UpsertTvdbShows::class)->handle([$first, $last]);
-
-    // Assert
-    $fresh = Show::query()->where('_tvdb_id', 654321)->firstOrFail();
-    expect(Show::query()->count())->toBe(1)
-        ->and($fresh->_tvdb_id)->toBe(654321)
-        ->and($fresh->_tvdb_name)->toBe('Winning Write');
-});
-
-it('persists both tvdb-only payloads that share one TheMovieDB.com id without a unique-constraint error', function (): void {
-    // Arrange
-    $tmdb = ['id' => '7778001', 'type' => 12, 'sourceName' => 'TheMovieDB.com'];
-    $a = tvdbSeries(['id' => 6663000, 'remoteIds' => [['id' => 'tt7778001', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
-    $b = tvdbSeries(['id' => 6664000, 'remoteIds' => [['id' => 'tt7778002', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
-
-    // Act
-    resolve(UpsertTvdbShows::class)->handle([$a, $b]);
+    resolve(UpsertTvdbShows::class)->handle([$first, $second]);
 
     // Assert
     expect(Show::query()->count())->toBe(2);
-});
-
-it('leaves the ambiguous _tmdb_id null on the colliding rows', function (): void {
-    // Arrange
-    $tmdb = ['id' => '7778001', 'type' => 12, 'sourceName' => 'TheMovieDB.com'];
-    $a = tvdbSeries(['id' => 6663000, 'remoteIds' => [['id' => 'tt7778001', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
-    $b = tvdbSeries(['id' => 6664000, 'remoteIds' => [['id' => 'tt7778002', 'type' => 2, 'sourceName' => 'IMDB'], $tmdb]]);
-
-    // Act
-    resolve(UpsertTvdbShows::class)->handle([$a, $b]);
-
-    // Assert
-    expect(Show::query()->where('_tvdb_id', 6663000)->value('_tmdb_id'))->toBeNull()
-        ->and(Show::query()->where('_tvdb_id', 6664000)->value('_tmdb_id'))->toBeNull();
 });
 
 it('returns 0 and persists nothing for empty input', function (): void {

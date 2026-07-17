@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Domains\Catalog\Enums\TmdbExport;
 use App\Domains\Catalog\Exceptions\CorruptTmdbExportArchive;
 use App\Domains\Catalog\Services\TmdbExportService;
 use Illuminate\Http\Client\RequestException;
@@ -13,27 +12,12 @@ use Illuminate\Support\Str;
 
 afterEach(fn () => Date::setTestNow());
 
-it('requests the daily tv-series-ids export when asked', function (): void {
-    // Arrange
-    Date::setTestNow('2026-06-21 12:00:00');
-    Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
-    $expectedFilename = 'tv_series_ids_'.now()->format('m_d_Y').'.json.gz';
-
-    // Act
-    $path = resolve(TmdbExportService::class)->download(TmdbExport::TvSeriesIds);
-
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), $expectedFilename));
-
-    @unlink($path);
-});
-
 it('requests the daily movie-ids export for today', function (): void {
     Date::setTestNow('2026-06-21 12:00:00');
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
     $expectedFilename = 'movie_ids_'.now()->format('m_d_Y').'.json.gz';
 
-    $path = resolve(TmdbExportService::class)->download();
+    $path = resolve(TmdbExportService::class)->download('movie_ids');
 
     Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), $expectedFilename));
 
@@ -47,7 +31,7 @@ it("requests yesterday's export before 08:00 UTC (today not yet published)", fun
     $expectedFilename = 'movie_ids_'.now()->utc()->subDay()->format('m_d_Y').'.json.gz';
 
     // Act
-    $path = resolve(TmdbExportService::class)->download();
+    $path = resolve(TmdbExportService::class)->download('movie_ids');
 
     // Assert
     Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), $expectedFilename));
@@ -62,7 +46,7 @@ it("requests today's export at/after 08:00 UTC (published)", function (): void {
     $expectedFilename = 'movie_ids_'.now()->utc()->format('m_d_Y').'.json.gz';
 
     // Act
-    $path = resolve(TmdbExportService::class)->download();
+    $path = resolve(TmdbExportService::class)->download('movie_ids');
 
     // Assert
     Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), $expectedFilename));
@@ -74,7 +58,7 @@ it('returns a temp path whose contents are the downloaded bytes', function (): v
     $bytes = gzencode('{"id":603,"original_title":"The Matrix"}');
     Http::fake(['*files.tmdb.org*' => Http::response($bytes)]);
 
-    $path = resolve(TmdbExportService::class)->download();
+    $path = resolve(TmdbExportService::class)->download('movie_ids');
 
     expect(file_exists($path))->toBeTrue();
     expect(file_get_contents($path))->toBe($bytes);
@@ -88,7 +72,7 @@ it('removes the temp file when the download fails', function (): void {
     $before = $tempFiles();
 
     try {
-        resolve(TmdbExportService::class)->download();
+        resolve(TmdbExportService::class)->download('movie_ids');
     } catch (RequestException) {
         // the leak, not the throw, is under test
     }
@@ -103,7 +87,7 @@ it('does not compound the global retry middleware past three attempts on a persi
     Http::fake(['*files.tmdb.org*' => Http::response('', 500)]);
 
     try {
-        resolve(TmdbExportService::class)->download();
+        resolve(TmdbExportService::class)->download('movie_ids');
     } catch (RequestException) {
         // the request count, not the throw, is under test
     }
@@ -114,7 +98,7 @@ it('does not compound the global retry middleware past three attempts on a persi
 it('leaves the temp file in place on success', function (): void {
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode('{"id":1}'))]);
 
-    $path = resolve(TmdbExportService::class)->download();
+    $path = resolve(TmdbExportService::class)->download('movie_ids');
 
     expect(file_exists($path))->toBeTrue();
 
@@ -145,7 +129,7 @@ it('leaves the temp file in place on success', function (): void {
 it('yields one decoded object per kept JSONL line', function (): void {
     Http::fake(['*files.tmdb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz'))]);
     $service = resolve(TmdbExportService::class);
-    $path = $service->download();
+    $path = $service->download('movie_ids');
 
     $rows = $service->rows($path)->all();
 
@@ -159,7 +143,7 @@ it('yields one decoded object per kept JSONL line', function (): void {
 it('skips adult and softcore rows', function (): void {
     Http::fake(['*files.tmdb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz'))]);
     $service = resolve(TmdbExportService::class);
-    $path = $service->download();
+    $path = $service->download('movie_ids');
 
     $ids = collect($service->rows($path)->all())->pluck('id')->all();
 
@@ -176,7 +160,7 @@ it('ignores blank and trailing-newline lines', function (): void {
     $jsonl = $row1."\n"."\n".$row2."\n";
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode($jsonl))]);
     $service = resolve(TmdbExportService::class);
-    $path = $service->download();
+    $path = $service->download('movie_ids');
 
     $rows = $service->rows($path)->all();
 
@@ -193,7 +177,7 @@ it('returns a lazy collection', function (): void {
     $jsonl = $row1."\n".$row2."\n".$poison."\n";
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode($jsonl))]);
     $service = resolve(TmdbExportService::class);
-    $path = $service->download();
+    $path = $service->download('movie_ids');
 
     $rows = $service->rows($path);
 
@@ -212,7 +196,7 @@ it('parses lazily and stops reading before a poison line once enough is taken', 
     $jsonl = $row1."\n".$row2."\n".$poison."\n";
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode($jsonl))]);
     $service = resolve(TmdbExportService::class);
-    $path = $service->download();
+    $path = $service->download('movie_ids');
 
     $rows = $service->rows($path)->take(2)->all();
 
@@ -232,7 +216,7 @@ it('skips a malformed line mid-stream and yields the surrounding valid rows', fu
     $jsonl = $row1."\n".$poison."\n".$row2."\n";
     Http::fake(['*files.tmdb.org*' => Http::response(gzencode($jsonl))]);
     $service = resolve(TmdbExportService::class);
-    $path = $service->download();
+    $path = $service->download('movie_ids');
 
     $rows = $service->rows($path)->all();
 
@@ -244,7 +228,7 @@ it('skips a malformed line mid-stream and yields the surrounding valid rows', fu
 it('throws a corrupt archive exception when rows receives a non-gzip body', function (): void {
     Http::fake(['*files.tmdb.org*' => Http::response('this is not gzip data at all')]);
     $service = resolve(TmdbExportService::class);
-    $path = $service->download();
+    $path = $service->download('movie_ids');
 
     expect(fn () => $service->rows($path)->all())->toThrow(CorruptTmdbExportArchive::class);
 
@@ -257,7 +241,7 @@ it('counts only the kept (non-adult/non-softcore) data lines', function (): void
     // rows() so the progress total equals the number of rows actually yielded.
     Http::fake(['*files.tmdb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz'))]);
     $service = resolve(TmdbExportService::class);
-    $path = $service->download();
+    $path = $service->download('movie_ids');
 
     $count = $service->count($path);
 
@@ -269,7 +253,7 @@ it('counts only the kept (non-adult/non-softcore) data lines', function (): void
 it('throws a corrupt archive exception when count receives a non-gzip body', function (): void {
     Http::fake(['*files.tmdb.org*' => Http::response('this is not gzip data at all')]);
     $service = resolve(TmdbExportService::class);
-    $path = $service->download();
+    $path = $service->download('movie_ids');
 
     expect(fn () => $service->count($path))->toThrow(CorruptTmdbExportArchive::class);
 

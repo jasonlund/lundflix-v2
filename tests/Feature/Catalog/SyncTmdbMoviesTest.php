@@ -298,6 +298,46 @@ it('skips the update phase with --limit', function (): void {
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
 });
 
+it('does not persist a movie whose detail is flagged video true', function (): void {
+    // Arrange
+    $detail = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
+    $detail['id'] = 700;
+    $detail['video'] = true;
+    Http::fake([
+        '*movie_ids*' => Http::response(gzencode(json_encode(['id' => 700]))),
+        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/700')
+            ? Http::response(json_encode($detail))
+            : Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('catalog:sync-movies');
+
+    // Assert
+    expect(Movie::where('_tmdb_id', 700)->exists())->toBeFalse();
+});
+
+it('persists a movie whose detail is not flagged video', function (): void {
+    // Arrange
+    $detail = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
+    $detail['id'] = 701;
+    Http::fake([
+        '*movie_ids*' => Http::response(gzencode(json_encode(['id' => 701]))),
+        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/701')
+            ? Http::response(json_encode($detail))
+            : Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('catalog:sync-movies');
+
+    // Assert
+    expect(Movie::where('_tmdb_id', 701)->exists())->toBeTrue();
+    expect(Movie::where('_tmdb_id', 701)->first()->_tmdb_title)->toBe('The Matrix');
+});
+
 it('reports a persistent changes-feed failure and still exits SUCCESS', function (): void {
     // Arrange
     Exceptions::fake();

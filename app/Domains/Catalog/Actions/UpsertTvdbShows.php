@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Show;
-use App\Domains\Catalog\Support\ExistingShowResolver;
 use App\Domains\Catalog\Support\RawSourceColumns;
-use App\Domains\Catalog\Support\SourceIds;
 use Illuminate\Support\Carbon;
 
 final readonly class UpsertTvdbShows
@@ -50,8 +48,6 @@ final readonly class UpsertTvdbShows
         '_tvdb_lastAired',
     ];
 
-    public function __construct(private ExistingShowResolver $resolver = new ExistingShowResolver) {}
-
     /**
      * @param  array<int, array<string, mixed>>  $payloads  decoded TVDB /series/{id}/extended responses
      */
@@ -63,46 +59,13 @@ final readonly class UpsertTvdbShows
 
         $now = now();
 
-        $payloads = $this->dedupeByImdbId($payloads);
+        $rows = array_map(fn (array $payload): array => $this->rawTvdbRow($payload, $now), $payloads);
 
-        $candidates = $this->resolver->loadCandidates(array_map($this->sourceIdsFor(...), $payloads));
-
-        $touchedIds = [];
-        $tvdbOnlyRows = [];
-
-        foreach ($payloads as $payload) {
-            $existing = $this->resolver->match($this->sourceIdsFor($payload), $candidates);
-
-            if ($existing instanceof Show) {
-                $existing->fill($this->tvdbColumnsFor($payload, $now));
-                $existing->save();
-                $touchedIds[] = $existing->getKey();
-
-                continue;
-            }
-
-            $tvdbOnlyRows[] = $this->rawTvdbRow($payload, $now);
-        }
-
-        $touchedIds = array_merge($touchedIds, $this->insertTvdbOnly($this->nullAmbiguousTmdbIds($tvdbOnlyRows)));
+        $touchedIds = $this->upsertByTvdbId($this->nullAmbiguousTmdbIds($rows));
 
         Show::query()->whereIn('id', $touchedIds)->searchable();
 
         return count($payloads);
-    }
-
-    /**
-     * Extract the three cross-source ids out of a TVDB /series/extended payload.
-     *
-     * @param  array<string, mixed>  $payload
-     */
-    private function sourceIdsFor(array $payload): SourceIds
-    {
-        return new SourceIds(
-            $this->imdbIdFrom($payload),
-            $this->tmdbIdFrom($payload),
-            $this->tvdbIdFrom($payload),
-        );
     }
 
     /**
@@ -140,45 +103,6 @@ final readonly class UpsertTvdbShows
     }
 
     /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function tvdbIdFrom(array $payload): ?int
-    {
-        return isset($payload['id']) ? (int) $payload['id'] : null;
-    }
-
-    /**
-     * Collapse payloads that share an IMDb id down to the last one (last-wins),
-     * so a single `imdb_id` is written exactly once per batch and a later payload
-     * never leaves an earlier same-id write half-applied. Payloads with no IMDb id
-     * are distinct tvdb-only shows and pass through untouched; matching them to an
-     * existing row (including a prior source-only row, by any source id) is handled
-     * downstream by {@see ExistingShowResolver}.
-     *
-     * @param  array<int, array<string, mixed>>  $payloads
-     * @return list<array<string, mixed>>
-     */
-    private function dedupeByImdbId(array $payloads): array
-    {
-        $withoutImdbId = [];
-        $byImdbId = [];
-
-        foreach ($payloads as $payload) {
-            $imdbId = $this->imdbIdFrom($payload);
-
-            if ($imdbId === null) {
-                $withoutImdbId[] = $payload;
-
-                continue;
-            }
-
-            $byImdbId[$imdbId] = $payload;
-        }
-
-        return array_values([...$withoutImdbId, ...$byImdbId]);
-    }
-
-    /**
      * Null `_tmdb_id` on every row that shares it with another row in the batch:
      * dirty source data can repeat a cross-id, and the unique `_tmdb_id` column
      * would otherwise reject the whole batch while a fabricated crosswalk would
@@ -201,14 +125,14 @@ final readonly class UpsertTvdbShows
     }
 
     /**
-     * Insert the payloads that matched no existing show via a cast-bypassing
-     * `Model::upsert()`, then return the ids of the affected shows (so they can
-     * be reindexed). Returns no ids when there are no tvdb-only rows.
+     * Upsert the raw rows by `_tvdb_id` via a cast-bypassing `Model::upsert()`,
+     * then return the ids of the affected shows (so they can be reindexed).
+     * Returns no ids when there are no rows.
      *
      * @param  array<int, array<string, mixed>>  $rows
      * @return list<int|string>
      */
-    private function insertTvdbOnly(array $rows): array
+    private function upsertByTvdbId(array $rows): array
     {
         if ($rows === []) {
             return [];
