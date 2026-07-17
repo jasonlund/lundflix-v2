@@ -233,6 +233,22 @@ mass-assignable; write paths whitelist attributes **explicitly at the callsite**
   removes mass-assignment protection" or "model is missing `$fillable`" is a
   known false positive — the protection lives at the callsite by convention.
 
+## Persistence: iterating rows you write to → `chunkById`
+
+When a loop **writes to the DB rows it is iterating** (stamping a column,
+flipping a flag, reconciling a crosswalk), walk the query with **`chunkById()`**,
+not `chunk()`, `get()`, or `lazy()`. `chunkById` paginates by primary key, so
+mutating a **non-key** column mid-iteration cannot skip or double-process a
+row — the failure mode `chunk()` (offset-paginated) and a materialized `get()`
+both invite. This is the default for any iterate-and-write path; deviate only for
+a **distinct, stated reason** (e.g. a read-only walk, or a set small and bounded
+enough that materializing is provably fine — say why in a comment).
+
+- Read-only iteration with no writes → `lazy()`/`cursor()` is fine (streams
+  without the PK-pagination overhead).
+- `--limit`-style caps don't compose with `chunkById` directly — track a
+  processed count and `return false` from the closure to halt early.
+
 ## Linting & formatting (finalize gates)
 
 Before finalizing **any** change, run every linter/formatter for the files you

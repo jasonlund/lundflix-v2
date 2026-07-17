@@ -36,11 +36,21 @@ verbatim; derive/normalize downstream, not on ingest.
 
 ## Sync ordering (`catalog:sync-shows-tmdb`)
 
-- `catalog:sync-shows-tmdb` create-or-merge — it matches an existing show by **any**
-  source id (`_imdb_id`, `_tmdb_id`, or `_tvdb_id`, including the IMDb id nested
-  in `external_ids`) and merges its `_tmdb_*` columns onto it; when nothing
-  matches it inserts a tmdb-only row (seeding `_imdb_id` when the payload carries
-  one). It no longer depends on `catalog:sync-shows-tvdb` having run first.
+- **TVDB is the sole creator of `shows` rows** — `catalog:sync-shows-tmdb` never
+  inserts a show; it only **hydrates by id** onto rows TVDB already created. So
+  TVDB-first ordering is load-bearing: `catalog:seed-shows-tvdb` /
+  `catalog:sync-shows-tvdb` must have run first, or there is nothing to hydrate.
+- Hydrate phase — walks **our own** shows missing `tmdb_synced_at`, matched by
+  `_tmdb_id`, and merges `_tmdb_*` metadata + artwork onto them. `--fresh`
+  reprocesses every candidate; `--limit` caps the set.
+- imdb-only rows (have `_imdb_id`, no `_tmdb_id`) are reconciled best-effort via
+  TMDB `/find`, stamping the resolved `_tmdb_id` onto the row before hydrating. A
+  resolved id already claimed by another row can't be re-pointed (UNIQUE
+  `_tmdb_id`) — the row stays TVDB-only and the collision is reported, same as an
+  empty `/find` result.
+- Update-changed phase (default full run only, skipped under `--fresh`/`--limit`)
+  — re-hydrates the intersection of the rolling 14-day changes feed and rows we've
+  already synced.
 
 ## TVDB sync split (`catalog:seed-shows-tvdb` / `catalog:sync-shows-tvdb`)
 

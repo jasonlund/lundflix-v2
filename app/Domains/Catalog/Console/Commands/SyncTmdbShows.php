@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
+use App\Domains\Catalog\Actions\ReconcileImdbOnlyShows;
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Actions\UpsertTmdbShows;
-use App\Domains\Catalog\Exceptions\TmdbShowCrosswalkCollision;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TmdbApiService;
 use Illuminate\Console\Attributes\Description;
@@ -30,6 +30,7 @@ class SyncTmdbShows extends Command
 
     public function handle(
         TmdbApiService $api,
+        ReconcileImdbOnlyShows $reconcileImdbOnly,
         UpsertTmdbShows $upsertShows,
         UpsertTmdbImages $upsertImages,
     ): int {
@@ -37,7 +38,7 @@ class SyncTmdbShows extends Command
         // that overwrites the terminal (and render nothing under catalog:sync's
         // nested Artisan::call), which swallowed the per-batch heartbeat below.
         $this->output->writeln('Hydrating TMDB shows…');
-        $this->hydrateOwnShows($api, $upsertShows, $upsertImages);
+        $this->hydrateOwnShows($api, $reconcileImdbOnly, $upsertShows, $upsertImages);
 
         // The changes pass only makes sense for a full default run: --fresh already
         // re-hydrates every candidate above (a changes pass would be redundant),
@@ -58,29 +59,48 @@ class SyncTmdbShows extends Command
      */
     private function hydrateOwnShows(
         TmdbApiService $api,
+        ReconcileImdbOnlyShows $reconcileImdbOnly,
         UpsertTmdbShows $upsertShows,
         UpsertTmdbImages $upsertImages,
     ): void {
+        // chunkById, not get()->chunk(): a --fresh run targets the whole ~173k-row
+        // TVDB show universe, so materializing the candidate set is prohibitive. And
+        // chunkById, not chunk()/lazy(): the loop WRITES to the rows it iterates (the
+        // imdb-only reconcile stamps _tmdb_id, hydration stamps tmdb_synced_at — a
+        // WHERE-filtered column on a default run), and only PK-paginated chunking is
+        // immune to skipping/double-processing rows whose filtered columns mutate
+        // mid-iteration.
         $query = Show::query()
             ->where(function ($query): void {
                 $query->whereNotNull('_tmdb_id')->orWhereNotNull('_imdb_id');
             })
-            ->when(! $this->option('fresh'), function ($query): void {
+            ->unless($this->option('fresh'), function ($query): void {
                 $query->whereNull('tmdb_synced_at');
             })
-            ->orderBy('id');
+            ->select(['id', '_tmdb_id', '_imdb_id']);
 
+        // chunkById can't compose with a SQL LIMIT (each page re-queries by PK), so
+        // enforce --limit by counting down candidate rows across chunks and stopping
+        // once the cap is reached.
         $limit = $this->option('limit');
+        $remaining = $limit === null ? null : (int) $limit;
 
-        if ($limit !== null) {
-            $query->limit((int) $limit);
-        }
+        $query->chunkById(self::BATCH_SIZE, function (Collection $chunk) use (
+            &$remaining,
+            $api,
+            $reconcileImdbOnly,
+            $upsertShows,
+            $upsertImages,
+        ): bool {
+            if ($remaining !== null) {
+                $chunk = $chunk->take($remaining);
+                $remaining -= $chunk->count();
+            }
 
-        $candidates = $query->get(['id', '_tmdb_id', '_imdb_id']);
+            $this->hydrateChunkSafely($chunk, $api, $reconcileImdbOnly, $upsertShows, $upsertImages);
 
-        foreach ($candidates->chunk(self::BATCH_SIZE) as $chunk) {
-            $this->hydrateChunkSafely($chunk, $api, $upsertShows, $upsertImages);
-        }
+            return $remaining === null || $remaining > 0;
+        });
     }
 
     /**
@@ -140,11 +160,12 @@ class SyncTmdbShows extends Command
     private function hydrateChunkSafely(
         Collection $shows,
         TmdbApiService $api,
+        ReconcileImdbOnlyShows $reconcileImdbOnly,
         UpsertTmdbShows $upsertShows,
         UpsertTmdbImages $upsertImages,
     ): void {
         try {
-            $this->hydrateChunk($shows, $api, $upsertShows, $upsertImages);
+            $this->hydrateChunk($shows, $api, $reconcileImdbOnly, $upsertShows, $upsertImages);
         } catch (\Throwable $e) {
             report($e);
         }
@@ -160,12 +181,13 @@ class SyncTmdbShows extends Command
     private function hydrateChunk(
         Collection $shows,
         TmdbApiService $api,
+        ReconcileImdbOnlyShows $reconcileImdbOnly,
         UpsertTmdbShows $upsertShows,
         UpsertTmdbImages $upsertImages,
     ): void {
         $directIds = $shows->whereNotNull('_tmdb_id')->pluck('_tmdb_id')->all();
 
-        $resolvedIds = $this->reconcileImdbOnly($shows, $api);
+        $resolvedIds = $reconcileImdbOnly->handle($shows, $api);
 
         $ids = array_values(array_unique(array_merge($directIds, $resolvedIds)));
 
@@ -174,58 +196,6 @@ class SyncTmdbShows extends Command
         }
 
         $this->syncChunk($ids, $api, $upsertShows, $upsertImages);
-    }
-
-    /**
-     * Resolve tmdb ids for the chunk's imdb-only rows through /find, stamping each
-     * resolved id onto its row. An imdb id whose result has no tv_results stays
-     * TVDB-only — no stamp, no hydrate.
-     *
-     * @param  Collection<int, Show>  $shows
-     * @return array<int, int>
-     */
-    private function reconcileImdbOnly(Collection $shows, TmdbApiService $api): array
-    {
-        $imdbIds = $shows->whereNull('_tmdb_id')
-            ->pluck('_imdb_id')
-            ->filter()
-            ->values()
-            ->all();
-
-        if ($imdbIds === []) {
-            return [];
-        }
-
-        $resolvedIds = [];
-
-        foreach ($api->findManyByImdbId($imdbIds) as $imdbId => $result) {
-            $tvResults = $result['tv_results'] ?? [];
-
-            if ($tvResults === []) {
-                continue;
-            }
-
-            $tmdbId = (int) $tvResults[0]['id'];
-
-            // The UNIQUE `_tmdb_id` guard: a resolved id already claimed by another
-            // row can't be re-pointed onto this one. Skip + report and leave the row
-            // TVDB-only (same accepted outcome as an empty tv_results) rather than
-            // let the constraint violation abort the whole chunk.
-            if (Show::query()->where('_tmdb_id', $tmdbId)->exists()) {
-                report(TmdbShowCrosswalkCollision::forResolvedId($imdbId, $tmdbId));
-
-                continue;
-            }
-
-            Show::query()
-                ->where('_imdb_id', $imdbId)
-                ->whereNull('_tmdb_id')
-                ->update(['_tmdb_id' => $tmdbId]);
-
-            $resolvedIds[] = $tmdbId;
-        }
-
-        return $resolvedIds;
     }
 
     /**

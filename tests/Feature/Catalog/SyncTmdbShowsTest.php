@@ -340,3 +340,64 @@ it('reports the crosswalk collision', function (): void {
     // Assert
     Exceptions::assertReported(TmdbShowCrosswalkCollision::class);
 });
+
+it('hydrates every candidate across a set larger than one chunk without skipping rows', function (): void {
+    // Arrange
+    // One more candidate than BATCH_SIZE (1000), so the run spans two chunkById
+    // pages. Each row carries a distinct _tmdb_id; hydration stamps
+    // tmdb_synced_at, the very column the default run filters on — proving PK
+    // pagination doesn't skip rows whose filtered column mutates mid-iteration.
+    $rows = [];
+    for ($i = 0; $i < 1001; $i++) {
+        $rows[] = ['_tmdb_id' => 500_000 + $i, '_imdb_id' => 'tt'.str_pad((string) (8_000_000 + $i), 7, '0', STR_PAD_LEFT)];
+    }
+    Show::insert($rows);
+    // Decode the detail fixture once and drop its images block: this test proves
+    // chunkById spans two pages without skipping rows, not image persistence.
+    // Keeping the 643-entry images block would fire ~643k media upserts across
+    // the 1001 rows and exhaust memory.
+    $body = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    unset($body['images']);
+    Http::fake([
+        '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*api.themoviedb.org*' => function (Request $request) use ($body) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            if (preg_match('#/tv/(\d+)$#', $path, $matches) === 1) {
+                $body['id'] = (int) $matches[1];
+
+                return Http::response(json_encode($body));
+            }
+
+            return Http::response('', 404);
+        },
+    ]);
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    expect(Show::whereNull('tmdb_synced_at')->count())->toBe(0);
+    expect(Show::count())->toBe(1001);
+});
+
+it('stamps one of two shows sharing an imdb id and never aborts the chunk', function (): void {
+    // Arrange
+    // Two imdb-only rows legitimately share one _imdb_id; both resolve to the
+    // same UNIQUE tmdb id, so only one can be stamped. A direct-id row rides the
+    // same chunk to prove the batch is not aborted wholesale.
+    fakeTmdbShowSync();
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null, '_tmdb_name' => null]);
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+    Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    expect(Show::where('_tmdb_id', 1399)->firstOrFail()->_tmdb_name)->toBe('Game of Thrones');
+    $shared = Show::where('_imdb_id', 'tt0903747')->get();
+    expect($shared->whereNotNull('_tmdb_id'))->toHaveCount(1);
+    expect($shared->whereNull('_tmdb_id'))->toHaveCount(1);
+    expect($shared->firstWhere('_tmdb_id', 1396)->_tmdb_name)->toBe('Game of Thrones');
+    expect(Show::count())->toBe(3);
+});
