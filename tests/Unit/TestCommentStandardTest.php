@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Str;
 use Symfony\Component\Finder\Finder;
 
 /**
@@ -37,7 +38,7 @@ $scanAaaLabelLines = function (): array {
 
     foreach ($finders as $finder) {
         foreach ($finder as $file) {
-            $relative = str_replace($root.DIRECTORY_SEPARATOR, '', $file->getRealPath());
+            $relative = Str::replace($root.DIRECTORY_SEPARATOR, '', $file->getRealPath());
             $lines = preg_split('/\R/', (string) file_get_contents($file->getRealPath()));
 
             foreach ($lines as $index => $text) {
@@ -65,7 +66,7 @@ $scanAaaLabelLines = function (): array {
  * @return list<string>
  */
 $report = (fn (array $offenders): array => array_map(
-    fn (array $o): string => sprintf('%s:%d  %s', $o['file'], $o['line'], trim((string) $o['text'])),
+    fn (array $o): string => sprintf('%s:%d  %s', $o['file'], $o['line'], Str::trim((string) $o['text'])),
     $offenders,
 ));
 
@@ -85,7 +86,7 @@ it('has no AAA label line that uses "/" or collapses labels without " & "', func
             // for a label separator; then a remaining `/` or a no-` & ` label
             // adjacency is the collapse offence.
             $body = preg_replace('#^\s*//#', '', (string) $l['text']);
-            $usesSlashOrCollapse = str_contains($body, '/')
+            $usesSlashOrCollapse = Str::contains($body, '/')
                 || preg_match('#^\s*(Arrange|Act|Assert)\s+(Arrange|Act|Assert)#', $body) === 1;
 
             return $isOffender && $usesSlashOrCollapse;
@@ -109,7 +110,7 @@ it('has no AAA label line whose "&" join is anything but exactly " & "', functio
         function (array $l) use ($conforming): bool {
             $isOffender = preg_match($conforming, (string) $l['text']) !== 1;
 
-            return $isOffender && str_contains((string) $l['text'], '&');
+            return $isOffender && Str::contains((string) $l['text'], '&');
         },
     ));
 
@@ -132,10 +133,10 @@ it('has no AAA label line carrying prose after the label', function () use ($sca
             // Trailing-prose offenders are the leftover: non-conforming label
             // lines that aren't slash/collapse (sub-rule 1) or `&` (sub-rule 2).
             $body = preg_replace('#^\s*//#', '', (string) $l['text']);
-            $usesSlashOrCollapse = str_contains($body, '/')
+            $usesSlashOrCollapse = Str::contains($body, '/')
                 || preg_match('#^\s*(Arrange|Act|Assert)\s+(Arrange|Act|Assert)#', $body) === 1;
 
-            return $isOffender && ! $usesSlashOrCollapse && ! str_contains($body, '&');
+            return $isOffender && ! $usesSlashOrCollapse && ! Str::contains($body, '&');
         },
     ));
 

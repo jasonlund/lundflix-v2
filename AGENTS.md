@@ -233,6 +233,36 @@ mass-assignable; write paths whitelist attributes **explicitly at the callsite**
   removes mass-assignment protection" or "model is missing `$fillable`" is a
   known false positive — the protection lives at the callsite by convention.
 
+## Laravel helpers over PHP functions
+
+Prefer `Illuminate\Support\Str` / `Arr` helpers over the PHP-native equivalents
+(FLIX-206). This is **mechanically enforced** — a custom `FuncCallToStaticCall`
+map in `rector.php` rewrites the native call and the `rector --dry-run` CI gate
+fails on any that slip in, so you rarely hand-write the native form.
+
+- **Rector-rewritten (don't write the native form):** `str_starts_with` /
+  `str_ends_with` / `str_contains` → `Str::startsWith`/`endsWith`/`contains`;
+  `str_replace` → `Str::replace`; `strtolower`/`strtoupper`/`ucfirst` →
+  `Str::lower`/`upper`/`ucfirst`; `trim`/`ltrim`/`rtrim` → `Str::trim`/…;
+  `substr` → `Str::substr`; `strlen` → `Str::length`.
+- **Stay native — do NOT "fix" these** (no clean 1:1, don't add them to the map):
+  `array_key_exists` (`Arr::exists($array, $key)` swaps the argument order — the
+  positional Rector map can't express it); signature-mismatch `str_pad` /
+  `preg_replace` / `ucwords` / `explode`; no-equivalent `preg_match` /
+  `preg_split` / `implode` / `sprintf` / `str_repeat` / `count` / `in_array` and
+  the `array_map`/`filter`/`merge`/`keys`/`values`/`column`/`unique`/`flip`/
+  `combine` family; `json_encode` / `json_decode` (`Js::` is HTML-embedding only);
+  `last()` / `head()` (already helpers).
+- **Multibyte caveat:** `Str::lower`/`upper`/`length`/`substr` are multibyte and
+  `Str::trim` strips unicode whitespace (nbsp/BOM) — correct for ASCII inputs. If
+  a call measures **bytes** (payload size), keep native `strlen`/`substr`.
+- **Forward-looking** (no current usages, follow going forward): `number_format`
+  → `Number::format` (`currency`/`fileSize`/`percentage`); `date()`/`time()`/
+  `strtotime()` → `now()`/`today()`/Carbon.
+- **Collections over arrays** — in **new** code prefer a Collection pipeline
+  (`collect($x)->map(...)->filter(...)->pluck(...)`) over chained `array_*` calls.
+  Convention only (not Rector-enforced); existing arrays are left as-is.
+
 ## Linting & formatting (finalize gates)
 
 Before finalizing **any** change, run every linter/formatter for the files you

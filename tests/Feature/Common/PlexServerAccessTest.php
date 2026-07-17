@@ -6,6 +6,7 @@ use App\Domains\Common\Exceptions\PlexServerIdentifierMissing;
 use App\Domains\Common\Services\PlexApiService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -36,7 +37,7 @@ it('returns a Collection of the 3 resources from GET clients.plex.tv/api/v2/reso
 
     expect($resources)->toBeInstanceOf(Collection::class)
         ->and($resources->count())->toBe(3);
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), 'clients.plex.tv/api/v2/resources')
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), 'clients.plex.tv/api/v2/resources')
         && (string) data_get($request->data(), 'includeHttps') !== ''
         && (string) data_get($request->data(), 'includeRelay') !== ''
         && (string) data_get($request->data(), 'includeIPv6') !== '');

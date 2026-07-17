@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -37,10 +38,10 @@ function fakeTvdbUpdates(): void
 {
     Http::fake([
         '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/434847/extended')
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
             ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
             : Http::response('', 404),
-        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => str_contains($request->url(), 'page=1')
+        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
             ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
             : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
     ]);
@@ -71,7 +72,7 @@ it('queries /updates with since = now minus 14 days', function (): void {
     $this->artisan('catalog:sync-shows-tvdb');
 
     // Assert
-    Http::assertSent(fn (Request $request): bool => str_contains(urldecode((string) $request->url()), 'since='.now()->subDays(14)->timestamp));
+    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'since='.now()->subDays(14)->timestamp));
 });
 
 it('uses the updates feed only and never crawls /series?page', function (): void {
@@ -82,8 +83,8 @@ it('uses the updates feed only and never crawls /series?page', function (): void
     $this->artisan('catalog:sync-shows-tvdb');
 
     // Assert
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/updates'));
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series?page'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
 });
 
 it('caps hydrate calls with --limit', function (): void {
@@ -96,7 +97,7 @@ it('caps hydrate calls with --limit', function (): void {
     // Assert
     $hydrateCalls = 0;
     Http::assertSent(function (Request $request) use (&$hydrateCalls): bool {
-        if (str_contains($request->url(), '/extended')) {
+        if (Str::contains($request->url(), '/extended')) {
             $hydrateCalls++;
         }
 
@@ -114,7 +115,7 @@ it('re-hydrates an already-synced show that appears in the window', function ():
     $this->artisan('catalog:sync-shows-tvdb');
 
     // Assert
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/series/434847/extended'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series/434847/extended'));
 });
 
 it('exits SUCCESS', function (): void {

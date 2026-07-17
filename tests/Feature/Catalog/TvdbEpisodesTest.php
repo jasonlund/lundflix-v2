@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Services\TvdbApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -41,7 +42,7 @@ describe('episodes() pagination', function (): void {
 
         resolve(TvdbApiService::class)->episodes(71663);
 
-        expect(Http::recorded(fn ($request): bool => str_contains((string) $request->url(), '/series/71663/episodes')))->toHaveCount(2);
+        expect(Http::recorded(fn ($request): bool => Str::contains((string) $request->url(), '/series/71663/episodes')))->toHaveCount(2);
     });
 
     it('flattens episode records across both pages in page order', function (): void {
@@ -68,7 +69,7 @@ describe('episodes() pagination', function (): void {
 
         resolve(TvdbApiService::class)->episodes(71663);
 
-        expect(Http::recorded(fn ($request): bool => str_contains((string) $request->url(), '/series/71663/episodes')))->toHaveCount(1);
+        expect(Http::recorded(fn ($request): bool => Str::contains((string) $request->url(), '/series/71663/episodes')))->toHaveCount(1);
     });
 });
 
@@ -86,7 +87,7 @@ describe('episodes() season-type & empty results', function (): void {
 
         resolve(TvdbApiService::class)->episodes(81189);
 
-        Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/series/81189/episodes/default'));
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/series/81189/episodes/default'));
     });
 
     it('GETs the requested season-type as a path segment', function (): void {
@@ -97,7 +98,7 @@ describe('episodes() season-type & empty results', function (): void {
 
         resolve(TvdbApiService::class)->episodes(81189, 'official');
 
-        Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/series/81189/episodes/official'));
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/series/81189/episodes/official'));
     });
 
     it('returns an empty array when the series episodes 404', function (): void {

@@ -9,6 +9,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -36,7 +37,7 @@ function fakeTmdbSync(): void
         // (no swallowed exception, no stray stack trace). Listed before the
         // generic detail stub since it lives on the same host.
         '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
-        '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/movie/603')
+        '*api.themoviedb.org*' => fn (Request $request) => Str::contains($request->url(), '/movie/603')
             ? Http::response(fixtureBytes('Catalog/tmdb/movie.json'))
             : Http::response('', 404),
     ]);
@@ -70,10 +71,7 @@ function fakeTmdbUpdateSync(): void
                 ? Http::response(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))
                 : Http::response(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'));
         },
-        '*api.themoviedb.org*' => fn (Request $request) => str_ends_with(
-            (string) parse_url($request->url(), PHP_URL_PATH),
-            '/movie/345',
-        )
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/345')
             ? Http::response($detailBody)
             : Http::response('', 404),
     ]);
@@ -140,7 +138,7 @@ it('caps processed ids with --limit', function (): void {
     // Assert
     $hydrateCalls = 0;
     Http::assertSent(function (Request $request) use (&$hydrateCalls): bool {
-        if (str_contains($request->url(), 'api.themoviedb.org/3/movie/')) {
+        if (Str::contains($request->url(), 'api.themoviedb.org/3/movie/')) {
             $hydrateCalls++;
         }
 
@@ -158,7 +156,7 @@ it('skips an already-synced movie on a default run', function (): void {
     $this->artisan('catalog:sync-movies');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
 });
 
 it('reprocesses an already-synced movie with --fresh', function (): void {
@@ -170,7 +168,7 @@ it('reprocesses an already-synced movie with --fresh', function (): void {
     $this->artisan('catalog:sync-movies', ['--fresh' => true]);
 
     // Assert
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
 });
 
 it('prints a phase-labeled heartbeat every 1000th hydrated title', function (): void {
@@ -212,10 +210,10 @@ it('continues to the next batch when one batch throws', function (): void {
             $path = (string) parse_url($request->url(), PHP_URL_PATH);
 
             return match (true) {
-                str_ends_with($path, '/movie/1001') => Http::response($batchTwoBody),
+                Str::endsWith($path, '/movie/1001') => Http::response($batchTwoBody),
                 // One batch-1 id 500s persistently; TMDB aggregates a persistent
                 // non-404 failure into a thrown TmdbRequestFailed, so batch 1 throws.
-                str_ends_with($path, '/movie/1') => Http::response('', 500),
+                Str::endsWith($path, '/movie/1') => Http::response('', 500),
                 default => Http::response('', 404),
             };
         },
@@ -252,7 +250,7 @@ it('ignores a changed id not in the local catalog', function (): void {
     $this->artisan('catalog:sync-movies');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/1648226'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/1648226'));
 });
 
 it('requests the rolling 14-day changes window', function (): void {
@@ -266,7 +264,7 @@ it('requests the rolling 14-day changes window', function (): void {
 
     // Assert
     Http::assertSent(function (Request $request): bool {
-        if (! str_contains($request->url(), '/movie/changes')) {
+        if (! Str::contains($request->url(), '/movie/changes')) {
             return false;
         }
         parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
@@ -285,7 +283,7 @@ it('skips the update phase with --fresh', function (): void {
     $this->artisan('catalog:sync-movies', ['--fresh' => true]);
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/changes'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
 });
 
 it('skips the update phase with --limit', function (): void {
@@ -297,7 +295,7 @@ it('skips the update phase with --limit', function (): void {
     $this->artisan('catalog:sync-movies', ['--limit' => 1]);
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/changes'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
 });
 
 it('reports a persistent changes-feed failure and still exits SUCCESS', function (): void {

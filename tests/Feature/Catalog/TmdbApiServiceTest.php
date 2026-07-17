@@ -9,6 +9,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,7 +26,7 @@ it('sends a Bearer-authed GET to /movie/{id}', function (): void {
 
     resolve(TmdbApiService::class)->movie(603);
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/movie/603')
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/movie/603')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
@@ -35,8 +36,8 @@ it('appends the movie sub-resources and image-language params', function (): voi
 
     resolve(TmdbApiService::class)->movie(603);
 
-    Http::assertSent(fn ($request): bool => str_contains(urldecode((string) $request->url()), 'append_to_response=release_dates,images')
-        && str_contains(urldecode((string) $request->url()), 'include_image_language=en,null'));
+    Http::assertSent(fn ($request): bool => Str::contains(urldecode((string) $request->url()), 'append_to_response=release_dates,images')
+        && Str::contains(urldecode((string) $request->url()), 'include_image_language=en,null'));
 });
 
 it('returns the raw payload unchanged', function (): void {
@@ -171,7 +172,7 @@ it('reports TmdbRequestFailed and still returns the succeeding id when one id in
 
     // Assert
     expect($result)->toBe([604 => json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true)]);
-    Exceptions::assertReported(fn (TmdbRequestFailed $e): bool => str_contains($e->getMessage(), '603'));
+    Exceptions::assertReported(fn (TmdbRequestFailed $e): bool => Str::contains($e->getMessage(), '603'));
 });
 
 it('reports every failed id and still returns the succeeding id when multiple ids in the batch fail at the transport level', function (): void {
@@ -191,7 +192,7 @@ it('reports every failed id and still returns the succeeding id when multiple id
     // Assert
     expect($result)->toBe([604 => json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true)]);
     Exceptions::assertReported(
-        fn (TmdbRequestFailed $e): bool => str_contains($e->getMessage(), '603') && str_contains($e->getMessage(), '605')
+        fn (TmdbRequestFailed $e): bool => Str::contains($e->getMessage(), '603') && Str::contains($e->getMessage(), '605')
     );
 });
 
@@ -212,7 +213,7 @@ it('reports every failed id and still returns the succeeding id when multiple id
     // Assert
     expect($result)->toBe([604 => json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true)]);
     Exceptions::assertReported(
-        fn (TmdbRequestFailed $e): bool => str_contains($e->getMessage(), '603') && str_contains($e->getMessage(), '605')
+        fn (TmdbRequestFailed $e): bool => Str::contains($e->getMessage(), '603') && Str::contains($e->getMessage(), '605')
     );
 });
 
@@ -258,7 +259,7 @@ it('reports the undecodable-200 id and still returns the succeeding prior id rat
 
     // Assert
     expect($result)->toBe([603 => json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true)]);
-    Exceptions::assertReported(fn (TmdbRequestFailed $e): bool => str_contains($e->getMessage(), '604'));
+    Exceptions::assertReported(fn (TmdbRequestFailed $e): bool => Str::contains($e->getMessage(), '604'));
 });
 
 it('reports a 5xx id and an undecodable-200 id together in one aggregate failure and still returns the succeeding id', function (): void {
@@ -278,7 +279,7 @@ it('reports a 5xx id and an undecodable-200 id together in one aggregate failure
     // Assert
     expect($result)->toBe([603 => json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true)]);
     Exceptions::assertReported(
-        fn (TmdbRequestFailed $e): bool => str_contains($e->getMessage(), '604') && str_contains($e->getMessage(), '605')
+        fn (TmdbRequestFailed $e): bool => Str::contains($e->getMessage(), '604') && Str::contains($e->getMessage(), '605')
     );
 });
 
@@ -311,13 +312,13 @@ it('requests every id in input order across the concurrency-sized chunks', funct
     resolve(TmdbApiService::class)->movies([1, 2, 3, 4, 5, 6, 7]);
 
     Http::assertSentInOrder([
-        fn ($request): bool => str_contains((string) $request->url(), '/movie/1?'),
-        fn ($request): bool => str_contains((string) $request->url(), '/movie/2?'),
-        fn ($request): bool => str_contains((string) $request->url(), '/movie/3?'),
-        fn ($request): bool => str_contains((string) $request->url(), '/movie/4?'),
-        fn ($request): bool => str_contains((string) $request->url(), '/movie/5?'),
-        fn ($request): bool => str_contains((string) $request->url(), '/movie/6?'),
-        fn ($request): bool => str_contains((string) $request->url(), '/movie/7?'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/movie/1?'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/movie/2?'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/movie/3?'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/movie/4?'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/movie/5?'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/movie/6?'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/movie/7?'),
     ]);
 });
 
@@ -345,7 +346,7 @@ it('sends a Bearer-authed GET to /tv/{id}', function (): void {
 
     resolve(TmdbApiService::class)->tv(1399);
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/tv/1399')
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/tv/1399')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
@@ -355,8 +356,8 @@ it('appends the tv sub-resources and image-language params', function (): void {
 
     resolve(TmdbApiService::class)->tv(1399);
 
-    Http::assertSent(fn ($request): bool => str_contains(urldecode((string) $request->url()), 'append_to_response=images,external_ids,content_ratings')
-        && str_contains(urldecode((string) $request->url()), 'include_image_language=en,null'));
+    Http::assertSent(fn ($request): bool => Str::contains(urldecode((string) $request->url()), 'append_to_response=images,external_ids,content_ratings')
+        && Str::contains(urldecode((string) $request->url()), 'include_image_language=en,null'));
 });
 
 it('returns the raw tv payload unchanged', function (): void {
@@ -430,8 +431,8 @@ it('sends a Bearer-authed GET to /find/{imdbId} with external_source=imdb_id', f
 
     resolve(TmdbApiService::class)->findByImdbId('tt0133093');
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/find/tt0133093')
-        && str_contains(urldecode((string) $request->url()), 'external_source=imdb_id')
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/find/tt0133093')
+        && Str::contains(urldecode((string) $request->url()), 'external_source=imdb_id')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
@@ -514,8 +515,8 @@ it('returns a map keyed by the input imdb ids hitting /find/{id} with external_s
 
     expect(array_keys($result))->toBe(['tt0133093', 'tt0111161'])
         ->and($result['tt0133093'])->toBe(json_decode(fixtureBytes('Catalog/tmdb/find_by_imdb.json'), true));
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/find/tt0133093')
-        && str_contains(urldecode((string) $request->url()), 'external_source=imdb_id'));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/find/tt0133093')
+        && Str::contains(urldecode((string) $request->url()), 'external_source=imdb_id'));
 });
 
 it('yields null for a 404 imdb id while others still resolve', function (): void {
@@ -546,7 +547,7 @@ it('sends a Bearer-authed GET to /configuration', function (): void {
 
     resolve(TmdbApiService::class)->configuration();
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/configuration')
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/configuration')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
@@ -582,10 +583,10 @@ it('sends a Bearer-authed GET to /movie/changes with start_date/end_date/page pa
 
     resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/movie/changes')
-        && str_contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
-        && str_contains(urldecode((string) $request->url()), 'end_date=2026-06-14')
-        && str_contains(urldecode((string) $request->url()), 'page=1')
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/movie/changes')
+        && Str::contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
+        && Str::contains(urldecode((string) $request->url()), 'end_date=2026-06-14')
+        && Str::contains(urldecode((string) $request->url()), 'page=1')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
 });
 
@@ -598,7 +599,7 @@ it('follows pagination across total_pages', function (): void {
     resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
 
     Http::assertSentCount(2);
-    Http::assertSent(fn ($request): bool => str_contains(urldecode((string) $request->url()), 'page=2'));
+    Http::assertSent(fn ($request): bool => Str::contains(urldecode((string) $request->url()), 'page=2'));
 });
 
 it('flattens the results ids across pages into a flat array of ints', function (): void {
@@ -665,13 +666,13 @@ it('GETs /tv/changes with date/page params and follows total_pages', function ()
 
     resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14');
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/tv/changes')
-        && str_contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
-        && str_contains(urldecode((string) $request->url()), 'end_date=2026-06-14')
-        && str_contains(urldecode((string) $request->url()), 'page=1')
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/tv/changes')
+        && Str::contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
+        && Str::contains(urldecode((string) $request->url()), 'end_date=2026-06-14')
+        && Str::contains(urldecode((string) $request->url()), 'page=1')
         && $request->hasHeader('Authorization', 'Bearer test-token'));
     Http::assertSentCount(2);
-    Http::assertSent(fn ($request): bool => str_contains(urldecode((string) $request->url()), 'page=2'));
+    Http::assertSent(fn ($request): bool => Str::contains(urldecode((string) $request->url()), 'page=2'));
 });
 
 it('flattens and dedupes the tv change ids into a flat array of ints', function (): void {

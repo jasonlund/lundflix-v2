@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -40,7 +41,7 @@ function fakeTvdbSeedCrawl(): void
         '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
         '*api4.thetvdb.com/v4/series?page=0*' => Http::response(fixtureBytes('Catalog/tvdb/series_page1.json')),
         '*api4.thetvdb.com/v4/series?page=1*' => Http::response(fixtureBytes('Catalog/tvdb/series_empty.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/70327/extended')
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/70327/extended')
             ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
             : Http::response('', 404),
     ]);
@@ -64,7 +65,7 @@ function fakeTvdbSeedCrawlWithMalformedId(): void
         '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
         '*api4.thetvdb.com/v4/series?page=0*' => Http::response($malformedPage),
         '*api4.thetvdb.com/v4/series?page=1*' => Http::response(fixtureBytes('Catalog/tvdb/series_empty.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/70327/extended')
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/70327/extended')
             ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
             : Http::response('', 404),
     ]);
@@ -88,7 +89,7 @@ function fakeTvdbSeedCrawlWithMissingId(): void
         '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
         '*api4.thetvdb.com/v4/series?page=0*' => Http::response($missingIdPage),
         '*api4.thetvdb.com/v4/series?page=1*' => Http::response(fixtureBytes('Catalog/tvdb/series_empty.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/70327/extended')
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/70327/extended')
             ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
             : Http::response('', 404),
     ]);
@@ -134,14 +135,14 @@ it('caps hydrate calls and stops paging with --limit', function (): void {
     // Assert
     $hydrateCalls = 0;
     Http::assertSent(function (Request $request) use (&$hydrateCalls): bool {
-        if (str_contains($request->url(), '/extended')) {
+        if (Str::contains($request->url(), '/extended')) {
             $hydrateCalls++;
         }
 
         return true;
     });
     expect($hydrateCalls)->toBe(1);
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series?page=1'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page=1'));
 });
 
 it('hydrates nothing with --limit=0', function (): void {
@@ -152,7 +153,7 @@ it('hydrates nothing with --limit=0', function (): void {
     $this->artisan('catalog:seed-shows-tvdb', ['--limit' => 0]);
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/extended'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/extended'));
 });
 
 it('skips a non-numeric crawl id without firing /series/0/extended', function (): void {
@@ -163,7 +164,7 @@ it('skips a non-numeric crawl id without firing /series/0/extended', function ()
     $this->artisan('catalog:seed-shows-tvdb');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series/0/extended'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/0/extended'));
 });
 
 it('skips a crawl record missing its id key without raising a warning', function (): void {
@@ -230,7 +231,7 @@ it('reports an id that fails both the crawl pass and the retry pass', function (
     $this->artisan('catalog:seed-shows-tvdb');
 
     // Assert
-    Exceptions::assertReported(fn (TvdbRequestFailed $e): bool => str_contains($e->getMessage(), '70327'));
+    Exceptions::assertReported(fn (TvdbRequestFailed $e): bool => Str::contains($e->getMessage(), '70327'));
 });
 
 it('prints an end-of-run summary line naming the still-failing ids', function (): void {

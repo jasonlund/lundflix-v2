@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Actions\UpdateImdbRatings;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
+use Illuminate\Support\Str;
 
 it('updates the ratings of an existing movie', function (): void {
     // Arrange
@@ -81,7 +82,7 @@ it('appends CASE bindings to pre-existing join bindings instead of replacing the
 
     // The join's own binding (-98765) survives in the executed update.
     // Assert
-    $updateLog = collect(DB::getQueryLog())->firstWhere(fn (array $entry): bool => str_starts_with((string) $entry['query'], 'update'));
+    $updateLog = collect(DB::getQueryLog())->firstWhere(fn (array $entry): bool => Str::startsWith((string) $entry['query'], 'update'));
     expect($updateLog['bindings'])->toContain(-98765);
 });
 

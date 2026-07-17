@@ -26,6 +26,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\DomCrawler\Crawler;
@@ -112,7 +113,7 @@ final class DownloadService
         if ($heading->count() === 0) {
             throw DownloadDetailPageIncomplete::forDetailPage($id, 'name heading');
         }
-        $name = trim($heading->first()->text());
+        $name = Str::trim($heading->first()->text());
 
         // The detail page carries several download links (this item plus related
         // releases), so scope to the anchor whose path is keyed to the current id.
@@ -133,7 +134,7 @@ final class DownloadService
         // one figure (`1,024`) into two. The two numbers are, IN ORDER,
         // availability then demand (the source's obfuscated up/down counts) —
         // never re-sort.
-        preg_match_all('/\d+/', str_replace(',', '', $peer->first()->text()), $peerMatch);
+        preg_match_all('/\d+/', Str::replace(',', '', $peer->first()->text()), $peerMatch);
 
         $uploaded = $this->uploadedBlock($crawler);
 
@@ -167,7 +168,7 @@ final class DownloadService
     private function descriptionFrom(Crawler $crawler): ?DownloadDescription
     {
         foreach ($crawler->filter('blockquote') as $node) {
-            if (trim($node->textContent) === '') {
+            if (Str::trim($node->textContent) === '') {
                 continue;
             }
 
@@ -196,7 +197,7 @@ final class DownloadService
         $anchor = $crawler->filter('a.v[href^="/t?"]')
             ->reduce(fn (Crawler $node): bool => preg_match('#^/t\?\d+$#', (string) $node->attr('href')) === 1);
 
-        return $anchor->count() > 0 ? trim($anchor->first()->text()) : null;
+        return $anchor->count() > 0 ? Str::trim($anchor->first()->text()) : null;
     }
 
     private function uploaderFrom(?Crawler $block): ?string
@@ -208,7 +209,7 @@ final class DownloadService
         // The block leads with an empty avatar anchor before the named one, so
         // skip blank anchors and take the first with text.
         foreach ($block->filter('a[href^="/u/"]') as $node) {
-            $text = trim($node->textContent);
+            $text = Str::trim($node->textContent);
             if ($text !== '') {
                 return $text;
             }
@@ -226,7 +227,7 @@ final class DownloadService
         $elapsed = $block->filter('span.elapsedDate');
         $title = $elapsed->count() > 0 ? $elapsed->first()->attr('title') : null;
 
-        if ($title === null || trim($title) === '') {
+        if ($title === null || Str::trim($title) === '') {
             return null;
         }
 
@@ -247,7 +248,7 @@ final class DownloadService
     private function uploadedBlock(Crawler $crawler): ?Crawler
     {
         $blocks = $crawler->filter('div.sub')
-            ->reduce(fn (Crawler $block): bool => str_starts_with(trim($block->text()), 'Uploaded'));
+            ->reduce(fn (Crawler $block): bool => Str::startsWith(Str::trim($block->text()), 'Uploaded'));
 
         return $blocks->count() > 0 ? $blocks->first() : null;
     }
@@ -285,7 +286,7 @@ final class DownloadService
             }
 
             return new DownloadFile(
-                name: trim($cells->eq(0)->text()),
+                name: Str::trim($cells->eq(0)->text()),
                 sizeBytes: $this->bytesFromSize($cells->eq(1)->text()),
             );
         }))->filter()->values();
@@ -345,7 +346,7 @@ final class DownloadService
         }
 
         return $this->resultFromName(
-            name: trim($anchor->text()),
+            name: Str::trim($anchor->text()),
             filename: $this->downloadFilenameFrom((string) $downloadAnchor->first()->attr('href')),
             downloadId: (int) $idMatch[1],
             sizeBytes: $this->bytesFromSize($cells->eq(5)->text()),
@@ -365,7 +366,7 @@ final class DownloadService
     {
         $image = $row->filter('img');
 
-        return $image->count() > 0 ? trim((string) $image->first()->attr('alt')) : null;
+        return $image->count() > 0 ? Str::trim((string) $image->first()->attr('alt')) : null;
     }
 
     /**
@@ -378,7 +379,7 @@ final class DownloadService
         $subLine = $row->filter('td.al div.sub');
 
         return $subLine->count() > 0
-            && preg_match('/\bby\s+(\S+)\s*$/', trim($subLine->first()->text()), $match) === 1
+            && preg_match('/\bby\s+(\S+)\s*$/', Str::trim($subLine->first()->text()), $match) === 1
             ? $match[1]
             : null;
     }
@@ -427,7 +428,7 @@ final class DownloadService
      */
     private function availabilityFrom(string $raw): int
     {
-        $digits = preg_replace('/[^\d]/', '', trim($raw));
+        $digits = preg_replace('/[^\d]/', '', Str::trim($raw));
 
         return $digits === '' || $digits === null ? 0 : (int) $digits;
     }
@@ -437,11 +438,11 @@ final class DownloadService
      */
     private function bytesFromSize(string $raw): int
     {
-        $normalized = trim((string) preg_replace('/\s+/', ' ', $raw));
+        $normalized = Str::trim((string) preg_replace('/\s+/', ' ', $raw));
 
         [$value, $unit] = explode(' ', $normalized) + [1 => 'B'];
 
-        $exponent = match (strtoupper($unit)) {
+        $exponent = match (Str::upper($unit)) {
             'KB' => 1,
             'MB' => 2,
             'GB' => 3,
@@ -469,16 +470,16 @@ final class DownloadService
             // count. No match → null, so an absent count reads as the caller's
             // default (0 for availability, null for the optional demand).
             $countMatching = fn (string $pattern): ?int => preg_match($pattern, $description, $match) === 1
-                ? (int) str_replace(',', '', $match[1])
+                ? (int) Str::replace(',', '', $match[1])
                 : null;
             // The subcategory label sits between the size and the `(S: …)` block.
             $subcategory = preg_match('/;\s*([^(]+?)\s*\(/', $description, $subcategoryMatch) === 1
-                ? trim($subcategoryMatch[1])
+                ? Str::trim($subcategoryMatch[1])
                 : null;
             $length = $item->filterXPath('.//enclosure')->attr('length') ?? '0';
 
             return $this->resultFromName(
-                name: trim($item->filterXPath('.//title')->text()),
+                name: Str::trim($item->filterXPath('.//title')->text()),
                 filename: $this->downloadFilenameFrom((string) $item->filterXPath('.//enclosure')->attr('url')),
                 downloadId: (int) ($guidMatch[1] ?? 0),
                 sizeBytes: (int) $length,
@@ -561,7 +562,7 @@ final class DownloadService
             throw DownloadRequestFailed::for(self::BASE_URL.$path);
         }
 
-        if (str_contains($response->body(), 'do-login.php')) {
+        if (Str::contains($response->body(), 'do-login.php')) {
             throw InvalidDownloadCredentials::loginPageReturned();
         }
 

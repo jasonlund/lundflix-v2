@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Services\TvdbApiService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -41,7 +42,7 @@ describe('updates() feed', function (): void {
 
         resolve(TvdbApiService::class)->updates(1781503200, 'series');
 
-        Http::assertSent(fn ($request): bool => str_contains(urldecode((string) $request->url()), '/updates?since=1781503200&type=series'));
+        Http::assertSent(fn ($request): bool => Str::contains(urldecode((string) $request->url()), '/updates?since=1781503200&type=series'));
     });
 
     it('walks links.next and flattens update records across all pages', function (): void {
@@ -65,7 +66,7 @@ describe('updates() feed', function (): void {
 
         $result = resolve(TvdbApiService::class)->updates(1781503200, 'series');
 
-        expect(Http::recorded(fn ($request): bool => str_contains((string) $request->url(), '/updates')))->toHaveCount(1);
+        expect(Http::recorded(fn ($request): bool => Str::contains((string) $request->url(), '/updates')))->toHaveCount(1);
         expect($result)->toBe(json_decode(fixtureBytes('Catalog/tvdb/updates_page2.json'), true)['data']);
     });
 

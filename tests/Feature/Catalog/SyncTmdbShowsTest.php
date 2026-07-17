@@ -9,6 +9,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -37,7 +38,7 @@ function fakeTmdbShowSync(): void
         // (no swallowed exception, no stray stack trace). Listed before the
         // generic detail stub since it lives on the same host.
         '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
-        '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/tv/1399')
+        '*api.themoviedb.org*' => fn (Request $request) => Str::contains($request->url(), '/tv/1399')
             ? Http::response(fixtureBytes('Catalog/tmdb/tv.json'))
             : Http::response('', 404),
     ]);
@@ -70,10 +71,7 @@ function fakeTmdbShowUpdateSync(): void
                 ? Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page2.json'))
                 : Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'));
         },
-        '*api.themoviedb.org*' => fn (Request $request) => str_ends_with(
-            (string) parse_url($request->url(), PHP_URL_PATH),
-            '/tv/23310',
-        )
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/tv/23310')
             ? Http::response($detailBody)
             : Http::response('', 404),
     ]);
@@ -90,7 +88,7 @@ it('skips a non-numeric export id without hydrating it', function (): void {
     Http::fake([
         '*tv_series_ids*' => Http::response(gzencode($jsonl)),
         '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
-        '*api.themoviedb.org*' => fn (Request $request) => str_contains($request->url(), '/tv/1399')
+        '*api.themoviedb.org*' => fn (Request $request) => Str::contains($request->url(), '/tv/1399')
             ? Http::response(fixtureBytes('Catalog/tmdb/tv.json'))
             : Http::response('', 404),
     ]);
@@ -99,7 +97,7 @@ it('skips a non-numeric export id without hydrating it', function (): void {
     $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/0'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/0'));
 });
 
 it('enriches a matching TVDB show with _tmdb_ columns in place', function (): void {
@@ -153,7 +151,7 @@ it('caps processed ids with --limit', function (): void {
     // Assert
     $hydrateCalls = 0;
     Http::assertSent(function (Request $request) use (&$hydrateCalls): bool {
-        if (str_contains($request->url(), 'api.themoviedb.org/3/tv/')) {
+        if (Str::contains($request->url(), 'api.themoviedb.org/3/tv/')) {
             $hydrateCalls++;
         }
 
@@ -171,7 +169,7 @@ it('skips an already-synced show on a default run', function (): void {
     $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
 });
 
 it('reprocesses an already-synced show with --fresh', function (): void {
@@ -183,7 +181,7 @@ it('reprocesses an already-synced show with --fresh', function (): void {
     $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
 
     // Assert
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
 });
 
 it('refreshes an existing synced show present in the changes feed', function (): void {
@@ -207,7 +205,7 @@ it('ignores a changed tv id not in the local catalog', function (): void {
     $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/325296'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/325296'));
 });
 
 it('requests the rolling 14-day changes window', function (): void {
@@ -221,7 +219,7 @@ it('requests the rolling 14-day changes window', function (): void {
 
     // Assert
     Http::assertSent(function (Request $request): bool {
-        if (! str_contains($request->url(), '/tv/changes')) {
+        if (! Str::contains($request->url(), '/tv/changes')) {
             return false;
         }
         parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
@@ -240,7 +238,7 @@ it('skips the update phase with --fresh', function (): void {
     $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
 });
 
 it('skips the update phase with --limit', function (): void {
@@ -252,7 +250,7 @@ it('skips the update phase with --limit', function (): void {
     $this->artisan('catalog:sync-shows-tmdb', ['--limit' => 1]);
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
 });
 
 it('reports a persistent changes-feed failure and still exits SUCCESS', function (): void {

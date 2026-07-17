@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -175,7 +176,7 @@ it('requests the correct download URL', function (): void {
     resolve(DownloadService::class)->download(7537888, 'x.bin');
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/download.php/7537888/'));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/download.php/7537888/'));
 });
 
 it('maps a failed download to DownloadRequestFailed', function (): void {
@@ -235,7 +236,7 @@ it('round-trips a parser-produced filename unchanged into the download request p
     $service->download($row->downloadId, $row->filename);
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_ends_with((string) $request->url(), '/download.php/'.$row->downloadId.'/'.$row->filename));
+    Http::assertSent(fn ($request): bool => Str::endsWith((string) $request->url(), '/download.php/'.$row->downloadId.'/'.$row->filename));
 });
 
 /*
@@ -299,8 +300,8 @@ it('logs a warning for the retried 429 including the URL and status', function (
         $values = collect($context)->map(fn ($value): string => (string) $value);
 
         return $message !== ''
-            && $values->contains(fn (string $value): bool => str_contains($value, '/download.php/'))
-            && $values->contains(fn (string $value): bool => str_contains($value, '429'));
+            && $values->contains(fn (string $value): bool => Str::contains($value, '/download.php/'))
+            && $values->contains(fn (string $value): bool => Str::contains($value, '429'));
     });
 });
 
@@ -449,7 +450,7 @@ it('requests the Movies feed URL verbatim', function (): void {
     resolve(DownloadService::class)->rss(Category::Movies);
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_ends_with((string) $request->url(), '/t.rss?u=u123;tp=rsskey123;72'));
+    Http::assertSent(fn ($request): bool => Str::endsWith((string) $request->url(), '/t.rss?u=u123;tp=rsskey123;72'));
 });
 
 it('requests the TV feed URL', function (): void {
@@ -464,7 +465,7 @@ it('requests the TV feed URL', function (): void {
     resolve(DownloadService::class)->rss(Category::Tv);
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_ends_with((string) $request->url(), ';tp=rsskey123;73'));
+    Http::assertSent(fn ($request): bool => Str::endsWith((string) $request->url(), ';tp=rsskey123;73'));
 });
 
 it('maps an item to a DownloadResult', function (): void {
@@ -564,9 +565,9 @@ it('falls back to the config rss_key when the stored value is blank', function (
     resolve(DownloadService::class)->rss(Category::Movies);
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), 'u=u123')
-        && str_contains((string) $request->url(), 'tp=env-rss')
-        && str_contains((string) $request->url(), ';72'));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), 'u=u123')
+        && Str::contains((string) $request->url(), 'tp=env-rss')
+        && Str::contains((string) $request->url(), ';72'));
 });
 
 /*
@@ -752,7 +753,7 @@ it('requests the /t?72=&p=2 page and reports page 2', function (): void {
     $page = resolve(DownloadService::class)->index(Category::Movies, 2);
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/t?72=&p=2'));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/t?72=&p=2'));
     expect($page->page)->toBe(2);
 });
 
@@ -783,7 +784,7 @@ it('requests the /t?73= page for the TV category', function (): void {
     resolve(DownloadService::class)->index(Category::Tv);
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '73='));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '73='));
 });
 
 it('warns and falls back lastPage to the current page when pagination links are missing', function (): void {

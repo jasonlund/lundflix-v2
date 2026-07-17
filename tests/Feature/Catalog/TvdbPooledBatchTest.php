@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,7 +60,7 @@ describe('seriesMany()', function (): void {
         expect(array_keys($result->results))->toBe([121361, 305288])
             ->and($result->results[121361])->toBe($body)
             ->and($result->results[305288])->toBe($body);
-        Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/series/121361/extended'));
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/series/121361/extended'));
     });
 
     it('yields null for a 404 series id while others still resolve', function (): void {
@@ -87,7 +88,7 @@ describe('seriesMany()', function (): void {
         $result = resolve(TvdbApiService::class)->seriesMany([121361, 121361, 305288]);
 
         $extendedSent = collect(Http::recorded())->filter(
-            fn ($pair): bool => str_contains((string) $pair[0]->url(), '/extended')
+            fn ($pair): bool => Str::contains((string) $pair[0]->url(), '/extended')
         );
         expect($extendedSent)->toHaveCount(2)
             ->and(array_keys($result->results))->toBe([121361, 305288])
@@ -104,13 +105,13 @@ describe('seriesMany()', function (): void {
         resolve(TvdbApiService::class)->seriesMany([1, 2, 3, 4, 5, 6, 7]);
 
         Http::assertSentInOrder([
-            fn ($request): bool => str_contains((string) $request->url(), '/series/1/extended'),
-            fn ($request): bool => str_contains((string) $request->url(), '/series/2/extended'),
-            fn ($request): bool => str_contains((string) $request->url(), '/series/3/extended'),
-            fn ($request): bool => str_contains((string) $request->url(), '/series/4/extended'),
-            fn ($request): bool => str_contains((string) $request->url(), '/series/5/extended'),
-            fn ($request): bool => str_contains((string) $request->url(), '/series/6/extended'),
-            fn ($request): bool => str_contains((string) $request->url(), '/series/7/extended'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/series/1/extended'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/series/2/extended'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/series/3/extended'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/series/4/extended'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/series/5/extended'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/series/6/extended'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/series/7/extended'),
         ]);
     });
 
@@ -132,7 +133,7 @@ describe('seriesMany()', function (): void {
         expect($result->results)->toBe([305288 => json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)])
             ->and($result->failedIds)->toEqualCanonicalizing([121361, 424242]);
         Exceptions::assertReported(
-            fn (TvdbRequestFailed $e): bool => str_contains($e->getMessage(), '121361') && str_contains($e->getMessage(), '424242')
+            fn (TvdbRequestFailed $e): bool => Str::contains($e->getMessage(), '121361') && Str::contains($e->getMessage(), '424242')
         );
     });
 
@@ -154,7 +155,7 @@ describe('seriesMany()', function (): void {
         expect($result->results)->toBe([121361 => json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)])
             ->and($result->failedIds)->toEqualCanonicalizing([305288, 424242]);
         Exceptions::assertReported(
-            fn (TvdbRequestFailed $e): bool => str_contains($e->getMessage(), '305288') && str_contains($e->getMessage(), '424242')
+            fn (TvdbRequestFailed $e): bool => Str::contains($e->getMessage(), '305288') && Str::contains($e->getMessage(), '424242')
         );
     });
 

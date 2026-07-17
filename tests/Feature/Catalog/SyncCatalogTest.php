@@ -10,6 +10,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Symfony\Component\Console\Command\Command;
 
 uses(RefreshDatabase::class);
@@ -64,21 +65,21 @@ function fakeCatalogSync(): void
         '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => function (Request $request) {
-            if (str_contains($request->url(), '/movie/603')) {
+            if (Str::contains($request->url(), '/movie/603')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));
             }
 
-            if (str_contains($request->url(), '/tv/1399')) {
+            if (Str::contains($request->url(), '/tv/1399')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/tv.json'));
             }
 
             return Http::response('', 404);
         },
         '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => str_contains($request->url(), 'page=1')
+        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
             ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
             : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/434847/extended')
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
             ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
             : Http::response('', 404),
     ]);
@@ -105,11 +106,11 @@ function fakeCatalogSyncFreshAndUpdates(): void
         '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => function (Request $request) {
-            if (str_contains($request->url(), '/movie/603')) {
+            if (Str::contains($request->url(), '/movie/603')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));
             }
 
-            if (str_contains($request->url(), '/tv/1399')) {
+            if (Str::contains($request->url(), '/tv/1399')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/tv.json'));
             }
 
@@ -118,10 +119,10 @@ function fakeCatalogSyncFreshAndUpdates(): void
         '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
         '*api4.thetvdb.com/v4/series?page=0*' => Http::response(fixtureBytes('Catalog/tvdb/series_page1.json')),
         '*api4.thetvdb.com/v4/series?page=1*' => Http::response(fixtureBytes('Catalog/tvdb/series_empty.json')),
-        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => str_contains($request->url(), 'page=1')
+        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
             ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
             : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/434847/extended')
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
             ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
             : Http::response('', 404),
     ]);
@@ -187,7 +188,7 @@ it('never runs the removed import-titles command', function (): void {
     $this->artisan('catalog:sync');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'title.basics'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
 });
 
 it('exits SUCCESS when every command succeeds', function (): void {
@@ -206,21 +207,21 @@ it('continues past a failing show command, exits FAILURE and reports', function 
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
         '*tv_series_ids*' => Http::response('', 500),
         '*api.themoviedb.org*' => function (Request $request) {
-            if (str_contains($request->url(), '/movie/603')) {
+            if (Str::contains($request->url(), '/movie/603')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));
             }
 
-            if (str_contains($request->url(), '/tv/1399')) {
+            if (Str::contains($request->url(), '/tv/1399')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/tv.json'));
             }
 
             return Http::response('', 404);
         },
         '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => str_contains($request->url(), 'page=1')
+        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
             ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
             : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => str_contains($request->url(), '/series/434847/extended')
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
             ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
             : Http::response('', 404),
     ]);
@@ -246,10 +247,10 @@ it('under --fresh crawls the full TVDB seed and forwards --fresh to both TMDB sy
     // --fresh swaps the TVDB step to the full crawl (/series?page) and never the
     // updates feed; forwarding --fresh reprocesses the already-synced 603/1399
     // rows that a plain run would skip, so both hydrations fire.
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/series?page'));
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/updates'));
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
 });
 
 it('on a default run uses the TVDB updates feed and forwards no --fresh to the TMDB syncs', function (): void {
@@ -264,10 +265,10 @@ it('on a default run uses the TVDB updates feed and forwards no --fresh to the T
     // Assert
     // No --fresh means the updates feed (never the crawl) and the already-synced
     // 603/1399 rows are skipped, so neither hydration fires.
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/updates'));
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/series?page'));
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/movie/603'));
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
 });
 
 it('exercises both TMDB changes feeds on a default run', function (): void {
@@ -278,6 +279,6 @@ it('exercises both TMDB changes feeds on a default run', function (): void {
     $this->artisan('catalog:sync');
 
     // Assert
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/movie/changes'));
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
 });

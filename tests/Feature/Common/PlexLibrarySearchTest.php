@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Common\Services\PlexApiService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -129,6 +130,6 @@ it('fails a down pooled server fast without retrying', function (): void {
 
     // Assert
     expect(
-        Http::recorded(fn ($r): bool => str_starts_with((string) $r->url(), 'https://bad-9.plex.direct:32400/library/all'))->count()
+        Http::recorded(fn ($r): bool => Str::startsWith((string) $r->url(), 'https://bad-9.plex.direct:32400/library/all'))->count()
     )->toBe(1);
 });
