@@ -10,6 +10,7 @@ use App\Domains\Catalog\Exceptions\CorruptTmdbExportArchive;
 use Generator;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
+use Illuminate\Support\Str;
 use Throwable;
 
 final class TmdbExportService
@@ -112,11 +113,11 @@ final class TmdbExportService
 
         try {
             while (($line = gzgets($handle)) !== false) {
-                if (rtrim($line, "\r\n") === '') {
+                if (Str::rtrim($line, "\r\n") === '') {
                     continue;
                 }
 
-                $row = json_decode(trim($line), true);
+                $row = json_decode(Str::trim($line), true);
 
                 if (! is_array($row)) {
                     continue;

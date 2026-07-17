@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 
 /**
  * Run the feedback-router-reminder UserPromptSubmit hook with a JSON payload on
@@ -84,7 +85,7 @@ it('stays silent on a new feature request', function (): void {
     $output = runFeedbackRouterHook('add an export button to the dashboard', $cwd);
 
     // Assert
-    expect(trim($output))->toBe('');
+    expect(Str::trim($output))->toBe('');
 });
 
 it('stays silent on an unrelated question', function (): void {
@@ -95,5 +96,5 @@ it('stays silent on an unrelated question', function (): void {
     $output = runFeedbackRouterHook('what time is it', $cwd);
 
     // Assert
-    expect(trim($output))->toBe('');
+    expect(Str::trim($output))->toBe('');
 });

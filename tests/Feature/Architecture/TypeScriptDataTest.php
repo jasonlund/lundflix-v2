@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Str;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 use Symfony\Component\Finder\Finder;
@@ -30,7 +31,7 @@ function typeScriptAnnotatedDomainClasses(): array
     $reflections = [];
 
     foreach (Finder::create()->files()->in($domainsPath)->name('*.php') as $file) {
-        $relative = str_replace(['/', '.php'], ['\\', ''], $file->getRelativePathname());
+        $relative = Str::replace(['/', '.php'], ['\\', ''], $file->getRelativePathname());
         $fqcn = 'App\\Domains\\'.$relative;
 
         if (! class_exists($fqcn)) {
@@ -71,8 +72,8 @@ it('only annotates spatie Data classes with the TypeScript attribute', function 
 
 it('only annotates classes living in a domain Data namespace with the TypeScript attribute', function (): void {
     expectNoAnnotatedClassViolates(
-        fn (ReflectionClass $class): bool => ! str_starts_with($class->getName(), 'App\\Domains\\')
-            || ! str_contains($class->getName(), '\\Data\\'),
+        fn (ReflectionClass $class): bool => ! Str::startsWith($class->getName(), 'App\\Domains\\')
+            || ! Str::contains($class->getName(), '\\Data\\'),
         'Every #[TypeScript] class must live under App\\Domains\\...\\Data\\.',
     );
 });

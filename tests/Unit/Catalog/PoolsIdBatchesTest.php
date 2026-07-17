@@ -11,6 +11,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /*
@@ -126,13 +127,13 @@ it('chunks by poolConcurrency without dropping or reordering any id', function (
     // Assert
     Http::assertSentCount(7);
     Http::assertSentInOrder([
-        fn ($request): bool => str_contains((string) $request->url(), '/item/1'),
-        fn ($request): bool => str_contains((string) $request->url(), '/item/2'),
-        fn ($request): bool => str_contains((string) $request->url(), '/item/3'),
-        fn ($request): bool => str_contains((string) $request->url(), '/item/4'),
-        fn ($request): bool => str_contains((string) $request->url(), '/item/5'),
-        fn ($request): bool => str_contains((string) $request->url(), '/item/6'),
-        fn ($request): bool => str_contains((string) $request->url(), '/item/7'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/item/1'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/item/2'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/item/3'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/item/4'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/item/5'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/item/6'),
+        fn ($request): bool => Str::contains((string) $request->url(), '/item/7'),
     ]);
 });
 
@@ -174,7 +175,7 @@ it('returns the succeeding id and reports the aggregate when a non-Response pool
     expect($result->results)->toBe([2 => ['id' => 2]])
         ->and($result->failedIds)->toBe([1]);
     Exceptions::assertReported(
-        fn (RuntimeException $e): bool => str_contains($e->getMessage(), 'failed ids: 1')
+        fn (RuntimeException $e): bool => Str::contains($e->getMessage(), 'failed ids: 1')
     );
 });
 
@@ -195,7 +196,7 @@ it('returns the succeeding id and reports the aggregate when resolvePooled signa
     expect($result->results)->toBe([2 => ['id' => 2]])
         ->and($result->failedIds)->toBe([1]);
     Exceptions::assertReported(
-        fn (RuntimeException $e): bool => str_contains($e->getMessage(), 'failed ids: 1')
+        fn (RuntimeException $e): bool => Str::contains($e->getMessage(), 'failed ids: 1')
     );
 });
 
@@ -227,6 +228,6 @@ it('returns the succeeding id and reports every failed id together in one aggreg
     // Assert
     expect($result->results)->toBe([2 => ['id' => 2]]);
     Exceptions::assertReported(
-        fn (RuntimeException $e): bool => str_contains($e->getMessage(), 'failed ids: 1,3')
+        fn (RuntimeException $e): bool => Str::contains($e->getMessage(), 'failed ids: 1,3')
     );
 });

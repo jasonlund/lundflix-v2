@@ -8,6 +8,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
+use Illuminate\Support\Str;
 
 afterEach(fn () => Date::setTestNow());
 
@@ -18,7 +19,7 @@ it('requests the daily movie-ids export for today', function (): void {
 
     $path = resolve(TmdbExportService::class)->download('movie_ids');
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $expectedFilename));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), $expectedFilename));
 
     @unlink($path);
 });
@@ -33,7 +34,7 @@ it("requests yesterday's export before 08:00 UTC (today not yet published)", fun
     $path = resolve(TmdbExportService::class)->download('movie_ids');
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $expectedFilename));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), $expectedFilename));
 
     @unlink($path);
 });
@@ -48,7 +49,7 @@ it("requests today's export at/after 08:00 UTC (published)", function (): void {
     $path = resolve(TmdbExportService::class)->download('movie_ids');
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), $expectedFilename));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), $expectedFilename));
 
     @unlink($path);
 });

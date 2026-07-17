@@ -7,6 +7,7 @@ use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\Common\Services\PlexApiService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -42,7 +43,7 @@ it('sends the X-Plex identity headers on the createPin request', function (): vo
 
     resolve(PlexApiService::class)->createPin();
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), 'clients.plex.tv/api/v2/pins')
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), 'clients.plex.tv/api/v2/pins')
         && $request->hasHeader('X-Plex-Client-Identifier', config('services.plex.client_identifier'))
         && $request->hasHeader('X-Plex-Product', 'lundflix'));
 });
@@ -81,7 +82,7 @@ it('returns null when the PIN is still unclaimed', function (): void {
     $token = resolve(PlexApiService::class)->getTokenFromPin(538114995);
 
     expect($token)->toBeNull();
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), 'clients.plex.tv/api/v2/pins/538114995'));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), 'clients.plex.tv/api/v2/pins/538114995'));
 });
 
 it('builds the app.plex.tv auth hand-off URL with the PIN code and forward url', function (): void {
@@ -91,7 +92,7 @@ it('builds the app.plex.tv auth hand-off URL with the PIN code and forward url',
 
     expect($url)->toStartWith('https://app.plex.tv/auth#?');
     // The query lives in the URL fragment after '#?'; strip the leading '?' before parsing.
-    $query = ltrim((string) parse_url($url, PHP_URL_FRAGMENT), '?');
+    $query = Str::ltrim((string) parse_url($url, PHP_URL_FRAGMENT), '?');
     parse_str($query, $params);
     // parse_str decodes the bracketed param into a nested array, so the product
     // lands at the dotted path context.device.product (not a literal flat key).

@@ -13,6 +13,7 @@ use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 final class PlexApiService
 {
@@ -165,7 +166,7 @@ final class PlexApiService
      */
     private function preferHttps(Collection $candidates): ?array
     {
-        return $candidates->first(fn (array $c): bool => str_starts_with((string) ($c['uri'] ?? ''), 'https://'))
+        return $candidates->first(fn (array $c): bool => Str::startsWith((string) ($c['uri'] ?? ''), 'https://'))
             ?? $candidates->first();
     }
 
@@ -180,7 +181,7 @@ final class PlexApiService
 
         $host = parse_url($connection['uri'] ?? '', PHP_URL_HOST);
 
-        return is_string($host) && str_starts_with($host, 'relay.');
+        return is_string($host) && Str::startsWith($host, 'relay.');
     }
 
     /**
@@ -194,7 +195,7 @@ final class PlexApiService
 
         $host = parse_url($connection['uri'] ?? '', PHP_URL_HOST);
 
-        if (! is_string($host) || ! str_contains($host, 'plex.direct')) {
+        if (! is_string($host) || ! Str::contains($host, 'plex.direct')) {
             return false;
         }
 
@@ -464,27 +465,27 @@ final class PlexApiService
         // grandparentGuid fields, so the entity's own ids beat a parent/show id
         // that shares the same scheme (e.g. an episode's imdb:// over its show's).
         foreach ($guids->unique() as $guid) {
-            if (! isset($identifiers['imdb']) && str_starts_with((string) $guid, 'imdb://')) {
-                $identifiers['imdb'] = substr((string) $guid, strlen('imdb://'));
+            if (! isset($identifiers['imdb']) && Str::startsWith((string) $guid, 'imdb://')) {
+                $identifiers['imdb'] = Str::substr((string) $guid, Str::length('imdb://'));
             }
 
-            if (str_starts_with((string) $guid, 'tmdb://')) {
-                $remainder = substr((string) $guid, strlen('tmdb://'));
+            if (Str::startsWith((string) $guid, 'tmdb://')) {
+                $remainder = Str::substr((string) $guid, Str::length('tmdb://'));
 
                 if ($remainder !== '' && ctype_digit($remainder)) {
                     $identifiers['tmdb'] ??= (int) $remainder;
                 }
             }
 
-            if (str_starts_with((string) $guid, 'tvdb://')) {
-                $remainder = substr((string) $guid, strlen('tvdb://'));
+            if (Str::startsWith((string) $guid, 'tvdb://')) {
+                $remainder = Str::substr((string) $guid, Str::length('tvdb://'));
 
                 if ($remainder !== '' && ctype_digit($remainder)) {
                     $identifiers['tvdb'] ??= (int) $remainder;
                 }
             }
 
-            if (! isset($identifiers['plex']) && str_starts_with((string) $guid, 'plex://')) {
+            if (! isset($identifiers['plex']) && Str::startsWith((string) $guid, 'plex://')) {
                 $identifiers['plex'] = $guid;
             }
         }

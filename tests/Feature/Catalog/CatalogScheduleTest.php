@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Str;
 
 it('registers the catalog:sync command', function (): void {
     // Arrange
@@ -22,7 +23,7 @@ it('schedules catalog:sync at midnight and noon America/Los_Angeles without over
 
     // Act
     $event = collect($schedule->events())->first(
-        fn ($e): bool => str_contains($e->command ?? '', 'catalog:sync'),
+        fn ($e): bool => Str::contains($e->command ?? '', 'catalog:sync'),
     );
 
     // Assert

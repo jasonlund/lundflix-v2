@@ -233,6 +233,41 @@ mass-assignable; write paths whitelist attributes **explicitly at the callsite**
   removes mass-assignment protection" or "model is missing `$fillable`" is a
   known false positive — the protection lives at the callsite by convention.
 
+## Laravel helpers over PHP functions
+
+Prefer `Illuminate\Support\Str` / `Arr` helpers over the PHP-native equivalents
+(FLIX-206). This is **mechanically enforced** — a custom `FuncCallToStaticCall`
+map in `rector.php` rewrites the native call and the `rector --dry-run` CI gate
+fails on any that slip in, so you rarely hand-write the native form.
+
+- **Rector-rewritten (don't write the native form):** `str_starts_with` /
+  `str_ends_with` / `str_contains` → `Str::startsWith`/`endsWith`/`contains`;
+  `str_replace` → `Str::replace`; `strtolower`/`strtoupper`/`ucfirst` →
+  `Str::lower`/`upper`/`ucfirst`; `trim`/`ltrim`/`rtrim` → `Str::trim`/…;
+  `substr` → `Str::substr`; `strlen` → `Str::length`; `str_repeat` →
+  `Str::repeat`; `ucwords` → `Str::ucwords`.
+- **Stay native — do NOT "fix" these** (no clean 1:1, don't add them to the map):
+  `array_key_exists` (`Arr::exists($array, $key)` swaps the argument order — the
+  positional Rector map can't express it); signature-mismatch `str_pad` /
+  `preg_replace` / `explode`; no-equivalent `preg_match` /
+  `preg_split` / `implode` / `sprintf` / `count` / `in_array` and
+  the `array_map`/`filter`/`merge`/`keys`/`values`/`column`/`unique`/`flip`/
+  `combine` family; `json_encode` / `json_decode` (`Js::` is HTML-embedding only);
+  `last()` / `head()` (already helpers).
+- **Multibyte caveat:** `Str::lower`/`upper`/`length`/`substr` are multibyte and
+  `Str::trim` strips unicode whitespace (nbsp/BOM) — correct for ASCII inputs. If
+  a call measures **bytes** (payload size), keep native `strlen`/`substr`.
+- **Null-haystack caveat:** `Str::startsWith`/`endsWith`/`contains` coerce a
+  `null` haystack to `false`, where the native `str_starts_with`/`str_ends_with`/
+  `str_contains` (under `strict_types`) would throw a `TypeError` — guard the
+  haystack rather than relying on the silent `false`.
+- **Forward-looking** (no current usages, follow going forward): `number_format`
+  → `Number::format` (`currency`/`fileSize`/`percentage`); `date()`/`time()`/
+  `strtotime()` → `now()`/`today()`/Carbon.
+- **Collections over arrays** — in **new** code prefer a Collection pipeline
+  (`collect($x)->map(...)->filter(...)->pluck(...)`) over chained `array_*` calls.
+  Convention only (not Rector-enforced); existing arrays are left as-is.
+
 ## Persistence: iterating rows you write to → `chunkById`
 
 When a loop **writes to the DB rows it is iterating** (stamping a column,
@@ -418,6 +453,13 @@ This application is a Laravel application and its main Laravel ecosystems packag
 # Deployment
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
+
+=== herd rules ===
+
+# Laravel Herd
+
+- The application is served by Laravel Herd at `https?://[kebab-case-project-dir].test`. Use the `get-absolute-url` tool to generate valid URLs. Never run commands to serve the site. It is always available.
+- Use the `herd` CLI to manage services, PHP versions, and sites (e.g. `herd sites`, `herd services:start <service>`, `herd php:list`). Run `herd list` to discover all available commands.
 
 === tests rules ===
 

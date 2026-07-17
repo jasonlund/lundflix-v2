@@ -9,6 +9,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -77,7 +78,7 @@ describe('series() JWT auth', function (): void {
 
         resolve(TvdbApiService::class)->series(81189);
 
-        Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/login')
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/login')
             && $request->method() === 'POST'
             && data_get($request->data(), 'apikey') === 'test-key');
     });
@@ -90,7 +91,7 @@ describe('series() JWT auth', function (): void {
 
         resolve(TvdbApiService::class)->series(81189);
 
-        Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/series/81189')
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/series/81189')
             && $request->hasHeader('Authorization', 'Bearer test.jwt.token'));
     });
 
@@ -114,7 +115,7 @@ describe('series() JWT auth', function (): void {
         resolve(TvdbApiService::class)->series(81189);
         resolve(TvdbApiService::class)->series(81189);
 
-        expect(Http::recorded(fn ($request): bool => str_contains((string) $request->url(), '/login')))->toHaveCount(1);
+        expect(Http::recorded(fn ($request): bool => Str::contains((string) $request->url(), '/login')))->toHaveCount(1);
     });
 
     it('re-logins once and returns the payload on a 401-then-200 sequence', function (): void {
@@ -140,7 +141,7 @@ describe('series() JWT auth', function (): void {
 
         resolve(TvdbApiService::class)->series(81189);
 
-        expect(Http::recorded(fn ($request): bool => str_contains((string) $request->url(), '/login')))->toHaveCount(2);
+        expect(Http::recorded(fn ($request): bool => Str::contains((string) $request->url(), '/login')))->toHaveCount(2);
     });
 
     it('throws TvdbAuthenticationFailed when the 401 persists', function (): void {
@@ -164,7 +165,7 @@ describe('series() JWT auth', function (): void {
             // swallow: the Act is making the failing call; the assertion is the login count
         }
 
-        expect(Http::recorded(fn ($request): bool => str_contains((string) $request->url(), '/login')))->toHaveCount(2);
+        expect(Http::recorded(fn ($request): bool => Str::contains((string) $request->url(), '/login')))->toHaveCount(2);
     });
 
     it('throws TvdbAuthenticationFailed and caches nothing when /login returns no usable token', function (): void {
@@ -327,7 +328,7 @@ describe('retry policy & backoff', function (): void {
         $payload = resolve(TvdbApiService::class)->series(81189);
 
         expect($payload)->toBe(json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true))
-            ->and(Http::recorded(fn ($request): bool => str_contains((string) $request->url(), '/series')))->toHaveCount(2);
+            ->and(Http::recorded(fn ($request): bool => Str::contains((string) $request->url(), '/series')))->toHaveCount(2);
     });
 
     it('throws TvdbRequestFailed when a 500 persists past retries', function (): void {
@@ -349,7 +350,7 @@ describe('retry policy & backoff', function (): void {
 
         resolve(TvdbApiService::class)->series(81189);
 
-        expect(Http::recorded(fn ($request): bool => str_contains((string) $request->url(), '/series')))->toHaveCount(1);
+        expect(Http::recorded(fn ($request): bool => Str::contains((string) $request->url(), '/series')))->toHaveCount(1);
     });
 });
 
@@ -378,7 +379,7 @@ describe('series() single fetch', function (): void {
 
         resolve(TvdbApiService::class)->series(81189);
 
-        Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '/series/81189/extended')
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/series/81189/extended')
             && $request->hasHeader('Authorization', 'Bearer test.jwt.token'));
     });
 

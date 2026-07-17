@@ -8,6 +8,7 @@ use App\Domains\Catalog\Exceptions\CannotOpenImdbDatasetArchive;
 use App\Domains\Catalog\Exceptions\CorruptImdbDatasetArchive;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
+use Illuminate\Support\Str;
 use Throwable;
 
 final class ImdbDatasetService
@@ -60,7 +61,7 @@ final class ImdbDatasetService
             $count = 0;
 
             while (($line = gzgets($handle)) !== false) {
-                if (rtrim($line, "\r\n") === '') {
+                if (Str::rtrim($line, "\r\n") === '') {
                     continue;
                 }
 
@@ -90,7 +91,7 @@ final class ImdbDatasetService
                 $header = $this->fields($this->readHeader($handle, $path));
 
                 while (($line = gzgets($handle)) !== false) {
-                    if (rtrim($line, "\r\n") === '') {
+                    if (Str::rtrim($line, "\r\n") === '') {
                         continue;
                     }
 
@@ -129,7 +130,7 @@ final class ImdbDatasetService
      */
     private function fields(string $line): array
     {
-        return explode("\t", rtrim($line, "\r\n"));
+        return explode("\t", Str::rtrim($line, "\r\n"));
     }
 
     /**

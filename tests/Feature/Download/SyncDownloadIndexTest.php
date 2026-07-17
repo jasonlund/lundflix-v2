@@ -6,6 +6,7 @@ use App\Domains\Download\Models\Download;
 use App\Domains\Download\Settings\DownloadSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -37,7 +38,7 @@ it('walks past page 1 and persists a page-2 row under --fresh', function (): voi
     // Assert
     $this->assertDatabaseHas('downloads', ['_provider_id' => 7563851]);
     $this->assertDatabaseHas('downloads', ['_provider_id' => 7563723]);
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '72=&p=2'));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '72=&p=2'));
 });
 
 it('walks both categories and stamps each row with its own category', function (): void {
@@ -111,7 +112,7 @@ it('stops a category once a fetched page yields no unseen ids', function (): voi
     $this->artisan('download:sync-index')->assertSuccessful();
 
     // Assert
-    Http::assertNotSent(fn ($request): bool => str_contains((string) $request->url(), '72=&p=2'));
+    Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '72=&p=2'));
 });
 
 it('continues to the next page while a page still carries unseen ids', function (): void {
@@ -131,7 +132,7 @@ it('continues to the next page while a page still carries unseen ids', function 
     $this->artisan('download:sync-index')->assertSuccessful();
 
     // Assert
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), '72=&p=2'));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '72=&p=2'));
 });
 
 it('drops no rows through the incremental stop logic', function (): void {

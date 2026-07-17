@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Common\Services\PlexApiService;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -66,13 +67,13 @@ it('requests type=4 for show sections and no type for movie sections', function 
     Http::assertSent(function ($r): bool {
         parse_str((string) parse_url((string) $r->url(), PHP_URL_QUERY), $query);
 
-        return str_contains((string) $r->url(), '/library/sections/2/recentlyAdded')
+        return Str::contains((string) $r->url(), '/library/sections/2/recentlyAdded')
             && ($query['type'] ?? null) === '4';
     });
     Http::assertSent(function ($r): bool {
         parse_str((string) parse_url((string) $r->url(), PHP_URL_QUERY), $query);
 
-        return str_contains((string) $r->url(), '/library/sections/1/recentlyAdded')
+        return Str::contains((string) $r->url(), '/library/sections/1/recentlyAdded')
             && ! array_key_exists('type', $query);
     });
 });
@@ -91,7 +92,7 @@ it('skips sections that are not movie or show', function (): void {
     resolve(PlexApiService::class)->getRecentlyAdded($uri, 'tok');
 
     // Assert
-    Http::assertNotSent(fn ($r): bool => str_contains((string) $r->url(), '/library/sections/3/'));
+    Http::assertNotSent(fn ($r): bool => Str::contains((string) $r->url(), '/library/sections/3/'));
 });
 
 it('returns an empty array for an empty uri', function (): void {
@@ -129,7 +130,7 @@ it('derives the container window from the limit', function (): void {
     resolve(PlexApiService::class)->getRecentlyAdded($uri, 'tok', 10);
 
     // Assert
-    Http::assertSent(fn ($r): bool => str_contains((string) $r->url(), '/recentlyAdded')
-        && (data_get($r->data(), 'X-Plex-Container-Start') == 0 || str_contains((string) $r->url(), 'Container-Start=0'))
-        && (data_get($r->data(), 'X-Plex-Container-Size') == 10 || str_contains((string) $r->url(), 'Container-Size=10')));
+    Http::assertSent(fn ($r): bool => Str::contains((string) $r->url(), '/recentlyAdded')
+        && (data_get($r->data(), 'X-Plex-Container-Start') == 0 || Str::contains((string) $r->url(), 'Container-Start=0'))
+        && (data_get($r->data(), 'X-Plex-Container-Size') == 10 || Str::contains((string) $r->url(), 'Container-Size=10')));
 });

@@ -8,6 +8,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Sleep;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,7 +34,7 @@ it('requests the correct dataset url', function (): void {
 
     resolve(ImdbDatasetService::class)->download();
 
-    Http::assertSent(fn ($request): bool => str_contains((string) $request->url(), 'title.ratings.tsv.gz'));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), 'title.ratings.tsv.gz'));
 });
 
 it('returns a temp path whose contents are the downloaded bytes', function (): void {

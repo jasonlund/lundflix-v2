@@ -10,6 +10,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -42,10 +43,10 @@ function fakeTmdbShowSync(): void
         '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => function (Request $request) {
             $path = (string) parse_url($request->url(), PHP_URL_PATH);
-            if (str_ends_with($path, '/tv/1399')) {
+            if (Str::endsWith($path, '/tv/1399')) {
                 return Http::response(fixtureBytes('Catalog/tmdb/tv.json'));
             }
-            if (str_ends_with($path, '/tv/1396')) {
+            if (Str::endsWith($path, '/tv/1396')) {
                 // Re-key the Game of Thrones body onto id 1396 so the reconcile
                 // hydrate (which keys on the payload's id) lands on the row.
                 $body = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
@@ -85,10 +86,7 @@ function fakeTmdbShowUpdateSync(): void
                 ? Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page2.json'))
                 : Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'));
         },
-        '*api.themoviedb.org*' => fn (Request $request) => str_ends_with(
-            (string) parse_url($request->url(), PHP_URL_PATH),
-            '/tv/23310',
-        )
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/tv/23310')
             ? Http::response($detailBody)
             : Http::response('', 404),
     ]);
@@ -196,7 +194,7 @@ it('skips an already-synced show on a default run', function (): void {
     $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
 });
 
 it('reprocesses an already-synced show with --fresh', function (): void {
@@ -208,7 +206,7 @@ it('reprocesses an already-synced show with --fresh', function (): void {
     $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
 
     // Assert
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/tv/1399'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
 });
 
 it('refreshes an existing synced show present in the changes feed', function (): void {
@@ -232,7 +230,7 @@ it('ignores a changed tv id not in the local catalog', function (): void {
     $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/325296'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/325296'));
 });
 
 it('requests the rolling 14-day changes window', function (): void {
@@ -246,7 +244,7 @@ it('requests the rolling 14-day changes window', function (): void {
 
     // Assert
     Http::assertSent(function (Request $request): bool {
-        if (! str_contains($request->url(), '/tv/changes')) {
+        if (! Str::contains($request->url(), '/tv/changes')) {
             return false;
         }
         parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
@@ -265,7 +263,7 @@ it('skips the update phase with --fresh', function (): void {
     $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
 });
 
 it('skips the update phase with --limit', function (): void {
@@ -277,7 +275,7 @@ it('skips the update phase with --limit', function (): void {
     $this->artisan('catalog:sync-shows-tmdb', ['--limit' => 1]);
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/tv/changes'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
 });
 
 it('reports a persistent changes-feed failure and still exits SUCCESS', function (): void {
