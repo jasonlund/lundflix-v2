@@ -33,14 +33,45 @@ SUMMARY: [What was checked and why it passed]
 === END NO FINDINGS ===
 ```
 
+## The Comment Bar — only comment if
+
+A candidate is worth a comment **only when it clears ALL four bars**. Fail any one
+and you stay silent — a wrong or low-value comment costs more trust than a missed
+nit. Even frontier reviewers are wrong on ~1 in 3 comments, so doubt yourself
+before speaking.
+
+1. **Evidence bar — behavior, not naming.** The finding cites a **`file:line` in
+   the source showing the actual behavior**, not an inference from a name, a type,
+   or "this is probably". "`processPayment()` probably double-charges" fails;
+   "`charge()` is called at L40 and again at L57 with no idempotency guard" clears.
+   Naming-based guesses are the #1 false-positive source — if your only evidence is
+   what something is *called*, drop it.
+2. **Scope bar — this diff.** The finding is about code the PR **added or
+   modified**. A real bug in untouched code is allowed **only** tagged pre-existing
+   (severity-capped at CONSIDER per rule 3 below). Do not re-audit the repo or
+   re-litigate settled design.
+3. **Category bar — objective defect.** It's a bug, security, correctness, data,
+   or cross-system/integration issue. Style, formatting, naming taste, and
+   "alternative approach" preferences are **not** defects — cap them at NIT and
+   respect the nit cap, or say nothing.
+4. **Ownership bar — not already owned.** A deterministic gate
+   (Pint/Rector/ESLint/Vitest/Pest) or an endorsed convention does not already own
+   it. Repeating a gate or flagging an endorsed pattern is itself a review defect
+   (see Convention Override Rule).
+
 ## Severity Definitions
 
 | Severity | Meaning | Examples |
 |----------|---------|----------|
-| BLOCKING | Must fix before merge | Security vulnerability, data loss, broken functionality, failing test, unimplemented acceptance criteria |
-| SHOULD_FIX | Strongly recommended | Logic error, missing edge case, convention violation affecting maintainability, missing test for critical path |
-| CONSIDER | Author's judgment | Style preference, minor performance, alternative approach, pre-existing issue |
-| NIT | Trivial | Typo, formatting, naming suggestion |
+| BLOCKING | Must fix before merge — **reserved for**: incorrect logic that breaks behavior, unscoped/tenant-leaking queries, secrets or PII in logs, non-backward-compatible migrations, a DDD-boundary break that changes behavior, a failing test, an unimplemented acceptance criterion. If a finding is not on this list, it is **not** BLOCKING. | Query missing a tenant scope; migration drops a column with no fallback; secret logged in plaintext |
+| SHOULD_FIX | Strongly recommended — a real defect that isn't on the BLOCKING list | Logic error on an edge case, missing test for a critical path, convention violation affecting maintainability |
+| CONSIDER | Author's judgment | Minor performance, alternative approach, pre-existing issue |
+| NIT | Trivial — **the only home for style/naming/taste** | Naming suggestion, a non-gate-owned readability tweak |
+
+**Nit cap.** Report **at most 5 NITs** across the whole review. Found more? Post
+the 5 highest-value and note "plus N similar nits" in the summary — never inline
+the rest. Style, formatting, import order, and type hints owned by a gate are **not
+nits, they are silence** (bar 4).
 
 ## Review Authority Rules
 
@@ -118,6 +149,14 @@ pattern is documented as the project standard, it is **NOT a finding** — even 
 it contradicts general best practices. Flagging an endorsed pattern is itself a
 defect in the review.
 
+**Default-silent on deliberate choices.** Beyond documented conventions: if a
+pattern is **consistent with how the surrounding code already does it**, or reads
+as an intentional decision the author made on purpose, stay silent unless it clears
+the Comment Bar as an objective defect. Your stance is a pragmatic verifier —
+verify the author's *intent* and hunt real *failure modes*; do not second-guess
+architecture or taste. Adversarial energy is aimed at bugs and at your own false
+positives, never at the author's judgment.
+
 **Commonly false-positived conventions** (endorsed — do not flag):
 - Models under `app/Domains/{Domain}/Models/` — intentional DDD layout, not a
   misplacement.
@@ -130,13 +169,11 @@ defect in the review.
   one Act per test), not duplication to be merged.
 - Domain calling another domain only through a `Contracts/` interface — intended
   boundary, not indirection to remove.
-- Feature tests with no per-file `Http::preventStrayRequests()` — it is applied
-  **globally** in `tests/Pest.php` via `pest()->extend(TestCase::class)
-  ->beforeEach(fn () => Http::preventStrayRequests())->in('Feature')`. Adding it
-  per-file is redundant, not a missing safeguard. (NB: in this repo
-  `->use(RefreshDatabase::class)` is currently **commented out** in `Pest.php`, so
-  `RefreshDatabase` is *not* globally applied — do not extend this dismissal to a
-  missing-`RefreshDatabase` flag unless that line is un-commented.)
+- Feature tests with no per-file `uses(RefreshDatabase::class)` or
+  `Http::preventStrayRequests()` — **both** are applied **globally** to the Feature
+  suite in `tests/Pest.php` via `pest()->extend(TestCase::class)
+  ->use(RefreshDatabase::class)->beforeEach(fn () => Http::preventStrayRequests())
+  ->in('Feature')`. Declaring either per-file is redundant, not a missing safeguard.
 
 ## Consensus Rules (Used by Orchestrator, Not Agents)
 
@@ -154,11 +191,18 @@ reviewers flag the same issue, keep the richest evidence and highest severity.
 
 ## Tiebreaker Rule (Phase 5)
 
-If false-positive-hunter dismisses a finding that missing-defect-hunter
-independently rediscovers at SHOULD_FIX or higher, the finding survives at the
-severity assigned by missing-defect-hunter (minimum SHOULD_FIX). A finding must be
-dismissed by the adversarial agent AND absent from the fresh-eyes review to be
-removed from the final report.
+The false-positive-hunter's verdict is **binding**: a finding it defeats **with
+evidence** (shows the behavior is handled elsewhere, misread, pre-existing,
+convention-endorsed, or unsupported by a `file:line` citation) is **dropped
+entirely — not down-severitied.** A weakened-but-alive finding is a compromise that
+ships noise; either the defense holds and it dies, or it doesn't and the finding
+stands at full severity.
+
+**One exception — independent rediscovery.** If false-positive-hunter dismisses a
+finding that missing-defect-hunter *independently* rediscovers at SHOULD_FIX or
+higher, the finding survives at missing-defect-hunter's severity (minimum
+SHOULD_FIX): two independent reviewers seeing the same defect outweighs one
+dismissal. Absent that rediscovery, a defeated finding is removed from the report.
 
 ## Mechanical Grounding Verification
 

@@ -20,10 +20,30 @@ You do **not** post anything to GitHub — the orchestrator does that.
 
 ## Step 1 — Run the CLI
 
+Review **exactly the GitHub PR diff** — the three-dot `merge-base(origin/$BASE, HEAD)…
+HEAD` change set, committed only:
+
 ```bash
-coderabbit review --type all --base "$BASE" --agent \
+git fetch --quiet origin "$BASE" || true                 # refresh upstream ref
+BASE_COMMIT="$(git merge-base "origin/$BASE" HEAD)"       # PR fork point = GitHub's diff base
+git diff --quiet "$BASE_COMMIT" HEAD && echo "WARN: empty diff — nothing to review"
+coderabbit review --type committed --base-commit "$BASE_COMMIT" --agent \
   > "$RUN_DIR/coderabbit.agent.raw" 2> "$RUN_DIR/coderabbit.err"
 ```
+
+- **`--base-commit "$BASE_COMMIT"`, NOT `--base "origin/$BASE"`.** Verified against the
+  CLI (v0.6.1): `--base <branch>` only resolves a **local** branch name — it does **not**
+  accept a remote-tracking ref like `origin/main`. Given one it silently reviews
+  **nothing** and still exits 0, so the run looks fine and reports **0 findings** (this
+  was the "CodeRabbit stopped reviewing our PRs" bug). `--base-commit` takes a real
+  commit SHA that always resolves; the **merge-base** is exactly the fork point GitHub
+  uses for its "Files changed" three-dot diff, so this reviews the PR and only the PR,
+  regardless of how stale local `$BASE` is. The CLI echoes the resolved base in its
+  first `review_context` line (`"baseCommit":"…"`) — a fast sanity check.
+- **`--type committed`, not the default `all`.** `--type` is `all | committed |
+  uncommitted`; `all` (default) = committed **+ uncommitted**, which would surface
+  findings on whatever is uncommitted in the workspace — outside the PR. `committed`
+  scopes to the PR's committed diff.
 
 This is **JSONL** (one JSON object per line) and can take a few minutes. The free
 CLI allowance is ~3 reviews/hr; a quota/allowance notice arrives as a
@@ -90,6 +110,13 @@ Source: CodeRabbit
 Read back `coderabbit.report.md`; confirm header, `Source: CodeRabbit`, all three
 section headers present, and finding counts match the JSONL `complete` line's
 `findings` total (minus any you intentionally dropped — note if so).
+
+**Guard the silent-zero.** A "0 findings" result is only trustworthy if CodeRabbit
+actually reviewed a non-empty diff. Confirm the first `review_context` line carries the
+`baseCommit` you passed **and** the pre-run `git diff` was non-empty. If the diff was
+empty, or `baseCommit` is missing/wrong, do **not** report a clean `OK 0` — return
+`FAILED` with the reason (empty diff / base not applied), so a scoping bug can never
+again masquerade as "reviewed, no comments."
 
 ## Step 4 — Return (your final message = structured data, not prose)
 

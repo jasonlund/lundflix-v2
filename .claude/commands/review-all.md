@@ -17,6 +17,10 @@ returns a canonical report file. **You (the orchestrator) do all the posting** �
 the subagent never touches GitHub. Both always run; a failing engine is skipped,
 never fatal.
 
+Loop position: `/create-pr` → `/human-review` (human-facing summary + ticket-scope
+check) → **`/review-all`** → `/process-review`. Run `/human-review` first for a
+plain-language read of the branch before these engines dig for defects.
+
 ## Input
 - **PR number** — positional arg, or auto-detected from the current branch.
 - **Ticket ID** — `FLIX-XXX`, optional; passed straight through to `/review-pr`.
@@ -34,8 +38,9 @@ never fatal.
 
 1. **PR number** — if not passed, follow **PR Number Auto-Extraction** in
    `.claude/skills/review-pipeline/SKILL.md`. If no PR is found, HALT and tell the
-   user to push the branch and open a PR (or pass the number). CodeRabbit can
-   review locally, but `/add-to-pr` needs the PR — so a PR is required.
+   user to open one with `/create-pr` (lints, commits, pushes, opens the PR), or
+   pass the number. CodeRabbit can review locally, but `/add-to-pr` needs the PR —
+   so a PR is required.
 2. **Base** = `main`.
 3. **Run dir** — compute a unique scratch dir and create it:
    ```bash

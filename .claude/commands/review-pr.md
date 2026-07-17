@@ -32,7 +32,8 @@ Both are optional when the current branch has an open PR. See Phase 0.
 
 1. **PR number** — if not passed, follow **PR Number Auto-Extraction** in
    `.claude/skills/review-pipeline/SKILL.md`. If no PR is found, HALT and tell the
-   user to push the branch and open a PR (or pass the number).
+   user to open one with `/create-pr` (which lints, commits, pushes, and opens the
+   PR), or pass the number.
 2. **Ticket ID** — if not passed, follow **Ticket ID Auto-Extraction** in the same
    contract (branch name → PR title → null). If null, warn that requirements
    review will be skipped.
@@ -112,8 +113,11 @@ Project standards from `CLAUDE.md` are already in context; subagents inherit it.
 
 Spawn these subagents **in parallel** using the Agent tool, each in isolated
 context. Pass each one: `TICKET_CONTEXT`, `PR_DIFF`, and a pointer to the finding
-format + Convention Override Rule in `.claude/skills/review-pipeline/SKILL.md`. If
-`LARGE_DIFF=true`, tell each to prioritize the most-changed files.
+format + **The Comment Bar** (only-comment-if gate, narrow BLOCKING, nit cap) +
+Convention Override Rule in `.claude/skills/review-pipeline/SKILL.md`. Each reviewer
+runs every candidate through the Comment Bar before emitting it — a candidate that
+fails any bar is dropped, not reported. If `LARGE_DIFF=true`, tell each to
+prioritize the most-changed files.
 
 1. **requirements-reviewer** — changes vs ticket acceptance criteria. **Skip if
    `TICKET_ID` is null.**
@@ -141,6 +145,11 @@ format + Convention Override Rule in `.claude/skills/review-pipeline/SKILL.md`. 
    are exempt. Collect discards as `GROUNDED_DISCARDS`.
 4. Route MEDIUM-confidence findings (1 reviewer, ≥ SHOULD_FIX) to Phase 5 as
    `MEDIUM_FINDINGS`; everything else is `VERIFIED_FINDINGS`.
+5. **Enforce the aggregate nit cap.** Per-agent caps don't bound the total, so cap
+   here: keep the **5 highest-value NITs** across all reviewers, drop the rest, and
+   record `SUPPRESSED_NITS = {count}` for the Phase 6 tally ("suppressed N more").
+   Gate-owned nits (formatting/style/import-order/type-hints) should never have made
+   it this far — if any did, drop them, they're a reviewer defect.
 
 ---
 
@@ -162,14 +171,22 @@ it. Merge missing-defect-hunter's new findings into the verified set.
 
 ## Phase 6: Final Report
 
+Lead with a **one-line tally** so the author gets the shape before the detail, then
+the defects. State "no blocking issues" (or "no defects found") plainly when true —
+don't bury a clean result. Keep each finding terse; long justification goes in a
+collapsible `<details>` block, not the top line.
+
 ```markdown
 # PR Review: PR #{number}{ against {ticket_id} if present}
 
+**{X} blocking · {Y} should-fix · {Z} consider · {N} nits{, suppressed {M} more}**
+
 ## Key Defects
 
-[If no BLOCKING or SHOULD_FIX findings: "No significant defects found."]
+[If no BLOCKING or SHOULD_FIX findings: "No blocking or should-fix defects found."]
 [Otherwise one concise bullet per BLOCKING/SHOULD_FIX finding — what & where, not
-the fix. 🔴 BLOCKING, 🟡 SHOULD_FIX. Ordered by severity.]
+the fix. 🔴 BLOCKING, 🟡 SHOULD_FIX. Ordered by severity. Bury per-finding
+reasoning in a `<details>` block so the bullet stays one line.]
 
 ## Summary
 - **Blocking Issues:** {count}

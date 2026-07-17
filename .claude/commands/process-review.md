@@ -1,12 +1,13 @@
 ---
 name: process-review
-description: Third stage after /review-pr → /add-to-pr. Reads un-resolved PR feedback (GitHub inline threads + general comments + Conductor diff-comments), triages it, presents each item with a recommendation for approve/modify/skip, fires a background fixer per approval (file-claim mutex, test-first via tdd-feedback, no commit), then resolves every considered thread and prompts to commit/push.
+description: Third stage after /review-pr → /add-to-pr. Reads un-resolved PR feedback (GitHub inline threads + general comments + Conductor diff-comments), triages it, shows a numbered severity-grouped overview with a per-item approve/consider/skip recommendation that stands by default (the user replies only with overrides), presents the considered items in full one at a time, dispatches a foreground fixer per approval (parallel file-disjoint waves, test-first via tdd-feedback, no commit), then resolves every considered thread and prompts to commit/push.
 ---
 
 # Process Review Feedback
 
 You are orchestrating the final stage of the review loop:
-`/review-pr` (generate findings) → `/add-to-pr` (post them to the PR) →
+`/create-pr` → `/human-review` (human summary + ticket-scope check) → `/review-pr`
+(generate findings) → `/add-to-pr` (post them to the PR) →
 **`/process-review`** (act on them). You read back the feedback that is still
 open on the PR, decide with the user what to act on, dispatch isolated fixer
 subagents to do the work, then **resolve everything you considered** so a future
@@ -79,7 +80,16 @@ and resolve. The fixing happens in `review-fixer` subagents.
    resolution receipts are skipped, not re-triaged.)
 6. **Conductor diff-comments** — read from the **current conversation's attachments**
    (the Conductor MCP cannot fetch them). If none are attached, note that and move on.
-7. Normalize every kept item to:
+7. **Linear ticket context (body + comments).** Resolve every ticket id in the branch
+   name and fetch each with `mcp__linear-server__get_issue` **and**
+   `mcp__linear-server__list_comments`. Read the **body and the full comment thread** —
+   comments frequently record **deviations from the original plan** (a decision reversed,
+   a scope cut, an approach changed mid-flight, a "we decided not to do X"). Extract these
+   documented decisions/deviations into a short list you carry into triage. This is
+   **authoritative project intent**: it **overrides** reviewer findings, convention
+   defaults, and your own priors when you form recommendations (Phase 2) — see Phase 1
+   step 1.5. If a ticket can't be fetched, note it and continue.
+8. Normalize every kept item to:
    `{ source: gh-thread | gh-review-body | gh-comment | conductor, threadId?, commentId?, reviewId?, file?, line?, body, author, severityBadge? }`.
    If there are zero un-resolved items across all sources, say so and stop.
 
@@ -95,6 +105,16 @@ and resolve. The fixing happens in `review-fixer` subagents.
    Rule** and "Commonly false-positived conventions" in
    `.claude/skills/review-pipeline/SKILL.md`. If the external feedback is high-volume
    or low-confidence, you **may** spawn `false-positive-hunter` over just those items.
+1.5. **Check every item against the Linear ticket body + comments (Phase 0 step 7).**
+   Documented decisions and **deviations from the original plan** are authoritative
+   project intent and **override anything else** — reviewer findings, convention
+   defaults, and your own priors. For each item, ask: does the ticket (body or a comment)
+   already decide this? If the ticket **endorses** what the reviewer flagged (the change
+   was a deliberate, documented deviation), lean **Skip** and cite the ticket comment in
+   the rationale — do not let a reviewer re-litigate a settled call. If the ticket
+   **contradicts** the flagged code (the code drifted from a documented decision), lean
+   **Approve** even for a low-severity flag. Carry this into your Phase 2 recommendation
+   and name the ticket source when it drove the call.
 2. **Classify scope (in-scope vs out-of-scope).** This PR is only responsible for
    code it created or modified. Build the PR's changed-line set from its own diff:
    ```bash
@@ -128,19 +148,96 @@ and resolve. The fixing happens in `review-fixer` subagents.
    do **not** gate the loop on it.
 
 Only **in-scope, non-dismissed** items (plus no-file/line items) flow into Phase 2's
-presentation loop. Out-of-scope and auto-dismissed items are handled by their paths
+overview list. Out-of-scope and auto-dismissed items are handled by their paths
 above — never presented inline.
 
 ---
 
-## Phase 2: Present Each Item — with Your Opinion
+## Phase 2: Overview Gate — list everything, collect numbers
 
-Walk the triaged list in severity order, **one item (group) at a time**. Present
-each item as **plain text in your message and then stop and wait for the user's
-reply** — do **not** use `AskUserQuestion`, menus, or any dialog tool. For each,
-give the user **your own recommendation on the fix**, not just the reviewer's words:
+Before presenting anything in full, show the user the **whole** in-scope,
+non-dismissed list at a glance so they can clear the easy calls in one reply.
 
-- What the comment asks for (quote the relevant line).
+1. **Number each item (group) globally `1..N`** and print one bulleted list, **grouped
+   first by your recommendation** (Approve → Consider → Skip), and **within each group by
+   severity** (Blocking → Should Fix → Consider → Nit). Print the recommendation as a
+   header for its group; one line per item under it:
+
+   ```
+   APPROVE
+
+   N. [SEVERITY] (agent, agent) — 1–2 sentence description. path/to/file.ext:15-20
+   ```
+
+   The three group headers are your own recommendation — `APPROVE` (clear fix, just do
+   it), `CONSIDER` (needs discussion / a judgment call / possible false positive worth a
+   look), `SKIP` (you'd drop it — e.g. endorsed-convention FP, not worth the churn) — so
+   the user can accept your calls at a glance. Omit a header whose group is empty.
+
+   Per line, in order: the global number, the `[SEVERITY]` tag, **which agents flagged
+   it** in parentheses (the finding's `Found by:` list — e.g. `(claude, coderabbit)`; use
+   the reviewer/human name for external feedback, or omit the parens when unknown), the
+   1–2 sentence description, then the location **last**. Write the location as a **bare
+   repo-relative `path:line` (or `path:start-end`) with no backticks, quotes, or
+   `@`** — the terminal only linkifies it clickable when it's bare. Include it **where
+   the item has a line**; omit it for general comments / broad notes not tied to a line.
+   Keep each to 1–2 sentences — this is a skim list, not the full write-up. Out-of-scope
+   and auto-dismissed items are **not** listed (Phase 1 already routed them). The
+   recommendation-grouped headers already convey your disposition at a glance — do **not**
+   append a summary line of numbers-by-bucket; it reads like an override example and
+   muddies your actual recommendation.
+
+2. **Prompt once, as plain text** (no `AskUserQuestion` / menus): your recommendations
+   **stand as-is by default** — tell the user to reply **only with overrides** for items
+   they want to move, as `<approve|consider|skip> <numbers>` lines. Anything they don't
+   mention keeps its recommended bucket; an empty reply (or "looks good" / "go") accepts
+   every recommendation unchanged. Then stop and wait for their reply.
+
+3. **Resolve the final buckets = recommendations + the user's overrides.** Start from
+   your recommended buckets, then apply each override line, moving exactly the named
+   numbers to the named bucket (a later override for the same number wins). Numbers the
+   user never names stay where you recommended. Example:
+
+   ```
+   recommended:  approve 1 2 4 · skip 3 5 · consider 6
+   user:         skip 2 · consider 4
+   final:        approve 1 · skip 2 3 5 · consider 6 4
+   ```
+
+   A bare number list with no verb (`1 4`) means **approve those**. The three resolved
+   buckets are **Approve** (immediate), **Consider** (→ Phase 2b), **Skip**.
+
+4. **Act on the resolved buckets:**
+   - **Approve** → dispatch as **parallel foreground fixers** now (Phase 3). Because the
+     `Agent` calls are foreground, their results return **within this turn** — the whole
+     Approve batch is finished before you continue. No full presentation.
+   - **Consider** → Phase 2b, one item at a time.
+   - **Skip** → record the reason for Phase 5; nothing else.
+
+   Foreground dispatch is the point: **nothing runs in the background**, so the harness
+   never re-invokes you on a fixer completion and there is no silent-wake-up flow to get
+   wrong. If the Consider bucket is empty, go straight to Phase 3.5.
+
+---
+
+## Phase 2b: Full Presentation — the *consider* items only
+
+Reached after every Approve-bucket fixer has already returned (they were foreground, so
+nothing from that batch is still running). Walk the **consider** bucket in severity
+order, **one item (group) at a time**.
+
+**Renumber locally for this phase.** The Phase 2 numbers were global across all buckets;
+do **not** carry them here (they produce nonsense like "Item 10 of 8"). Count the
+consider bucket as `Y` and present each as **`x of Y`** in consider order (`1 of Y`,
+`2 of Y`, …). Lead each item's message with that `x of Y` header.
+
+Present each item as **plain text in your message and then stop and wait for the user's
+reply** — do **not** use `AskUserQuestion`, menus, or any dialog tool. For each, give
+the user **your own recommendation on the fix**, not just the reviewer's words:
+
+- What the comment asks for (quote the relevant line). Cite the location as a bare
+  repo-relative `path:line` (no backticks/quotes) so it's clickable — here and anywhere
+  you name a file/line to the user.
 - Your read: do you agree? Is there a better/cheaper fix? Should the scope be
   narrower? Do you think it should be skipped (e.g. endorsed-convention false
   positive)?
@@ -173,111 +270,61 @@ approval you apply it **directly in your own context** — do NOT spawn a `revie
 End each presented item's message by asking the user to reply **Approve**, **Modify**
 (with their adjustments), or **Skip**, and wait for their response before continuing.
 
-### The two kinds of turn — and the one hard rule
+### On the user's reply
 
-Every turn in this loop is one of two kinds. Decide which BEFORE writing anything:
+- **Approve / Modify** → dispatch this item's fixer as a **foreground `Agent` call**
+  (Phase 3) with any modified instructions. It returns **inside this turn**; if it
+  returns a **blocker**, resolve it inline (re-dispatch with new guidance, or skip)
+  before moving on. Then present the next item.
+- **Skip** → record the reason for Phase 5, then present the next item.
 
-1. **User-reply turn** — the last message is the **user** sending Approve / Modify /
-   Skip. This is the *only* turn that acts on an issue: record the decision, drain any
-   queued fixers (Phase 3), dispatch this item's fixer, then present the **next**
-   issue. Prose belongs here, and only here.
-2. **Wake-up turn** — the last event is a **fixer finishing** or any other
-   system/tool notification. This turn does **internal bookkeeping only and emits zero
-   prose**: free the finished fixer's files and record its report (Phase 3), then
-   **end the turn** — no tool call needed, no text, empty output. It does **not**
-   dispatch anything, does **not** drain `pending`, does **not** touch any issue.
-
-**The hard rule: a wake-up turn never produces a user-facing token.** Not a status,
-not an acknowledgement, not "draining", not "moving to item 5", not a re-prompt of the
-pending issue, not a meta-note that the silence feels odd. The empty turn is always
-correct — if it ever feels "confusing" or like it "needs explaining," that feeling is
-the bug, not a reason to override it. A wake-up carries no decision, so you have
-nothing to say.
-
-Why this holds: the wake-up turn has **no action to narrate** because dispatch and
-queue-draining are deferred to the next user-reply turn (Phase 3). Nothing happens on
-a wake-up except freeing a file — so write nothing.
-
-### Each issue is presented exactly ONCE
-
-Send a message about an issue **one time**: its single presentation, in a user-reply
-turn. Never restate it, re-ask Approve/Modify/Skip, or give a "still waiting" status
-on a later turn.
-
-**Present only the next issue.** A user-reply turn's message contains **nothing but
-the next issue** (or a fixer blocker, per Phase 3). All fixer state — completions,
-progress, files released, tallies — is tracked **internally and silently** and
-surfaced once, together, in the Phase 6 summary. Never mid-loop.
-
-- **Approve** → on this same user-reply turn, run the Phase 3 steps (drain, then
-  dispatch this item), then present the next item.
-- **Modify** → user adjusts scope/instructions; record as approved-with-edited-
-  instructions, then dispatch via the Phase 3 steps.
-- **Skip** → record the reason for Phase 5.
-
-Do **not** wait for any fixer to finish before presenting the next item.
+**Present each item exactly once.** One presentation, then wait for the user. There are
+no background wake-ups here, so there is never a reason to re-send, restate, or "still
+waiting" an item. Your messages carry **only** the next item (or a fixer blocker you're
+resolving) — never fixer status, progress, or tallies; the Phase 6 summary reports all
+of that once, at the end.
 
 ---
 
-## Phase 3: Fire-on-Approval Dispatch (file-claim mutex)
+## Phase 3: Dispatch — parallel, foreground (no background, no wake-ups)
 
-Maintain two structures across the Phase 2 loop:
-- `claimedFiles` — files currently held by an in-flight fixer.
-- `pending` — approved items blocked on a busy file.
+Every approved fixer runs as a **foreground `Agent` call** — never
+`run_in_background`. This is enforced by a `PreToolUse` hook
+(`~/.claude/hooks/no-bg-review-fixer.js`), which denies any backgrounded
+`review-fixer`; the rule is not optional, so don't try to background fixers to
+"let them overlap." Foreground means each result returns inside the dispatching
+turn, so the harness never wakes you on a completion and there are no wake-up
+turns that would emit status chatter.
 
-Dispatch and queue-draining both happen **only on a user-reply turn** — never on a
-wake-up (see Phase 2's two-turn rule). This is what makes wake-ups silent: a finishing
-fixer just frees its files; nothing is dispatched or narrated until the user next
-speaks.
+**Approve bucket (Phase 2 overview) — dispatch in file-disjoint waves.** Two fixers
+must never edit the same file at once, so group the approved items into **waves** where
+no two items in a wave share a target file (the files a comment points at, plus any
+obvious sibling it will touch). Dispatch one wave as a **single message with parallel
+`Agent` calls**; they run concurrently and all return before the turn continues. Then
+dispatch the next wave. Usually there is only one wave. Collect each fixer's result;
+hold any **blocker** and, once all waves have returned, resolve the held blockers inline
+(re-dispatch with guidance, or skip) before starting Phase 2b.
 
-**On a fixer-completion wake-up (silent turn):** release that fixer's files from
-`claimedFiles`, record its report, and — if it returned a **blocker** — append it to a
-`blockers` queue. Then end the turn. Do **not** dispatch, drain, or surface anything.
+**Consider items (Phase 2b) — one foreground call each**, dispatched on the user's
+Approve/Modify and returning before you present the next item (see Phase 2b). No waves
+needed — one at a time can't collide.
 
-**Terminal exception (the loop is over, so silence no longer applies).** Once **every
-issue has already been presented and decided**, there is no pending user decision to
-talk over — the presentation loop is done. From that point a wake-up **may** drain
-`pending` and dispatch queued fixers (still without narrating), so the queue finishes
-even though no further user turn will come. When the **last** in-flight fixer reports
-and `pending` is empty, that wake-up proceeds straight into Phase 3.5 / Phase 4 (which
-do speak — that is the end of the run, not mid-loop chatter).
+Each `review-fixer` gets: the item/group (with any modified instructions), its target
+files, the resolution to reach, and the standard constraints — touch only its files,
+only filtered tests, no global formatters, **never commit**. Fixers within a wave run
+**in parallel**; each still touches only its own files.
 
-**On each user-reply turn, before presenting the next issue**, run these steps in
-order (all silent — no narration of any of them):
-1. **Drain `pending`** — for every queued item whose files are now all free (thanks to
-   completions recorded on intervening wake-ups), spawn its `review-fixer` and move its
-   files into `claimedFiles`. These are items the user approved earlier.
-2. **Dispatch the just-decided item** (if Approve/Modify): compute its target file set
-   (files its comments point at, plus any obvious sibling it will touch). **No overlap**
-   with `claimedFiles` → spawn a `review-fixer` with the Agent tool,
-   **`run_in_background: true`**, add its files to `claimedFiles`. **Overlaps** an
-   in-flight fixer's files → push to `pending` (never let two agents edit the same
-   file).
-3. **Surface blockers — after the current issue is fully resolved, never mid-issue.**
-   If `blockers` is non-empty, finish acting on the current issue first, then present
-   the queued blockers as plain text one at a time, staying on each until resolved
-   (re-approve with new guidance and re-dispatch, or skip). Then resume presenting the
-   remaining issues where you left off.
-4. **Present the next issue.**
-
-A successful (non-blocker) completion is never surfaced — it only frees files behind
-the scenes, consumed silently by the next user-reply turn's drain.
-
-Each `review-fixer` gets: the item/group (with any modified instructions), the
-target files, the resolution it must reach, and a reminder that it runs **in
-parallel** with other fixers (touch only its files, only filtered tests, no global
-formatters, **never commit**).
-
-The loop ends when **every item has been presented** AND every spawned fixer has
-reported back AND `pending` is empty.
+Dispatch is done when every approved item's fixer has returned (foreground, so this is
+automatic) and every blocker is resolved. Then: Phase 2b (if consider items remain),
+else Phase 3.5.
 
 ---
 
 ## Phase 3.5: Out-of-Scope Urgent Round (separate, after the main flow)
 
-Only after the Phase 2/3 loop has **fully drained** (every in-scope item presented,
-every fixer reported, `pending` empty), handle `outOfScopeUrgent` — the BLOCKING
-items the PR did not create or modify. If the list is empty, skip this phase.
+Only after the main flow is complete (every in-scope item decided and every approved
+fixer returned), handle `outOfScopeUrgent` — the BLOCKING items the PR did not create
+or modify. If the list is empty, skip this phase.
 
 Present these as a **clearly separated round** so the user knows they are extra,
 pre-existing problems this PR is not responsible for. Lead the round with a one-line
@@ -286,17 +333,15 @@ banner, e.g.:
 > The items below are **out of scope** for this PR — the code was not created or
 > modified here — but flagged as urgent (BLOCKING). Decide each separately.
 
-Then walk `outOfScopeUrgent` one item at a time with the **same mechanics as Phase 2
+Then walk `outOfScopeUrgent` one item at a time with the **same mechanics as Phase 2b
 and Phase 3**: present your recommendation, wait for an explicit **Approve / Modify /
-Skip** user reply (a wake-up is never a reply), and on approval dispatch a
-`review-fixer` through the **same file-claim mutex** (`claimedFiles` / `pending`).
-For these, your default recommendation should usually be **Skip** (open a separate
-ticket/PR) unless the user wants it fixed here — but the call is theirs.
+Skip** user reply, and on approval dispatch a **foreground** `review-fixer` that returns
+before the next item. For these, your default recommendation should usually be **Skip**
+(open a separate ticket/PR) unless the user wants it fixed here — but the call is theirs.
 
 Skips here are recorded for Phase 5 with the rationale "out of scope (urgent) —
-deferred / handle separately" (or the user's reason). The phase ends under the same
-condition as Phase 3: every held item presented, every fixer reported, `pending`
-empty.
+deferred / handle separately" (or the user's reason). The phase ends once every held
+item has been presented and its fixer has returned.
 
 ---
 
@@ -400,8 +445,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 
 - **Do not fix code in your own context** — dispatch `review-fixer` subagents and
   trust their isolated work.
-- The file-claim mutex is the only thing preventing parallel write conflicts —
-  never spawn a second fixer for a file already claimed.
+- **All fixers are foreground `Agent` calls — never `run_in_background`** (enforced by
+  the `no-bg-review-fixer` `PreToolUse` hook). Background completions would re-invoke
+  the orchestrator mid-flow and the harness would nudge it to emit status chatter;
+  foreground calls return in-turn, so there are no wake-ups to police.
+- **File-disjoint waves prevent parallel write conflicts** — never put two fixers that
+  touch the same file in one parallel wave; dispatch the second in a later wave.
 - Resolve **everything you considered**, including skips and dismissals — a thread
   left open is a thread the next run will re-triage.
 
