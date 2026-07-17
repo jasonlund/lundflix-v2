@@ -280,6 +280,10 @@ cross-reference — don't duplicate.
 
 - **Always use the `mcp__linear-server__*` tools** for every lookup/create/update
   — never assume or hand-edit ticket state.
+- **Write to the ticket body, never comment.** When recording progress, plans,
+  results, or deviations, replace or append the ticket's **description**
+  (`save_issue` with `description`) — keep it the single source of truth, not
+  `save_comment`.
 - **Every branch maps to ≥1 ticket**; the branch name includes every ticket id,
   drops the `jasonlund/` prefix, ≤40 chars (e.g. `flix-123-scaffold-new-app`).
 - **No ticket yet → prompt to create one** before proceeding.
