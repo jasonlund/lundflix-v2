@@ -11,9 +11,11 @@ use RectorLaravel\Rector\ArrayDimFetch\EnvVariableToEnvHelperRector;
 use RectorLaravel\Rector\Coalesce\ApplyDefaultInsteadOfNullCoalesceRector;
 use RectorLaravel\Set\LaravelSetList;
 
-// PHP-native string functions → Str facade. The stock rector-laravel array/str set
-// skips these (it filters out functions that are internal in this PHP version), so
-// the equivalents are declared here. Only positional-compatible maps belong here:
+// PHP-native string functions → Str facade. No stock rector-laravel set covers
+// these: that set maps Laravel's legacy global helpers (str_after, starts_with, …),
+// not native functions — str_contains is the sole overlap, and it's dropped there by
+// an internal-function filter on PHP 8+ (and that set isn't enabled here anyway), so
+// every native → Str:: equivalent is declared by hand. Only positional-compatible maps belong here:
 // array_key_exists → Arr::exists is excluded because Arr::exists($array, $key) swaps
 // the argument order and FuncCallToStaticCall maps positionally.
 $nativeStringFunctionsToStr = [
@@ -29,6 +31,8 @@ $nativeStringFunctionsToStr = [
     new FuncCallToStaticCall('rtrim', Str::class, 'rtrim'),
     new FuncCallToStaticCall('substr', Str::class, 'substr'),
     new FuncCallToStaticCall('strlen', Str::class, 'length'),
+    new FuncCallToStaticCall('str_repeat', Str::class, 'repeat'),
+    new FuncCallToStaticCall('ucwords', Str::class, 'ucwords'),
 ];
 
 return RectorConfig::configure()
