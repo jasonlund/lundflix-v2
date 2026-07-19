@@ -20,11 +20,17 @@ final class TvdbCrosswalk
      * duplicating it. Each raw id passes its matching {@see SourceId} guard, so a
      * malformed or absent entry becomes null.
      *
-     * @param  array<int, array<string, mixed>>|null  $remoteIds
+     * `$remoteIds` is `mixed` because upstream ships it malformed — a non-array
+     * scalar coerces to no remoteIds (empty crosswalk) rather than a `TypeError`,
+     * so the row still imports.
+     *
+     * @param  array<int, array<string, mixed>>|mixed  $remoteIds
      * @return array{_imdb_id: ?string, _tmdb_id: ?int}
      */
-    public static function normalize(?array $remoteIds): array
+    public static function normalize(mixed $remoteIds): array
     {
+        $remoteIds = is_array($remoteIds) ? $remoteIds : null;
+
         return [
             '_imdb_id' => SourceId::imdb(self::rawId($remoteIds, self::IMDB_SOURCE)),
             '_tmdb_id' => SourceId::tmdb(self::rawId($remoteIds, self::TMDB_SOURCE)),

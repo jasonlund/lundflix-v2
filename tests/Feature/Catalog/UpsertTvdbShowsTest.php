@@ -178,6 +178,33 @@ it('drops a malformed IMDb crosswalk to null, still importing the show', functio
         ->and($show->_imdb_id)->toBeNull();
 });
 
+it('imports a show with a null crosswalk when remoteIds is a non-array scalar', function (): void {
+    // Arrange
+    // Malformed upstream: a non-array scalar remoteIds must not throw a TypeError.
+    $payloads = [tvdbSeries(['id' => 8100020, 'remoteIds' => 'tt0903747'])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 8100020)->firstOrFail();
+    expect($show->_imdb_id)->toBeNull()
+        ->and($show->_tmdb_id)->toBeNull();
+});
+
+it('drops a payload whose native id is malformed, writing no null-keyed row', function (): void {
+    // Arrange
+    // "129536129536-corrupt" is a malformed native id (oversized, slug-appended) — no
+    // valid primary identity, so the row cannot be upserted by _tvdb_id.
+    $payloads = [tvdbSeries(['id' => '129536129536-corrupt'])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    expect(Show::query()->count())->toBe(0);
+});
+
 it('updates in place when the same _tvdb_id is re-run, leaving one row', function (): void {
     // Arrange
     $payloads = [tvdbSeries(['id' => 702])];

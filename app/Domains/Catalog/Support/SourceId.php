@@ -53,14 +53,24 @@ final class SourceId
      */
     public static function positiveInt(mixed $raw): ?int
     {
+        // 4_294_967_295 is the `int unsigned` column max (same cap as tmdb()); a
+        // value past it is overflow/corruption, not a real upsert key.
         if (is_int($raw)) {
-            return $raw > 0 ? $raw : null;
+            return ($raw > 0 && $raw <= 4_294_967_295) ? $raw : null;
         }
 
-        if (is_string($raw) && ctype_digit($raw) && (int) $raw > 0) {
-            return (int) $raw;
+        if (! is_string($raw) || ! ctype_digit($raw)) {
+            return null;
         }
 
-        return null;
+        // Range-check as a string BEFORE the (int) cast so a digit-only string
+        // past PHP_INT_MAX can't truncate into a valid-looking key first.
+        if (Str::length($raw) > 10 || (int) $raw > 4_294_967_295) {
+            return null;
+        }
+
+        $number = (int) $raw;
+
+        return $number > 0 ? $number : null;
     }
 }

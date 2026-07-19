@@ -6,6 +6,7 @@ namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
+use App\Domains\Catalog\Support\SourceId;
 use App\Domains\Catalog\Support\TvdbCrosswalk;
 use Illuminate\Support\Carbon;
 
@@ -62,11 +63,28 @@ final readonly class UpsertTvdbShows
 
         $rows = array_map(fn (array $payload): array => $this->rawTvdbRow($payload, $now), $payloads);
 
-        $touchedIds = $this->upsertByTvdbId($this->nullAmbiguousTmdbIds($rows));
+        $touchedIds = $this->upsertByTvdbId($this->nullAmbiguousTmdbIds($this->withValidTvdbId($rows)));
 
         Show::query()->whereIn('id', $touchedIds)->searchable();
 
         return count($payloads);
+    }
+
+    /**
+     * Drop any row whose `_tvdb_id` normalized to null: `_tvdb_id` is the
+     * `Show::upsert()` conflict key, so a row without a valid native id has no
+     * primary identity and can't be upserted — writing it would produce a
+     * null-keyed row rather than merge, so it's filtered out of the batch.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function withValidTvdbId(array $rows): array
+    {
+        return array_values(array_filter(
+            $rows,
+            static fn (array $row): bool => $row['_tvdb_id'] !== null,
+        ));
     }
 
     /**
@@ -119,6 +137,11 @@ final readonly class UpsertTvdbShows
      * as the API returned it. The `_imdb_id` crosswalk is seeded separately in
      * {@see rawTvdbRow()}, not here.
      *
+     * `_tvdb_id` is the one exception to "value taken raw": as the `upsert()`
+     * conflict key it must be a clean queryable id, so the raw native `id` routes
+     * through {@see SourceId::positiveInt()} (a malformed/oversized id becomes null
+     * and the row is later dropped in {@see withValidTvdbId()}).
+     *
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
@@ -126,6 +149,7 @@ final readonly class UpsertTvdbShows
     {
         return [
             ...RawSourceColumns::map(self::SOURCE, self::RAW_COLUMNS, $payload),
+            '_tvdb_id' => SourceId::positiveInt($payload['id'] ?? null),
             'tvdb_synced_at' => $now,
         ];
     }

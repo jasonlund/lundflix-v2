@@ -37,7 +37,6 @@ it('validates and coerces IMDb crosswalk ids, malformed to null', function (): v
 
 it('validates and coerces TMDB crosswalk ids by range, malformed to null', function (): void {
     // Arrange
-    // pure normalizer, inputs supplied inline
 
     // Act
     $actual = [
@@ -66,7 +65,6 @@ it('validates and coerces TMDB crosswalk ids by range, malformed to null', funct
 
 it('coerces positive ints for upsert keys, non-positive to null', function (): void {
     // Arrange
-    // pure normalizer, inputs supplied inline
 
     // Act
     $actual = [
@@ -75,6 +73,10 @@ it('coerces positive ints for upsert keys, non-positive to null', function (): v
         'zero' => SourceId::positiveInt(0),
         'negative' => SourceId::positiveInt(-3),
         'nonNumeric' => SourceId::positiveInt('x'),
+        'columnMax' => SourceId::positiveInt('4294967295'),
+        'aboveColumnMax' => SourceId::positiveInt('4294967296'),
+        'hugeOverflow' => SourceId::positiveInt('99999999999999999999'),
+        'decimalString' => SourceId::positiveInt('70327.5'),
         'null' => SourceId::positiveInt(null),
     ];
 
@@ -85,6 +87,10 @@ it('coerces positive ints for upsert keys, non-positive to null', function (): v
         'zero' => null,
         'negative' => null,
         'nonNumeric' => null,
+        'columnMax' => 4294967295,
+        'aboveColumnMax' => null,
+        'hugeOverflow' => null,
+        'decimalString' => null,
         'null' => null,
     ]);
 });

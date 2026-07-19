@@ -287,6 +287,7 @@ it('hydrates only the ids in the --ids-file without crawling allSeries', functio
     // Assert
     expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page='));
+
     unlink($path);
 });
 
@@ -307,6 +308,7 @@ it('parses the single-line comma list in --ids-file and ignores misses', functio
     // Assert
     expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
     expect(Show::count())->toBe(1);
+
     unlink($path);
 });
 
@@ -327,6 +329,7 @@ it('skips blank and non-numeric --ids-file entries without firing /series/0/exte
     // Assert
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/0/extended'));
     expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+
     unlink($path);
 });
 
@@ -339,11 +342,102 @@ it('refuses a missing --ids-file without crawling allSeries', function (): void 
             : Http::response('', 404),
     ]);
 
-    // Act
-    $this->artisan('catalog:seed-shows-tvdb', ['--ids-file' => '/nonexistent/path/ids.csv']);
-
-    // Assert
+    // Act & Assert
+    $this->artisan('catalog:seed-shows-tvdb', ['--ids-file' => '/nonexistent/path/ids.csv'])
+        ->expectsOutputToContain('--ids-file not found')
+        ->assertExitCode(1);
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page='));
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/70327/extended'));
     expect(Show::where('_tvdb_id', 81189)->first())->toBeNull();
+});
+
+it('caps --ids-file hydrate calls with --limit', function (): void {
+    // Arrange
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request): mixed => Str::contains($request->url(), '/series/70327/extended')
+            ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
+            : Http::response('', 404),
+    ]);
+    $path = tempnam(sys_get_temp_dir(), 'ids');
+    file_put_contents($path, '70327,12345');
+
+    // Act
+    $this->artisan('catalog:seed-shows-tvdb', ['--ids-file' => $path, '--limit' => 1]);
+
+    // Assert
+    $hydrateCalls = 0;
+    Http::assertSent(function (Request $request) use (&$hydrateCalls): bool {
+        if (Str::contains($request->url(), '/extended')) {
+            $hydrateCalls++;
+        }
+
+        return true;
+    });
+    expect($hydrateCalls)->toBe(1);
+
+    unlink($path);
+});
+
+it('skips a decimal --ids-file id instead of truncating it to a real series id', function (): void {
+    // Arrange
+    // "70327.5" would (int)-truncate to the real unrelated series 70327; SourceId
+    // rejects the decimal so that id never hydrates.
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request): mixed => Str::contains($request->url(), '/series/70327/extended')
+            ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
+            : Http::response('', 404),
+    ]);
+    $path = tempnam(sys_get_temp_dir(), 'ids');
+    file_put_contents($path, '70327.5');
+
+    // Act
+    $this->artisan('catalog:seed-shows-tvdb', ['--ids-file' => $path]);
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/70327/extended'));
+    expect(Show::where('_tvdb_id', 81189)->first())->toBeNull();
+
+    unlink($path);
+});
+
+it('parses a newline-separated --ids-file, hydrating each id', function (): void {
+    // Arrange
+    // An operator's log dump is newline-separated; the file must split on newlines
+    // rather than collapse to one non-numeric element.
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request): mixed => Str::contains($request->url(), '/series/70327/extended')
+            ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
+            : Http::response('', 404),
+    ]);
+    $path = tempnam(sys_get_temp_dir(), 'ids');
+    file_put_contents($path, "70327\n999999");
+
+    // Act
+    $this->artisan('catalog:seed-shows-tvdb', ['--ids-file' => $path]);
+
+    // Assert
+    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series/999999/extended'));
+
+    unlink($path);
+});
+
+it('fails fast when --ids-file yields no valid ids', function (): void {
+    // Arrange
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+    ]);
+    $path = tempnam(sys_get_temp_dir(), 'ids');
+    file_put_contents($path, "not-a-number\n");
+
+    // Act & Assert
+    $this->artisan('catalog:seed-shows-tvdb', ['--ids-file' => $path])
+        ->expectsOutputToContain('no valid series ids')
+        ->assertExitCode(1);
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/extended'));
+
+    unlink($path);
 });
