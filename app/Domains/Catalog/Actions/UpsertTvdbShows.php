@@ -6,6 +6,7 @@ namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
+use App\Domains\Catalog\Support\TvdbCrosswalk;
 use Illuminate\Support\Carbon;
 
 final readonly class UpsertTvdbShows
@@ -66,40 +67,6 @@ final readonly class UpsertTvdbShows
         Show::query()->whereIn('id', $touchedIds)->searchable();
 
         return count($payloads);
-    }
-
-    /**
-     * Pull the IMDb anchor out of the nested `remoteIds[]`: the entry whose
-     * `sourceName` is "IMDB". Returns null when there is no such entry.
-     *
-     * @param  array<string, mixed>  $payload
-     */
-    private function imdbIdFrom(array $payload): ?string
-    {
-        foreach ($payload['remoteIds'] ?? [] as $remoteId) {
-            if (($remoteId['sourceName'] ?? null) === 'IMDB') {
-                return $remoteId['id'] ?? null;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Pull the TMDB id out of the nested `remoteIds[]`: the entry whose
-     * `sourceName` is "TheMovieDB.com", cast to int. Null when absent.
-     *
-     * @param  array<string, mixed>  $payload
-     */
-    private function tmdbIdFrom(array $payload): ?int
-    {
-        foreach ($payload['remoteIds'] ?? [] as $remoteId) {
-            if (($remoteId['sourceName'] ?? null) === 'TheMovieDB.com') {
-                return isset($remoteId['id']) ? (int) $remoteId['id'] : null;
-            }
-        }
-
-        return null;
     }
 
     /**
@@ -176,13 +143,9 @@ final readonly class UpsertTvdbShows
     {
         $row = $this->tvdbColumnsFor($payload, $now);
 
-        // TVDB carries IMDb's identity key in remoteIds[]; copy it raw so the
-        // `_tvdb_id` upsert also seeds `_imdb_id` (null when absent).
-        $row['_imdb_id'] = $this->imdbIdFrom($payload);
-
-        // Seed the tmdb crosswalk from remoteIds[] so a later TMDB run matches
-        // this row instead of duplicating it (null when absent).
-        $row['_tmdb_id'] = $this->tmdbIdFrom($payload);
+        // Seed `_imdb_id`/`_tmdb_id` from remoteIds[] on the `_tvdb_id` upsert so a
+        // later per-source sync matches this row instead of duplicating it.
+        $row = [...$row, ...TvdbCrosswalk::normalize($payload['remoteIds'] ?? null)];
 
         foreach (self::JSON_COLUMNS as $column) {
             $row[$column] = $row[$column] === null ? null : json_encode($row[$column]);

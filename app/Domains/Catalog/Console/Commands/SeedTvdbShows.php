@@ -11,9 +11,11 @@ use App\Domains\Catalog\Services\TvdbApiService;
 use Generator;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 
-#[Description('Crawl every TheTVDB series and upsert shows with their artworks (one-time bootstrap)')]
-#[Signature('catalog:seed-shows-tvdb {--limit=}')]
+#[Description('Crawl every TheTVDB series and upsert shows with their artworks (one-time bootstrap); pass --ids-file (a CSV file of series ids) to re-hydrate specific series instead of crawling')]
+#[Signature('catalog:seed-shows-tvdb {--limit=} {--ids-file=}')]
 class SeedTvdbShows extends TvdbShowsCommand
 {
     public function handle(
@@ -21,6 +23,14 @@ class SeedTvdbShows extends TvdbShowsCommand
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
     ): int {
+        $idsFile = $this->option('ids-file');
+
+        if ($idsFile !== null && $idsFile !== '' && ! File::exists($idsFile)) {
+            $this->output->writeln("--ids-file not found: {$idsFile}");
+
+            return self::FAILURE;
+        }
+
         $this->output->writeln('Syncing shows…');
         $failed = $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks);
 
@@ -40,14 +50,24 @@ class SeedTvdbShows extends TvdbShowsCommand
     }
 
     /**
-     * Crawl `allSeries` from page 0, yielding each base record's numeric `id`,
-     * until a page returns no records. Non-numeric ids are skipped so a malformed
-     * record can't coerce to 0 and waste a `/series/0` hydration.
+     * When `--ids-file` is given, yield the numeric ids from that CSV file
+     * directly — a recovery path to re-hydrate specific series without crawling.
+     * Otherwise crawl `allSeries` from page 0, yielding each base record's numeric
+     * `id`, until a page returns no records. Non-numeric ids are skipped either way
+     * so a malformed value can't coerce to 0 and waste a `/series/0` hydration.
      *
      * @return Generator<int, int>
      */
     protected function ids(TvdbApiService $api): Generator
     {
+        $idsFile = $this->option('ids-file');
+
+        if ($idsFile !== null && $idsFile !== '') {
+            yield from $this->requestedIds(File::get($idsFile));
+
+            return;
+        }
+
         $page = 0;
 
         while (($records = $api->allSeries($page)) !== []) {
@@ -58,6 +78,23 @@ class SeedTvdbShows extends TvdbShowsCommand
             }
 
             $page++;
+        }
+    }
+
+    /**
+     * Split the single-line comma-separated CSV `--ids-file` contents, yielding
+     * each numeric id as an int.
+     *
+     * @return Generator<int, int>
+     */
+    protected function requestedIds(string $contents): Generator
+    {
+        foreach (explode(',', $contents) as $id) {
+            $id = Str::trim($id);
+
+            if (is_numeric($id)) {
+                yield (int) $id;
+            }
         }
     }
 }

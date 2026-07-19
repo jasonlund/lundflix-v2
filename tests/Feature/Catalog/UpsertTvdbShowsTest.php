@@ -97,6 +97,87 @@ it('seeds _imdb_id and _tmdb_id crosswalks from remoteIds on a fresh insert', fu
         ->and($show->_tmdb_id)->toBe(1396);
 });
 
+it('drops an out-of-range TheMovieDB.com crosswalk to null, still importing the show', function (): void {
+    // Arrange
+    // 129536129536 overflows shows._tmdb_id (int unsigned, max 4,294,967,295) — a real TVDB garbage crosswalk.
+    $payloads = [tvdbSeries(['id' => 8100001, 'remoteIds' => [
+        ['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB'],
+        ['id' => '129536129536', 'type' => 12, 'sourceName' => 'TheMovieDB.com'],
+    ]])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 8100001)->firstOrFail();
+    expect($show->_tvdb_id)->toBe(8100001)
+        ->and($show->_tmdb_id)->toBeNull();
+});
+
+it('drops a leading-space garbage TheMovieDB.com crosswalk to null, still importing the show', function (): void {
+    // Arrange
+    // " 51996251996" is a real malformed TVDB crosswalk that overflows the int unsigned column.
+    $payloads = [tvdbSeries(['id' => 8100002, 'remoteIds' => [
+        ['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB'],
+        ['id' => ' 51996251996', 'type' => 12, 'sourceName' => 'TheMovieDB.com'],
+    ]])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 8100002)->firstOrFail();
+    expect($show->_tvdb_id)->toBe(8100002)
+        ->and($show->_tmdb_id)->toBeNull();
+});
+
+it('preserves an in-range TheMovieDB.com crosswalk, not over-nulling a legitimate id', function (): void {
+    // Arrange
+    $payloads = [tvdbSeries(['id' => 8100003, 'remoteIds' => [
+        ['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB'],
+        ['id' => '1396', 'type' => 12, 'sourceName' => 'TheMovieDB.com'],
+    ]])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    expect(Show::query()->where('_tvdb_id', 8100003)->value('_tmdb_id'))->toBe(1396);
+});
+
+it('drops a slug-appended TheMovieDB.com crosswalk to null, still importing the show', function (): void {
+    // Arrange
+    // "1335814-silvio-santos" is a real slug-appended TVDB crosswalk; a raw (int) cast truncates it to 1335814.
+    $payloads = [tvdbSeries(['id' => 8100010, 'remoteIds' => [
+        ['id' => 'tt0903747', 'type' => 2, 'sourceName' => 'IMDB'],
+        ['id' => '1335814-silvio-santos', 'type' => 12, 'sourceName' => 'TheMovieDB.com'],
+    ]])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 8100010)->firstOrFail();
+    expect($show->_tvdb_id)->toBe(8100010)
+        ->and($show->_tmdb_id)->toBeNull();
+});
+
+it('drops a malformed IMDb crosswalk to null, still importing the show', function (): void {
+    // Arrange
+    // "www.imdb.comtitlett1489340" is a real mangled TVDB IMDb crosswalk that isn't a valid tt-id.
+    $payloads = [tvdbSeries(['id' => 8100011, 'remoteIds' => [
+        ['id' => 'www.imdb.comtitlett1489340', 'type' => 2, 'sourceName' => 'IMDB'],
+    ]])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 8100011)->firstOrFail();
+    expect($show->_tvdb_id)->toBe(8100011)
+        ->and($show->_imdb_id)->toBeNull();
+});
+
 it('updates in place when the same _tvdb_id is re-run, leaving one row', function (): void {
     // Arrange
     $payloads = [tvdbSeries(['id' => 702])];
