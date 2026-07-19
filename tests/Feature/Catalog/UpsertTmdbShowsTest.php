@@ -96,6 +96,34 @@ it('persists the 0000-00-00 sentinel TMDB first_air_date as null', function (): 
     expect(DB::table('shows')->where('_tmdb_id', 604)->value('_tmdb_first_air_date'))->toBeNull();
 });
 
+it('drops a payload whose native id is malformed, writing no row and no QueryException', function (): void {
+    // Arrange
+    $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $payload['id'] = 12.5;
+
+    // Act
+    $count = resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+    // Assert
+    expect($count)->toBe(0)
+        ->and(Show::query()->count())->toBe(0);
+});
+
+it('drops only the malformed-native-id payload, upserting the valid one', function (): void {
+    // Arrange
+    $good = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $bad = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    $bad['id'] = 12.5;
+    Show::factory()->create(['_tmdb_id' => 1399]);
+
+    // Act
+    $count = resolve(UpsertTmdbShows::class)->handle([$good, $bad]);
+
+    // Assert
+    expect($count)->toBe(1)
+        ->and(Show::query()->pluck('_tmdb_id')->all())->toBe([1399]);
+});
+
 it('returns 0 and persists nothing for empty input', function (): void {
     // Arrange
     $payloads = [];
