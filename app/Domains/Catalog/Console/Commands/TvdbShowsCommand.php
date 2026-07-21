@@ -7,6 +7,8 @@ namespace App\Domains\Catalog\Console\Commands;
 use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
 use App\Domains\Catalog\Actions\UpsertTvdbSeasons;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
+use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
+use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TvdbApiService;
 use Generator;
@@ -67,10 +69,11 @@ abstract class TvdbShowsCommand extends Command
     }
 
     /**
-     * Run one chunk, reporting rather than propagating a failure so one bad batch
-     * (a transient API failure or a single malformed record) can't abort the entire
-     * ingest and silently truncate the catalog — the loop moves on to the next. On a
-     * throw the whole chunk's ids are returned as failed; otherwise the pooled misses.
+     * Run one chunk, absorbing only a transient TheTVDB API failure so one bad batch
+     * can't abort the entire ingest and silently truncate the catalog — the loop moves
+     * on and the whole chunk's ids route to the retryable failed set. A non-API
+     * exception (e.g. a DB QueryException — a genuine bug) propagates rather than being
+     * masked as a retryable miss. Otherwise the pooled misses are returned.
      *
      * @param  array<int, int>  $ids
      * @return list<int>
@@ -84,7 +87,7 @@ abstract class TvdbShowsCommand extends Command
     ): array {
         try {
             return $this->syncChunk($ids, $api, $upsertShows, $upsertArtworks, $upsertSeasons);
-        } catch (\Throwable $e) {
+        } catch (TvdbRequestFailed|TvdbAuthenticationFailed $e) {
             report($e);
 
             return array_values($ids);

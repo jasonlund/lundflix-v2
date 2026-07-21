@@ -10,6 +10,13 @@ External-source attributes are stored **raw**, one column each, prefixed
 order follows source priority: imdb → tmdb → tvdb. Persist the source value
 verbatim; derive/normalize downstream, not on ingest.
 
+**Exception — crosswalk ids SQL keys on** (`_imdb_id`, `_tmdb_id`): the raw stays
+(e.g. `_tvdb_remoteIds`), but the queryable id is **normalized at write time**
+through `Support\SourceId` (an upsert/`whereIn`/join key can't be a read accessor).
+Malformed upstream → null. `Support\TvdbCrosswalk::normalize()` is the shared
+remoteIds → `{_imdb_id, _tmdb_id}` derivation used by `UpsertTvdbShows`. See the
+raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
+
 ## IMDb dataset streaming (`ImdbDatasetService`)
 
 - `rows()` returns a `LazyCollection` over a gzip stream. The gz handle is closed
@@ -58,6 +65,11 @@ verbatim; derive/normalize downstream, not on ingest.
   series and upserts each. TheTVDB offers no re-download list, so failures heal
   **within the run**: one retry pass over the crawl's failures, then report the
   remainder. No persisted skip state.
+  - `--ids-file=<path>` re-hydrates only the series ids in that single-line CSV
+    (skipping the crawl) — the recovery path for the still-failing ids the run
+    logged; a missing path refuses (exit 1) rather than falling back to the full
+    crawl. No TMDB flag is needed: the rows it creates carry no `tmdb_synced_at`,
+    so the next default `catalog:sync-shows-tmdb` hydrates them.
 - `catalog:sync-shows-tvdb` — the rolling 14-day `/updates`-feed sync, wired into
   `catalog:sync`. The 14-day overlap window **is** the self-heal: idempotent
   upserts re-cover any dropped update on a later run, so it needs no persisted
