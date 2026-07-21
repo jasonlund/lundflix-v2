@@ -7,7 +7,7 @@ description: >-
   service signatures, data shapes, cadence — and needs those pinned down before it
   can be decomposed or sliced. Architecture/files/decisions only: zero TDD concern,
   zero ticket-splitting. The front-most of the three planning skills; its output
-  feeds `plan-breakdown` or `tdd-plan`.
+  feeds `plan-breakdown` or `plan-slices`.
 ---
 
 # Plan Draft
@@ -15,7 +15,7 @@ description: >-
 A rough ticket is a **wishlist, not a plan** — "add episode/season models",
 "sync command to keep shows up to date" (FLIX-197) names outcomes but pins no
 decisions. The two downstream skills both assume the concrete plan already exists:
-`plan-breakdown` decomposes *a written PRD/plan*, and `tdd-plan` slices *a finished
+`plan-breakdown` decomposes *a written PRD/plan*, and `plan-slices` slices *a finished
 plan written with zero TDD concern*. Feed a rough ticket straight into either and
 you get garbage — there is nothing concrete to partition or slice.
 
@@ -26,8 +26,8 @@ You are the **front half of the front half** — the drafting stage:
 
 ```
 rough ticket ─plan-draft▶ concrete plan (replaces ticket body)
-                             ├─multi-ticket?─▶ plan-breakdown ▶ tdd-plan ▶ tdd
-                             └─single ticket?─▶ tdd-plan ▶ tdd
+                             ├─multi-ticket?─▶ plan-breakdown ▶ plan-slices ▶ tdd
+                             └─single ticket?─▶ plan-slices ▶ tdd
 ```
 
 ## What this skill is — and is NOT
@@ -37,7 +37,7 @@ rough ticket ─plan-draft▶ concrete plan (replaces ticket body)
   **explicitly confirms**. Architecture, target files/domains, data shapes, locked
   decisions, open risks.
 - **IS NOT** a TDD planner. Never mention slices, tests, RED/GREEN, or testability
-  seams — that is `tdd-plan`'s whole job, and it *expects* a plan written with zero
+  seams — that is `plan-slices`'s whole job, and it *expects* a plan written with zero
   TDD concern as its input. Stay silent on testing.
 - **IS NOT** a decomposer. Never split into sub-tickets, create Linear tickets,
   build a wave/dependency graph, or assign branches — that is `plan-breakdown`
@@ -147,8 +147,8 @@ invoke it:
 
 - Plan spans **more than one ticket's worth** of work / multiple domains or seams →
   recommend **`plan-breakdown`** (it decomposes into parallel tickets, then calls
-  `tdd-plan` per ticket).
-- Plan is **a single ticket** → recommend **`tdd-plan`** directly (slice this one
+  `plan-slices` per ticket).
+- Plan is **a single ticket** → recommend **`plan-slices`** directly (slice this one
   ticket's plan into a TDD backlog).
 
 State which and why in one line. Create nothing else, write no further Linear
@@ -158,7 +158,7 @@ changes, and never enter breakdown or slicing yourself.
 
 - `.claude/skills/plan-breakdown/SKILL.md` — next step for multi-ticket plans;
   decomposes into parallel-aware tickets. Consumes this skill's output.
-- `.claude/skills/tdd-plan/SKILL.md` — next step for single-ticket plans; slices a
+- `.claude/skills/plan-slices/SKILL.md` — next step for single-ticket plans; slices a
   finished plan into a TDD backlog. Expects exactly the zero-TDD plan this produces.
 - `CLAUDE.md` / `.ai/guidelines/project.md` — DDD layout, naming, raw-source column
   convention that shape every locked decision.

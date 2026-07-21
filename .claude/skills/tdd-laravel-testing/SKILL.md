@@ -1,5 +1,5 @@
 ---
-name: laravel-testing
+name: tdd-laravel-testing
 description: >-
   Conventions for writing Laravel backend tests (Pest/PHPUnit) for this app:
   Feature vs Unit tests, database refresh, factories, HTTP assertions, and
@@ -88,7 +88,7 @@ $this->get(route('movies.index'))
 ```
 
 This verifies the backend contract the React page depends on — pair it with the
-frontend `react-testing` cycle for full-stack features.
+frontend `tdd-react-testing` cycle for full-stack features.
 
 ## Test-comment standard (strict)
 

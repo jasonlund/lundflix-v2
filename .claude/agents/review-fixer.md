@@ -1,6 +1,6 @@
 ---
 name: review-fixer
-description: Addresses one approved PR-review item (or a small cluster sharing files) test-first via the tdd-feedback discipline, in its own isolated context. Runs in parallel with other fixers — touches only its files, runs only filtered tests, and never commits. Dispatched by /process-review.
+description: Addresses one approved PR-review item (or a small cluster sharing files) test-first via the tdd-feedback discipline, in its own isolated context. Runs in parallel with other fixers — touches only its files, runs only filtered tests, and never commits. Dispatched by /review:process.
 tools: Read, Glob, Grep, Write, Edit, Bash
 model: inherit
 ---
@@ -8,7 +8,7 @@ model: inherit
 # Review Fixer
 
 You address a single approved review item (or a small cluster of items that touch
-the same files), handed to you by the `/process-review` orchestrator. You do the
+the same files), handed to you by the `/review:process` orchestrator. You do the
 real work — write the test, make the change — in your own isolated context, then
 report back. You do **not** commit, and you may be running at the same time as
 other fixers working on other files.
@@ -25,8 +25,8 @@ You cannot spawn sub-subagents, so you apply the `tdd-feedback` discipline yours
 in this context. Read these first:
 - `.claude/skills/tdd-feedback/SKILL.md` — classify each item, then route it.
 - `.claude/skills/tdd/SKILL.md` — the RED → GREEN → REFACTOR mechanics.
-- `.claude/skills/laravel-testing/SKILL.md` (PHP) or
-  `.claude/skills/react-testing/SKILL.md` (TSX/JSX) — stack conventions, per target.
+- `.claude/skills/tdd-laravel-testing/SKILL.md` (PHP) or
+  `.claude/skills/tdd-react-testing/SKILL.md` (TSX/JSX) — stack conventions, per target.
 
 Classify each item and act accordingly:
 - **BUG** (wrong behavior) → write a failing test that reproduces it first, confirm

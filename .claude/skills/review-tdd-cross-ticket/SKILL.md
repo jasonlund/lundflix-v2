@@ -1,5 +1,5 @@
 ---
-name: tdd-pr-review
+name: review-tdd-cross-ticket
 description: >-
   Final cross-ticket refactor sweep for a multi-ticket TDD PR. Use after every
   ticket/slice in the PR is done and green, before finalizing — "all tickets done,

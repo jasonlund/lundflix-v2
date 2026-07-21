@@ -1,6 +1,6 @@
 ---
-name: review-all
-description: Two-engine PR review — runs /review-pr (multi-agent) plus the CodeRabbit CLI in parallel, then posts each engine's findings to the GitHub PR as its own source-attributed review via /add-to-pr.
+name: review:suite
+description: Two-engine PR review — runs /review:claude (multi-agent) plus the CodeRabbit CLI in parallel, then posts each engine's findings to the GitHub PR as its own source-attributed review via /review:add.
 ---
 
 # Two-Engine PR Review
@@ -8,7 +8,7 @@ description: Two-engine PR review — runs /review-pr (multi-agent) plus the Cod
 You orchestrate **two independent reviewers** over one PR and land each one's
 findings on GitHub as a **separate, source-attributed review**:
 
-1. **`/review-pr`** — the in-house adversarial multi-agent review (runs top-level
+1. **`/review:claude`** — the in-house adversarial multi-agent review (runs top-level
    here, because it spawns its own subagent fleet and can't be nested).
 2. **CodeRabbit CLI** — dispatched to the `coderabbit-reviewer` subagent.
 
@@ -17,19 +17,19 @@ returns a canonical report file. **You (the orchestrator) do all the posting** �
 the subagent never touches GitHub. Both always run; a failing engine is skipped,
 never fatal.
 
-Loop position: `/create-pr` → `/human-review` (human-facing summary + ticket-scope
-check) → **`/review-all`** → `/process-review`. Run `/human-review` first for a
+Loop position: `/review:create-pr` → `/review:human` (human-facing summary + ticket-scope
+check) → **`/review:suite`** → `/review:process`. Run `/review:human` first for a
 plain-language read of the branch before these engines dig for defects.
 
 ## Input
 - **PR number** — positional arg, or auto-detected from the current branch.
-- **Ticket ID** — `FLIX-XXX`, optional; passed straight through to `/review-pr`.
+- **Ticket ID** — `FLIX-XXX`, optional; passed straight through to `/review:claude`.
 
 ## Example Invocation
 ```
-/review-all                 # auto-detect PR + ticket
-/review-all 142             # explicit PR
-/review-all 142 FLIX-154    # explicit PR + ticket
+/review:suite                 # auto-detect PR + ticket
+/review:suite 142             # explicit PR
+/review:suite 142 FLIX-154    # explicit PR + ticket
 ```
 
 ---
@@ -38,8 +38,8 @@ plain-language read of the branch before these engines dig for defects.
 
 1. **PR number** — if not passed, follow **PR Number Auto-Extraction** in
    `.claude/skills/review-pipeline/SKILL.md`. If no PR is found, HALT and tell the
-   user to open one with `/create-pr` (lints, commits, pushes, opens the PR), or
-   pass the number. CodeRabbit can review locally, but `/add-to-pr` needs the PR —
+   user to open one with `/review:create-pr` (lints, commits, pushes, opens the PR), or
+   pass the number. CodeRabbit can review locally, but `/review:add` needs the PR —
    so a PR is required.
 2. **Base** = `main`.
 3. **Run dir** — compute a unique scratch dir and create it:
@@ -52,7 +52,7 @@ plain-language read of the branch before these engines dig for defects.
 
 ## Phase 1: Dispatch the CodeRabbit CLI subagent (background)
 
-Spawn it with `run_in_background: true` so it churns while `/review-pr` runs:
+Spawn it with `run_in_background: true` so it churns while `/review:claude` runs:
 
 - `subagent_type: coderabbit-reviewer` — prompt with `PR_NUMBER`, `RUN_DIR`
   (absolute), `BASE=main`.
@@ -62,15 +62,15 @@ and `COUNTS`. Do not block on it yet.
 
 ---
 
-## Phase 2: Run /review-pr inline (top-level)
+## Phase 2: Run /review:claude inline (top-level)
 
 Invoke the **`review-pr`** skill, passing through the same PR number and ticket
 id. Let it run its full pipeline and emit its markdown report.
 
 Then **persist that report** so it can be posted uniformly:
-1. Take the report `/review-pr` just produced (the `# PR Review: PR #<n> …`
+1. Take the report `/review:claude` just produced (the `# PR Review: PR #<n> …`
    markdown).
-2. Insert a `Source: /review-pr` line immediately under the `# PR Review:` header.
+2. Insert a `Source: /review:claude` line immediately under the `# PR Review:` header.
 3. Write it to `"$RUN_DIR/reviewpr.report.md"`.
 
 ---
@@ -83,19 +83,19 @@ Collect the CodeRabbit subagent's final report block (it has completed by now):
 
 ---
 
-## Phase 4: Post both (you do this — one /add-to-pr per engine)
+## Phase 4: Post both (you do this — one /review:add per engine)
 
 For each engine that produced a report file (`reviewpr.report.md`,
 `coderabbit.report.md`), invoke the **`add-to-pr`** skill with the **report file
 path as the argument**, once per file:
 
 ```
-/add-to-pr <RUN_DIR>/reviewpr.report.md
-/add-to-pr <RUN_DIR>/coderabbit.report.md
+/review:add <RUN_DIR>/reviewpr.report.md
+/review:add <RUN_DIR>/coderabbit.report.md
 ```
 
 This produces **two separate `COMMENT` reviews** on the PR, each attributed via
-its `Source:` header (`via /review-pr` / `via CodeRabbit`). Skip any engine whose
+its `Source:` header (`via /review:claude` / `via CodeRabbit`). Skip any engine whose
 subagent returned `FAILED`. Post sequentially (not in parallel) so the two reviews
 land cleanly.
 
@@ -104,7 +104,7 @@ land cleanly.
 ## Phase 5: Summary
 
 ```
-✅ /review-all on PR #{number}
+✅ /review:suite on PR #{number}
 
 | Engine     | Status | Blocking | Should Fix | Consider | Review |
 |------------|--------|----------|------------|----------|--------|

@@ -17,8 +17,8 @@ the right move is to **skip** — say so and stop.
 ## Procedure
 
 1. Identify the stack and read the conventions:
-   - PHP → **Read `.claude/skills/laravel-testing/SKILL.md`**.
-   - TSX/JSX → **Read `.claude/skills/react-testing/SKILL.md`**.
+   - PHP → **Read `.claude/skills/tdd-laravel-testing/SKILL.md`**.
+   - TSX/JSX → **Read `.claude/skills/tdd-react-testing/SKILL.md`**.
    Use it for the run command.
 2. Decide whether to refactor.
    - **Refactor when:** clear duplication, unclear names, a fat controller/component,

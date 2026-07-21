@@ -109,11 +109,11 @@ finish the backend cycle(s) before starting the frontend cycle(s).
 
 ## Reference
 
-- The subagents **Read** `.claude/skills/laravel-testing/SKILL.md` (PHP) or
-  `.claude/skills/react-testing/SKILL.md` (TSX/JSX) for stack conventions and exact
+- The subagents **Read** `.claude/skills/tdd-laravel-testing/SKILL.md` (PHP) or
+  `.claude/skills/tdd-react-testing/SKILL.md` (TSX/JSX) for stack conventions and exact
   commands. Verify actual test commands from `composer.json` / `package.json` if
   they differ from the documented defaults.
 - GREEN and BLUE run automatically after RED approval. To make them stop-and-show
   too, add an `AskUserQuestion` gate before each.
-- A skill-activation hook is intentionally NOT installed — see
-  `.claude/tdd-hook-OPTIONAL.md` if this skill ever stops activating reliably.
+- A skill-activation reminder hook (`tdd-activation-reminder.sh`) nudges this skill
+  on new-feature prompts — see `.claude/hooks/README.md`.
