@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
+use App\Domains\Catalog\Actions\UpsertTvdbSeasons;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
 use App\Domains\Catalog\Services\TvdbApiService;
 use Generator;
@@ -27,9 +28,10 @@ class SyncTvdbShows extends TvdbShowsCommand
         TvdbApiService $api,
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
+        UpsertTvdbSeasons $upsertSeasons,
     ): int {
         $this->output->writeln('Syncing shows…');
-        $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks);
+        $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks, $upsertSeasons);
 
         return self::SUCCESS;
     }

@@ -279,3 +279,17 @@ it('exercises both TMDB changes feeds on a default run', function (): void {
     Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
     Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
 });
+
+it('on a default run dispatches the episodes sync after the show sync', function (): void {
+    // Arrange
+    fakeCatalogSync();
+
+    // Act
+    $this->artisan('catalog:sync');
+
+    // Assert
+    // The type=episodes updates call only fires from catalog:sync-episodes-tvdb;
+    // seeing it proves the episodes command ran inside the orchestrator (ordering
+    // after the show sync is enforced structurally by its list placement).
+    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=episodes'));
+});

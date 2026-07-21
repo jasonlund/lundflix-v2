@@ -133,3 +133,27 @@ it('announces it is starting before the pipeline runs', function (): void {
     // Act & Assert
     $this->artisan('catalog:sync-shows-tvdb')->expectsOutputToContain('Syncing shows…');
 });
+
+it('persists the hydrated show\'s seasons linked by show_id', function (): void {
+    // Arrange
+    fakeTvdbUpdates();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tvdb');
+
+    // Assert
+    $show = Show::where('_tvdb_id', 81189)->firstOrFail();
+    expect($show->seasons()->count())->toBe(13);
+    $this->assertDatabaseHas('seasons', ['show_id' => $show->id, '_tvdb_id' => 30272, '_tvdb_number' => 1]);
+});
+
+it('makes no extra HTTP call beyond the existing /extended hydration for seasons', function (): void {
+    // Arrange
+    fakeTvdbUpdates();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tvdb');
+
+    // Assert
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/seasons'));
+});
