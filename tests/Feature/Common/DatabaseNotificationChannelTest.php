@@ -46,12 +46,13 @@ it('persists a row morphed to the user with its data', function (): void {
 it('unread by default', function (): void {
     // Arrange
     $user = User::factory()->create();
-    $user->notify(new DatabaseChannelTestNotification);
 
     // Act
-    $unread = $user->fresh()->unreadNotifications;
+    $user->notify(new DatabaseChannelTestNotification);
 
     // Assert
+    $unread = $user->fresh()->unreadNotifications;
+
     expect($unread)->toHaveCount(1);
     expect($unread->first()->read_at)->toBeNull();
 });
