@@ -5,28 +5,34 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\SeedTvdbEpisodes;
+use App\Domains\Catalog\Enums\SyncFeed;
+use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
+use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TvdbApiService;
+use App\Domains\Catalog\Support\SyncMarker;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Throwable;
 
-#[Description('Sync TheTVDB episodes for already-seeded shows from the rolling 14-day updates feed')]
+/**
+ * Incremental TheTVDB episodes sync for already-seeded shows. The /updates `since`
+ * is derived from the feed's persisted marker: a 6h overlap re-fetches behind the
+ * marker, a first run with no marker reaches back 24h, and the reach is capped at
+ * 14 days. A clean, unbounded run advances the marker to its start time; a run with
+ * any failure or `--limit` leaves the marker untouched so the missed span is
+ * re-covered next run.
+ */
+#[Description('Sync TheTVDB episodes for already-seeded shows incrementally from the /updates feed since the last run marker')]
 #[Signature('catalog:sync-episodes-tvdb {--limit=}')]
 class SyncTvdbEpisodes extends Command
 {
-    /**
-     * Rolling overlap window fed to the /updates feed. Far wider than the 12h
-     * sync cadence: a dropped update is re-covered by ~28 later runs, and
-     * idempotent upserts make the re-processing harmless — so the window itself
-     * is the self-heal, needing zero persisted state (no marker, no skip set).
-     */
-    private const int WINDOW_DAYS = 14;
-
-    public function handle(TvdbApiService $api, SeedTvdbEpisodes $seed): int
+    public function handle(TvdbApiService $api, SeedTvdbEpisodes $seed, SyncMarker $marker): int
     {
-        $since = now()->subDays(self::WINDOW_DAYS)->timestamp;
+        $startedAt = CarbonImmutable::now();
+
+        $since = $marker->window(SyncFeed::TvdbEpisodes)->sinceTimestamp();
 
         $seriesIds = collect($api->updates($since, 'episodes'))
             ->pluck('seriesId')
@@ -46,6 +52,8 @@ class SyncTvdbEpisodes extends Command
             $query->orderBy('id')->limit((int) $limit);
         }
 
+        $failed = false;
+
         // Forward-only read-stream dispatching per-show work, so there is no
         // offset-pagination skip/double-process hazard for chunkById to guard:
         // the only write (handle() stamps episodes_synced_at) hits a non-key
@@ -54,9 +62,16 @@ class SyncTvdbEpisodes extends Command
         foreach ($query->cursor() as $show) {
             try {
                 $seed->handle($show);
-            } catch (Throwable $e) {
+            } catch (TvdbRequestFailed|TvdbAuthenticationFailed $e) {
                 report($e);
+                $failed = true;
             }
+        }
+
+        // Advance only on a clean, unbounded run: a failed show or a --limit cap means
+        // this run didn't cover the whole window, so the marker must not move past it.
+        if (! $failed && $this->option('limit') === null) {
+            $marker->advance(SyncFeed::TvdbEpisodes, $startedAt);
         }
 
         return self::SUCCESS;

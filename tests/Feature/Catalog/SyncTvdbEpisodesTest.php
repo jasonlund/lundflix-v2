@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -15,9 +17,10 @@ uses(RefreshDatabase::class);
 |--------------------------------------------------------------------------
 | Fixtures (byte-exact real TheTVDB v4 slices)
 |--------------------------------------------------------------------------
-| catalog:sync-episodes-tvdb pulls the /updates?type=episodes feed since
-| `now − 14 days`, reduces it to distinct seriesIds, keeps only shows already
-| seeded (episodes_synced_at not null), and re-runs SeedTvdbEpisodes per show.
+| catalog:sync-episodes-tvdb pulls the /updates?type=episodes feed since the
+| TvdbEpisodes marker (6h overlap, 24h no-marker fallback, 14d cap), reduces it
+| to distinct seriesIds, keeps only shows already seeded (episodes_synced_at not
+| null), and re-runs SeedTvdbEpisodes per show.
 |
 | tests/Fixtures/Catalog/tvdb/login.json — POST /login → data.token JWT;
 |   every fake map answers it because Http::preventStrayRequests() is global.
@@ -34,10 +37,8 @@ uses(RefreshDatabase::class);
 | /series/.../episodes) and each branches page=1 → its own page 2.
 */
 
-beforeEach(function (): void {
-    Cache::flush();
-    config(['services.tvdb.key' => 'test-key']);
-
+function fakeTvdbEpisodes(): void
+{
     Http::fake([
         '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
         '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
@@ -47,10 +48,16 @@ beforeEach(function (): void {
             ? Http::response(fixtureBytes('Catalog/tvdb/series_episodes_page2.json'))
             : Http::response(fixtureBytes('Catalog/tvdb/series_episodes_page1.json')),
     ]);
+}
+
+beforeEach(function (): void {
+    Cache::flush();
+    config(['services.tvdb.key' => 'test-key']);
 });
 
 it('hydrates a seeded show that appears in the episodes feed', function (): void {
     // Arrange
+    fakeTvdbEpisodes();
     Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
 
     // Act
@@ -60,20 +67,81 @@ it('hydrates a seeded show that appears in the episodes feed', function (): void
     $this->assertDatabaseCount('episodes', 6);
 });
 
-it('queries /updates with type=episodes and since = now minus 14 days', function (): void {
+it('queries /updates with type=episodes and since = now minus 24h when no marker is cached', function (): void {
     // Arrange
-    $this->travelTo(now());
+    Date::setTestNow('2026-07-16 12:00:00');
+    fakeTvdbEpisodes();
 
     // Act
     $this->artisan('catalog:sync-episodes-tvdb');
 
     // Assert
-    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'since='.now()->subDays(14)->timestamp)
+    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'since='.now()->subHours(24)->timestamp)
         && Str::contains($request->url(), 'type=episodes'));
+});
+
+it('queries /updates with since = the cached marker minus a 6h overlap', function (): void {
+    // Arrange
+    Date::setTestNow('2026-07-16 12:00:00');
+    $marker = now()->subHours(10)->toImmutable();
+    Cache::forever(SyncFeed::TvdbEpisodes->cacheKey(), $marker);
+    fakeTvdbEpisodes();
+
+    // Act
+    $this->artisan('catalog:sync-episodes-tvdb');
+
+    // Assert
+    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'since='.$marker->subHours(6)->timestamp));
+});
+
+it('advances the marker to run-start after a clean run', function (): void {
+    // Arrange
+    Date::setTestNow('2026-07-16 12:00:00');
+    fakeTvdbEpisodes();
+    Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+
+    // Act
+    $this->artisan('catalog:sync-episodes-tvdb');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey())->equalTo(now()))->toBeTrue();
+});
+
+it('does not advance the marker on a --limit run', function (): void {
+    // Arrange
+    Date::setTestNow('2026-07-16 12:00:00');
+    fakeTvdbEpisodes();
+    Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+
+    // Act
+    $this->artisan('catalog:sync-episodes-tvdb', ['--limit' => 1]);
+
+    // Assert
+    expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBeNull();
+});
+
+it('does not advance the marker when an episodes fetch fails', function (): void {
+    // Arrange
+    Date::setTestNow('2026-07-16 12:00:00');
+    Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+            ? Http::response(fixtureBytes('Catalog/tvdb/episode_updates_page2.json'))
+            : Http::response(fixtureBytes('Catalog/tvdb/episode_updates.json')),
+        '*api4.thetvdb.com/v4/series/*/episodes*' => Http::response('', 500),
+    ]);
+
+    // Act
+    $this->artisan('catalog:sync-episodes-tvdb');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBeNull();
 });
 
 it('skips a show in the feed that has not yet been seeded', function (): void {
     // Arrange
+    fakeTvdbEpisodes();
     Show::factory()->create(['_tvdb_id' => 469484, 'episodes_synced_at' => null, '_tvdb_defaultSeasonType' => 1]);
 
     // Act
@@ -86,6 +154,7 @@ it('skips a show in the feed that has not yet been seeded', function (): void {
 
 it('caps shows processed with --limit', function (): void {
     // Arrange
+    fakeTvdbEpisodes();
     Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
     Show::factory()->create(['_tvdb_id' => 371082, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
 
@@ -108,6 +177,7 @@ it('caps shows processed with --limit', function (): void {
 
 it('processes the lowest-id show first under --limit so a capped run is deterministic', function (): void {
     // Arrange
+    fakeTvdbEpisodes();
     $first = Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
     Show::factory()->create(['_tvdb_id' => 371082, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
 
@@ -121,7 +191,7 @@ it('processes the lowest-id show first under --limit so a capped run is determin
 
 it('exits SUCCESS', function (): void {
     // Arrange
-    // feed + fakes wired in beforeEach, no per-test state needed
+    fakeTvdbEpisodes();
 
     // Act & Assert
     $this->artisan('catalog:sync-episodes-tvdb')->assertExitCode(0);

@@ -80,9 +80,12 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
 
 ## TVDB episodes sync (`catalog:sync-episodes-tvdb`)
 
-- Same rolling 14-day `/updates?type=episodes` window as the shows sync: the
-  overlap window **is** the self-heal — idempotent upserts re-cover any dropped
-  update on a later run, so no persisted marker and re-processing is harmless.
+- The incremental `/updates?type=episodes` sync. Reads the `tvdb_episodes` marker
+  (see **Incremental sync markers**) for `since` — a 6h overlap, 24h first-run
+  fallback, capped at 14 days — and advances it only on a clean, unbounded run;
+  idempotent upserts make the overlap re-processing harmless. The `catch` is
+  narrowed to `TvdbRequestFailed`/`TvdbAuthenticationFailed` so a real bug (e.g. a
+  `QueryException`) surfaces instead of being swallowed as a fetch failure.
 - Refreshes **only already-seeded shows** — the working set is the feed's
   `seriesId`s intersected with `whereNotNull('episodes_synced_at')`. A show is
   "episode-seeded" once `SeedTvdbEpisodes` stamps `episodes_synced_at`; the
@@ -97,16 +100,17 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
 
 ## Incremental sync markers (`SyncMarker` / `SyncFeed`)
 
-All three catalog syncs (`catalog:sync-movies`, `catalog:sync-shows-tmdb`,
-`catalog:sync-shows-tvdb`) fetch only what changed since their last successful run
-via a per-feed cache marker — no fixed rolling window.
+All four catalog syncs (`catalog:sync-movies`, `catalog:sync-shows-tmdb`,
+`catalog:sync-shows-tvdb`, `catalog:sync-episodes-tvdb`) fetch only what changed
+since their last successful run via a per-feed cache marker — no fixed rolling
+window.
 
 - `SyncMarker` (`Support/`) owns read + advance. `window(SyncFeed)` derives the
   fetch interval as a `SyncWindow` VO: `since` = marker − 6h overlap (24h fallback
   when unset), floored at `now − 14d` (TMDB's max `/changes` span; TVDB matched for
   parity). `advance(SyncFeed, $startedAt)` persists **run-start** via
-  `Cache::forever` — one key per `SyncFeed` case (`TvdbShows`/`TmdbShows`/
-  `TmdbMovies`), so the three feeds advance independently.
+  `Cache::forever` — one key per `SyncFeed` case (`TvdbShows`/`TvdbEpisodes`/
+  `TmdbShows`/`TmdbMovies`), so the four feeds advance independently.
 - **Zero-failure gate:** a run advances its marker only if it finished with **no**
   failed ids/chunks **and** no `--limit`; `--fresh` still advances (clean
   baseline). A per-id hydrate failure counts — the pooled `movies()`/`tvShows()`/
