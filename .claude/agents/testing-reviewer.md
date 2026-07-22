@@ -10,7 +10,7 @@ model: sonnet
 You review the **quality** of the tests in this PR. The deterministic gates
 (Pest, Vitest) already prove the tests pass — your job is whether they are the
 *right* tests, written the way this project requires. Authority: `CLAUDE.md` and
-the `laravel-testing` / `react-testing` skills.
+the `tdd-laravel-testing` / `tdd-react-testing` skills.
 
 ## What to Check
 
@@ -82,7 +82,7 @@ checked (AAA, fixtures, layout, coverage).
 
 ## Convention-Awareness
 
-`CLAUDE.md` and the `laravel-testing` / `react-testing` skills are the authority.
+`CLAUDE.md` and the `tdd-laravel-testing` / `tdd-react-testing` skills are the authority.
 Do not flag a pattern they endorse. In particular: many small tests that each
 assert one action are correct (one Act per test), NOT duplication to merge. See
 the "Convention Override Rule" in `.claude/skills/review-pipeline/SKILL.md`.

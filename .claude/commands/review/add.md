@@ -1,11 +1,11 @@
 ---
-name: add-to-pr
-description: Post non-dismissed /review-pr findings to a GitHub PR as a single review — inline comments where the file/line is in the diff, body comments otherwise.
+name: review:add
+description: Post non-dismissed /review:claude findings to a GitHub PR as a single review — inline comments where the file/line is in the diff, body comments otherwise.
 ---
 
 # Add Review to PR
 
-Post the findings from a `/review-pr` report to a GitHub PR as a review with
+Post the findings from a `/review:claude` report to a GitHub PR as a review with
 inline comments.
 
 ## Input Source
@@ -15,7 +15,7 @@ The review report comes from one of two places:
 1. **File path in `$ARGUMENTS`** — if it contains a readable file path, Read that
    file as the report.
 2. **Previous message in the conversation** (default) — the most recent
-   `/review-pr` output.
+   `/review:claude` output.
 
 Either way the report uses the standard format (Blocking Issues, Should Fix,
 Consider, Dismissed sections). If no review output is found in either place, stop
@@ -26,8 +26,8 @@ and tell the user.
 1. **PR number** — from the report header (`PR Review: PR #NNN …`). If absent,
    fall back to `gh pr view --json number --jq .number` for the current branch.
 2. **Source** — an optional `Source:` line just under the header names the review
-   engine (e.g. `Source: CodeRabbit`, `Source: /review-pr`).
-   Capture it as `{source}`; if absent, default to `` `/review-pr` ``. Use it in
+   engine (e.g. `Source: CodeRabbit`, `Source: /review:claude`).
+   Capture it as `{source}`; if absent, default to `` `/review:claude` ``. Use it in
    the body header and per-finding footers below so the posted review is
    attributed to the engine that produced it.
 3. **Repo** — `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`.

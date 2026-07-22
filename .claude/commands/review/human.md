@@ -1,13 +1,13 @@
 ---
-name: human-review
+name: review:human
 description: Human-facing orientation pass before the automated engines — diffs the branch, summarizes in plain language what the PR does, and checks it against the Linear ticket, flagging any deviation from the ticket's scope.
 ---
 
 # Human Review
 
 You are running the **human-orientation** stage of the review loop:
-`/create-pr` → **`/human-review`** → `/review-all` (or `/review-pr`) →
-`/add-to-pr` → `/process-review`.
+`/review:create-pr` → **`/review:human`** → `/review:suite` (or `/review:claude`) →
+`/review:add` → `/review:process`.
 
 This stage is for the **human**, not the machine. Before the adversarial
 multi-agent engines burn tokens finding defects, give the author a plain-language
@@ -29,10 +29,10 @@ Both are optional when the branch has an open PR. See Phase 0.
 
 ## Example Invocation
 ```
-/human-review                 # auto-detect PR + ticket from branch
-/human-review 205             # explicit PR, auto-detect ticket
-/human-review FLIX-205        # auto-detect PR, explicit ticket
-/human-review 205 FLIX-205    # explicit both
+/review:human                 # auto-detect PR + ticket from branch
+/review:human 205             # explicit PR, auto-detect ticket
+/review:human FLIX-205        # auto-detect PR, explicit ticket
+/review:human 205 FLIX-205    # explicit both
 ```
 
 ---
@@ -42,7 +42,7 @@ Both are optional when the branch has an open PR. See Phase 0.
 1. **PR number** — if not passed, follow **PR Number Auto-Extraction** in
    `.claude/skills/review-pipeline/SKILL.md`. A PR is **not required** — if none
    exists, fall back to the local branch (`git diff origin/main...HEAD`) and note
-   in the report that there's no open PR yet (suggest `/create-pr`).
+   in the report that there's no open PR yet (suggest `/review:create-pr`).
 2. **Ticket ID** — if not passed, follow **Ticket ID Auto-Extraction** in the same
    contract (branch name → PR title → null). If null, run the summary anyway and
    state plainly that ticket-alignment is **skipped** — there's nothing to check
@@ -52,7 +52,7 @@ Both are optional when the branch has an open PR. See Phase 0.
 
 ## Phase 1: Gather the Change
 
-Ground the readout in the same three sources `/create-pr` uses — **read them, do
+Ground the readout in the same three sources `/review:create-pr` uses — **read them, do
 not guess**:
 
 | Source | Supplies | How |
@@ -124,9 +124,9 @@ posted):
 
 ## Before you kick off the automated review
 - {deviations/gaps to reconcile on the ticket, if any}
-- {anything that looked off but isn't defect-hunting — that's /review-all's job}
+- {anything that looked off but isn't defect-hunting — that's /review:suite's job}
 
-Next: /review-all  (or /review-pr for the in-house engine only)
+Next: /review:suite  (or /review:claude for the in-house engine only)
 ```
 
 If there are no deviations and no gaps, say so in one line — a clean
@@ -135,7 +135,7 @@ ticket-to-diff match is the good outcome, not a reason to manufacture concerns.
 ## Notes
 - **Human-facing only.** No GitHub posting, no linters, no reviewer subagents,
   no commits — this stage informs, the later stages act.
-- **Don't defect-hunt.** Correctness/edge-case/convention review is `/review-all`'s
+- **Don't defect-hunt.** Correctness/edge-case/convention review is `/review:suite`'s
   job. Staying in your lane keeps this stage fast and cheap. If something genuinely
   alarming jumps out, mention it in one line and defer to the review engines.
 - **Ground everything** in the diff, commits, and ticket — never describe work the

@@ -1,5 +1,5 @@
 ---
-name: tdd-plan
+name: plan-slices
 description: >-
   Turn an already-written implementation plan into an ordered, test-first TDD
   slice backlog for this Laravel + Inertia + React app. Use when you have one
@@ -43,7 +43,7 @@ Resolve the target before analyzing — prompt if it's unclear, never invent one
 - **Output target = the ticket body or the plan file** (see above) — single source
   of truth, not a separate doc, not chat-only.
 - **Reference, don't restate.** Slice sizing, AAA, and exact commands live in the
-  `tdd`, `laravel-testing`, and `react-testing` skills. Point at them.
+  `tdd`, `tdd-laravel-testing`, and `tdd-react-testing` skills. Point at them.
 
 ## Step 1 — Classify the surface
 
@@ -159,7 +159,7 @@ Do nothing else.
   tickets and calls this skill per ticket.
 - `.claude/skills/tdd/SKILL.md` — the executor; slice definition, Step 0/Step 1,
   right-reason-RED gate. Your output slots into its Step 1.
-- `.claude/skills/laravel-testing/SKILL.md` — Pest/Feature/Unit conventions +
+- `.claude/skills/tdd-laravel-testing/SKILL.md` — Pest/Feature/Unit conventions +
   backend commands.
-- `.claude/skills/react-testing/SKILL.md` — Vitest/RTL conventions + frontend
+- `.claude/skills/tdd-react-testing/SKILL.md` — Vitest/RTL conventions + frontend
   commands.

@@ -1,6 +1,6 @@
 ---
 name: coderabbit-reviewer
-description: Runs the CodeRabbit CLI against the current branch, normalizes its JSONL findings into a canonical /review-pr report file, and returns the file path plus per-severity counts. Dispatched by /review-all. Never posts to GitHub.
+description: Runs the CodeRabbit CLI against the current branch, normalizes its JSONL findings into a canonical /review:claude report file, and returns the file path plus per-severity counts. Dispatched by /review:suite. Never posts to GitHub.
 tools: Read, Write, Bash
 model: sonnet
 ---
@@ -8,7 +8,7 @@ model: sonnet
 # CodeRabbit CLI Reviewer
 
 You run **one** CodeRabbit CLI review, convert its output into the canonical
-report format that `/add-to-pr` consumes, write it to a file, and report back.
+report format that `/review:add` consumes, write it to a file, and report back.
 You do **not** post anything to GitHub — the orchestrator does that.
 
 ## Inputs (from the dispatcher prompt)
@@ -77,7 +77,7 @@ Rules:
   `security / correctness (CodeRabbit critical|major|minor)`.
 
 Write `$RUN_DIR/coderabbit.report.md` in EXACTLY this shape (the format
-`/add-to-pr` parses — sections `## Blocking Issues` / `## Should Fix` /
+`/review:add` parses — sections `## Blocking Issues` / `## Should Fix` /
 `## Consider`, one bullet block per finding):
 
 ```

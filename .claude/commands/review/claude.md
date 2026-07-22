@@ -1,5 +1,5 @@
 ---
-name: review-pr
+name: review:claude
 description: Gate-first adversarial multi-agent PR review against Linear tickets and lundflix standards. Runs deterministic gates (Pint/Rector/Pest/ESLint/Vitest), then parallel reviewer subagents with isolated context, consensus filtering, and adversarial verification.
 ---
 
@@ -20,10 +20,10 @@ Both are optional when the current branch has an open PR. See Phase 0.
 ## Example Invocation
 
 ```
-/review-pr                 # auto-detect PR + ticket from branch
-/review-pr 142             # explicit PR, auto-detect ticket
-/review-pr FLIX-154        # auto-detect PR, explicit ticket
-/review-pr 142 FLIX-154    # explicit both
+/review:claude                 # auto-detect PR + ticket from branch
+/review:claude 142             # explicit PR, auto-detect ticket
+/review:claude FLIX-154        # auto-detect PR, explicit ticket
+/review:claude 142 FLIX-154    # explicit both
 ```
 
 ---
@@ -32,7 +32,7 @@ Both are optional when the current branch has an open PR. See Phase 0.
 
 1. **PR number** — if not passed, follow **PR Number Auto-Extraction** in
    `.claude/skills/review-pipeline/SKILL.md`. If no PR is found, HALT and tell the
-   user to open one with `/create-pr` (which lints, commits, pushes, and opens the
+   user to open one with `/review:create-pr` (which lints, commits, pushes, and opens the
    PR), or pass the number.
 2. **Ticket ID** — if not passed, follow **Ticket ID Auto-Extraction** in the same
    contract (branch name → PR title → null). If null, warn that requirements
@@ -128,8 +128,8 @@ prioritize the most-changed files.
    queue/job impact.
 5. **discipline-reviewer** — simplicity, surgical-change, and verifiability
    discipline.
-6. **testing-reviewer** — test *quality* against the `laravel-testing` /
-   `react-testing` conventions (the Phase 1 gates already prove tests pass).
+6. **testing-reviewer** — test *quality* against the `tdd-laravel-testing` /
+   `tdd-react-testing` conventions (the Phase 1 gates already prove tests pass).
 
 **Timeout budget:** if an agent hasn't returned after 8 minutes, mark it
 `TIMED_OUT` in the coverage matrix and proceed with the rest.
@@ -253,6 +253,6 @@ convention override) · reason]
   or deterministic tool output. No citable authority → it doesn't ship.
 - DETERMINISTIC findings are never filtered or challenged.
 
-To post the report to the PR as inline comments, run `/add-to-pr` afterward.
+To post the report to the PR as inline comments, run `/review:add` afterward.
 
 $ARGUMENTS

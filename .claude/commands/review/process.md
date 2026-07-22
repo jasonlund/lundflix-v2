@@ -1,14 +1,14 @@
 ---
-name: process-review
-description: Third stage after /review-pr → /add-to-pr. Reads un-resolved PR feedback (GitHub inline threads + general comments + Conductor diff-comments), triages it, shows a numbered severity-grouped overview with a per-item approve/consider/skip recommendation that stands by default (the user replies only with overrides), presents the considered items in full one at a time, dispatches a foreground fixer per approval (parallel file-disjoint waves, test-first via tdd-feedback, no commit), then resolves every considered thread and prompts to commit/push.
+name: review:process
+description: Third stage after /review:claude → /review:add. Reads un-resolved PR feedback (GitHub inline threads + general comments + Conductor diff-comments), triages it, shows a numbered severity-grouped overview with a per-item approve/consider/skip recommendation that stands by default (the user replies only with overrides), presents the considered items in full one at a time, dispatches a foreground fixer per approval (parallel file-disjoint waves, test-first via tdd-feedback, no commit), then resolves every considered thread and prompts to commit/push.
 ---
 
 # Process Review Feedback
 
 You are orchestrating the final stage of the review loop:
-`/create-pr` → `/human-review` (human summary + ticket-scope check) → `/review-pr`
-(generate findings) → `/add-to-pr` (post them to the PR) →
-**`/process-review`** (act on them). You read back the feedback that is still
+`/review:create-pr` → `/review:human` (human summary + ticket-scope check) → `/review:claude`
+(generate findings) → `/review:add` (post them to the PR) →
+**`/review:process`** (act on them). You read back the feedback that is still
 open on the PR, decide with the user what to act on, dispatch isolated fixer
 subagents to do the work, then **resolve everything you considered** so a future
 run never reconsiders it — and finally prompt to commit/push.
@@ -21,8 +21,8 @@ and resolve. The fixing happens in `review-fixer` subagents.
 
 ## Example Invocation
 ```
-/process-review        # auto-detect PR from the current branch
-/process-review 142    # explicit PR
+/review:process        # auto-detect PR from the current branch
+/review:process 142    # explicit PR
 ```
 
 ---
@@ -52,7 +52,7 @@ and resolve. The fixing happens in `review-fixer` subagents.
    Discard threads where `isResolved == true`. For each surviving thread, keep its
    `id` (the `threadId` used to resolve it) and the first comment's `id`, `path`,
    `line`, `body`, `author`.
-4. **GitHub PR review bodies** — `/add-to-pr` posts findings two ways: inline
+4. **GitHub PR review bodies** — `/review:add` posts findings two ways: inline
    comments (the review threads from step 3) **and** body findings written into the
    review's body (the `## 🤖 Automated Review` block, with per-finding
    `### 🔴/🟠/🟡 … · File / Issue / Violates / Recommendation` entries). Fetch the
@@ -64,7 +64,7 @@ and resolve. The fixing happens in `review-fixer` subagents.
    mutation and **cannot take a direct reply**, so its only durable "handled" signal
    is a resolution comment we posted on a prior run. Build a `handledBodyRefs` set:
    scan the general PR comments (step 5) for the footer ref token
-   `via /process-review · ref: review-body {file}:{line}` (Phase 5). Compute the same
+   `via /review:process · ref: review-body {file}:{line}` (Phase 5). Compute the same
    `{file}:{line}` ref for each parsed body finding and **skip any whose ref is in
    `handledBodyRefs`** — this is a deterministic key match, not a fuzzy text match, so
    handled body findings are reliably not re-picked-up. Items with no ref match are
@@ -75,8 +75,8 @@ and resolve. The fixing happens in `review-fixer` subagents.
    gh api repos/{owner}/{repo}/issues/{number}/comments
    ```
    These have no resolved state. Treat each as un-handled **unless** a later comment
-   in the thread carries the `via /process-review` footer marker (Phase 5) — that
-   marks it already handled; skip it. (Comments that are themselves `/process-review`
+   in the thread carries the `via /review:process` footer marker (Phase 5) — that
+   marks it already handled; skip it. (Comments that are themselves `/review:process`
    resolution receipts are skipped, not re-triaged.)
 6. **Conductor diff-comments** — read from the **current conversation's attachments**
    (the Conductor MCP cannot fetch them). If none are attached, note that and move on.
@@ -97,9 +97,9 @@ and resolve. The fixing happens in `review-fixer` subagents.
 
 ## Phase 1: Triage (classify origin → classify scope → dismiss false positives → group → sort)
 
-1. **Classify origin.** Items posted by `/add-to-pr` carry its footer
-   (`via /review-pr` / `Found by:`). Those already passed false-positive-hunter +
-   adversarial verification inside `/review-pr` — **trust them; do not re-run FP
+1. **Classify origin.** Items posted by `/review:add` carry its footer
+   (`via /review:claude` / `Found by:`). Those already passed false-positive-hunter +
+   adversarial verification inside `/review:claude` — **trust them; do not re-run FP
    scrutiny.** Only *external* feedback (human reviewers, general comments, Conductor
    diff-comments) gets scrutiny: judge it inline against the **Convention Override
    Rule** and "Commonly false-positived conventions" in
@@ -134,11 +134,11 @@ and resolve. The fixing happens in `review-fixer` subagents.
      main flow has fully run through.
 3. **Group** duplicate / related items by `(file, line ±10, category)` per the
    contract's dedup rule. A group is presented and fixed as one unit.
-4. **Sort** BLOCKING → SHOULD_FIX → CONSIDER → NIT. Use the `/add-to-pr` badge
+4. **Sort** BLOCKING → SHOULD_FIX → CONSIDER → NIT. Use the `/review:add` badge
    (🔴/🟠/🟡) when present; otherwise assign severity per the contract taxonomy.
 5. **Auto-dismiss anything explicitly labeled dismissable.** Any item the
    orchestrator dismisses as a false positive — or that arrives **already carrying a
-   dismissed/dismissable label** (e.g. an `/add-to-pr` or CodeRabbit finding under a
+   dismissed/dismissable label** (e.g. an `/review:add` or CodeRabbit finding under a
    ⚫ *Dismissed as false positive* badge) — is **dropped from the Phase 2
    presentation flow**, exactly like out-of-scope non-urgent items. Do **not** present
    it for confirmation: there is no value in asking the user to confirm a dismissal
@@ -370,7 +370,7 @@ item has been presented and its fixer has returned.
 For **every** item you considered — approved-and-fixed, skipped, dismissed-as-FP, or
 out-of-scope (both the silently-dropped non-urgent ones and any urgent ones the user
 skipped in Phase 3.5) — leave a reply and resolve it. Resolving is what guarantees a
-future `/process-review` won't reconsider it. Out-of-scope items still get a reply +
+future `/review:process` won't reconsider it. Out-of-scope items still get a reply +
 resolve even though they were never presented inline — otherwise the next run
 re-triages them every time.
 
@@ -394,7 +394,7 @@ Reply + resolve mechanics by source:
   ```bash
   gh api repos/{owner}/{repo}/issues/{number}/comments -f body='<result>
 
-  _via /process-review · ref: review-body {file}:{line}_'
+  _via /review:process · ref: review-body {file}:{line}_'
   ```
   Use `{file}:0` when the body finding has no line. One ref per body finding (batch
   several into one comment only if each gets its own `ref:` line).
@@ -408,7 +408,7 @@ Reply + resolve mechanics by source:
 Every reply ends with the footer marker on its own line so re-runs detect handled
 general comments and body findings:
 ```
-_via /process-review_
+_via /review:process_
 ```
 
 ---

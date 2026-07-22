@@ -1,6 +1,6 @@
 ---
 name: review-pipeline
-description: Shared contract for all review agents — finding format, severity taxonomy, consensus rules, grounding, and lundflix conventions. Referenced by /review-pr and its reviewer/hunter agents.
+description: Shared contract for all review agents — finding format, severity taxonomy, consensus rules, grounding, and lundflix conventions. Referenced by /review:claude and its reviewer/hunter agents.
 ---
 
 # Review Pipeline — Shared Agent Contract
@@ -139,7 +139,7 @@ When reviewing, check changes against these standards (full detail in `CLAUDE.md
   entry points by URL; page-local components only). PascalCase components,
   `Page`/`Layout` suffixes, kebab-case dirs.
 
-**Testing** — see the dedicated `laravel-testing` and `react-testing` skills.
+**Testing** — see the dedicated `tdd-laravel-testing` and `tdd-react-testing` skills.
 
 ## Convention Override Rule
 
@@ -252,7 +252,7 @@ extraction in this order (first match wins):
 
 ## PR Number Auto-Extraction
 
-When `/review-pr` is invoked without an explicit PR number:
+When `/review:claude` is invoked without an explicit PR number:
 
 ```bash
 gh pr view --json number -q .number
