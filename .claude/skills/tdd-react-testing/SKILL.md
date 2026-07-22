@@ -1,5 +1,5 @@
 ---
-name: react-testing
+name: tdd-react-testing
 description: >-
   Conventions for writing React + Inertia frontend tests (Vitest + React Testing
   Library) for this app: rendering pages/components with props, querying by role,

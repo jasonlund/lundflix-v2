@@ -15,13 +15,13 @@ A PRD usually covers **many tickets' worth of work**. Splitting it into the
 FLIX-129/TVDB was split into 5 sub-tickets all editing one `TvdbApiService` on a
 hard dependency chain → forced serial, zero parallelism gained). This skill turns
 a PRD into tickets that are **TDD-able, DDD-clean, and actually parallelizable**,
-then hands each ticket to `tdd-plan` for slice planning.
+then hands each ticket to `plan-slices` for slice planning.
 
 You are the **front half** of a two-skill pipeline:
 
 ```
 PRD ─plan-breakdown▶ parallel-aware tickets (Linear)
-                        └─per ticket─▶ tdd-plan ▶ slice backlog in ticket body
+                        └─per ticket─▶ plan-slices ▶ slice backlog in ticket body
                                                     └─▶ user runs the tdd skill
 ```
 
@@ -37,7 +37,7 @@ PRD ─plan-breakdown▶ parallel-aware tickets (Linear)
 This is the **only** skill in the pipeline with side-effects (Linear writes). They
 live **exclusively in Phase D**, strictly behind the Phase C approval gate. Phases
 A–C are pure analysis — create, modify, or relate nothing in Linear until the user
-confirms. `tdd-plan` (the back half) stays side-effect-free.
+confirms. `plan-slices` (the back half) stays side-effect-free.
 
 ## Phase A — Intake + guardrails
 
@@ -46,7 +46,7 @@ confirms. `tdd-plan` (the back half) stays side-effect-free.
 - **Load the binding constraints** as inputs to every later decision:
   - `CLAUDE.md` / `.ai/guidelines/project.md` — DDD layout (`app/Domains/*`),
     Action/exception naming, service constants, cross-domain only via `Contracts/`.
-  - `.claude/skills/tdd/SKILL.md` — slice rules; `laravel-testing` / `react-testing`
+  - `.claude/skills/tdd/SKILL.md` — slice rules; `tdd-laravel-testing` / `tdd-react-testing`
     for stack conventions.
 - **Map the surface.** Identify which `app/Domains/*` contexts the PRD touches and
   whether each piece is backend / frontend / full-stack.
@@ -128,7 +128,7 @@ to the ticket body, never a comment**:
 - Set dependency relations with `blocks` / `blockedBy` to match the Phase B graph.
 - Write each ticket's **plan** (scope + decisions + target files + domain +
   parallel-group) into its `description`. This is half of the self-contained body;
-  `tdd-plan` appends the other half next.
+  `plan-slices` appends the other half next.
 - **Always write the concurrency graph into the PARENT ticket body** — append a
   `## Concurrency` section (the Phase B wave table + Mermaid graph) to the parent's
   `description` via `save_issue`. Linear has no native parallel-group field and
@@ -137,17 +137,17 @@ to the ticket body, never a comment**:
 
 ## Phase E — Plan slices per ticket
 
-For each created ticket, **in dependency order**, invoke the `tdd-plan` flow
+For each created ticket, **in dependency order**, invoke the `plan-slices` flow
 (surface classify → observable behaviors → testability gate → 2–6-test slices →
-honest-RED notes → traceability). `tdd-plan` **appends the slice backlog into that
+honest-RED notes → traceability). `plan-slices` **appends the slice backlog into that
 same ticket body**, so one ticket = one self-contained body an executor can pick up
 and run `tdd` against. Then **stop** — execution is the `tdd` skill's job, unchanged.
 
 ## Reference
 
-- `.claude/skills/tdd-plan/SKILL.md` — the back half; slice planning + the
+- `.claude/skills/plan-slices/SKILL.md` — the back half; slice planning + the
   testability gate. This skill calls it per ticket.
 - `.claude/skills/tdd/SKILL.md` — slice definition and the RED→GREEN→REFACTOR loop
   the tickets are ultimately executed with.
-- `.claude/skills/laravel-testing` / `react-testing` — stack conventions + exact
+- `.claude/skills/tdd-laravel-testing` / `tdd-react-testing` — stack conventions + exact
   test commands. Reference them; don't restate.

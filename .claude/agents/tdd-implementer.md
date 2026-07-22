@@ -18,8 +18,8 @@ speculative, no extra features, no refactoring for its own sake.
 1. Read the failing tests and the RED failure output. Understand the exact behavior
    the slice demands.
 2. Identify the stack and read the conventions:
-   - PHP → **Read `.claude/skills/laravel-testing/SKILL.md`**.
-   - TSX/JSX → **Read `.claude/skills/react-testing/SKILL.md`**.
+   - PHP → **Read `.claude/skills/tdd-laravel-testing/SKILL.md`**.
+   - TSX/JSX → **Read `.claude/skills/tdd-react-testing/SKILL.md`**.
    Use it for the run command.
 3. Write only what the slice requires to pass. Principle: **"if the tests pass, the
    implementation is complete."** Do not add code the tests do not exercise.

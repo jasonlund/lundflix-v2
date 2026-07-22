@@ -1,18 +1,18 @@
 ---
-name: create-pr
-description: First stage of the review loop — lint the dirty files, commit and push the branch, then open a GitHub PR whose title/body are grounded in the Linear ticket, the diff, and the commit history. Leaves a clean pushed branch with an open PR that /review-pr auto-detects.
+name: review:create-pr
+description: First stage of the review loop — lint the dirty files, commit and push the branch, then open a GitHub PR whose title/body are grounded in the Linear ticket, the diff, and the commit history. Leaves a clean pushed branch with an open PR that /review:claude auto-detects.
 ---
 
 # Create PR
 
 You are running the **first** stage of the review loop:
-**`/create-pr`** (lint → commit → push → open PR) → `/human-review` (human-facing
-summary + ticket-scope check) → `/review-all` or `/review-pr` (generate findings)
-→ `/add-to-pr` (post them) → `/process-review` (act on them).
+**`/review:create-pr`** (lint → commit → push → open PR) → `/review:human` (human-facing
+summary + ticket-scope check) → `/review:suite` or `/review:claude` (generate findings)
+→ `/review:add` (post them) → `/review:process` (act on them).
 
 Your job is to leave a clean, pushed branch with one open PR against `main`,
-titled and described so a reviewer (human or `/review-pr`) can pick it up with no
-extra context. You **stop** after opening the PR — you do not chain `/review-pr`.
+titled and described so a reviewer (human or `/review:claude`) can pick it up with no
+extra context. You **stop** after opening the PR — you do not chain `/review:claude`.
 
 ## Input
 - **Ticket ID** — `FLIX-XXX`, positional arg, or auto-extracted from the branch.
@@ -20,8 +20,8 @@ extra context. You **stop** after opening the PR — you do not chain `/review-p
 
 ## Example Invocation
 ```
-/create-pr             # auto-detect ticket from branch, open PR against main
-/create-pr FLIX-154    # explicit ticket
+/review:create-pr             # auto-detect ticket from branch, open PR against main
+/review:create-pr FLIX-154    # explicit ticket
 ```
 
 ---
@@ -33,7 +33,7 @@ extra context. You **stop** after opening the PR — you do not chain `/review-p
    nothing to open a PR for.
 2. **No PR already open.** Run `gh pr view --json number,url -q '.number' 2>/dev/null`.
    If one exists, HALT and print its URL — this branch already has a PR; direct the
-   user to `/review-pr`.
+   user to `/review:claude`.
 3. **Ticket ID** — if not passed, follow **Ticket ID Auto-Extraction** in
    `.claude/skills/review-pipeline/SKILL.md` (branch name → PR title → null). If
    null, **prompt the user to create a Linear ticket** before proceeding (per the
@@ -153,11 +153,11 @@ Branch pushed · {N} commit(s) · lint clean · tests green
 
 View: {PR URL}
 
-Next: /human-review
+Next: /review:human
 ```
 
 ## Notes
-- **Single-purpose.** Do not run `/review-pr` or any review agents — hand off.
+- **Single-purpose.** Do not run `/review:claude` or any review agents — hand off.
 - **Never force-push** or rewrite existing commits beyond squashing your own lint
   fixups into the commit you just made.
 - If `gh pr create` fails, show the error and the generated title/body so the work

@@ -16,8 +16,8 @@ or modify implementation code to make them pass — that is the implementer's jo
 ## Procedure
 
 1. **Identify the stack** from the target and read the conventions:
-   - PHP target → **Read `.claude/skills/laravel-testing/SKILL.md`**.
-   - TSX/JSX target → **Read `.claude/skills/react-testing/SKILL.md`**.
+   - PHP target → **Read `.claude/skills/tdd-laravel-testing/SKILL.md`**.
+   - TSX/JSX target → **Read `.claude/skills/tdd-react-testing/SKILL.md`**.
    Follow that file's conventions and commands exactly. Confirm the real test
    command from `composer.json` / `package.json` if present.
 2. **Write a small cohesive SET of tests (typically 2–6)** for the one slice you
