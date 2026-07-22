@@ -76,7 +76,7 @@ content.** Concretely:
 - Not a bug-fix or behavior-change path — those go through `tdd-feedback`'s BUG / SLICE
   branches directly.
 - Not a code-review of prose/markdown — for non-tested artifacts there is no green gate
-  to anchor a refactor; use the `review-pr` command instead.
+  to anchor a refactor; use the `/review:claude` command instead.
 
 ## Reference
 

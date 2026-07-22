@@ -408,7 +408,7 @@ Reply + resolve mechanics by source:
 Every reply ends with the footer marker on its own line so re-runs detect handled
 general comments and body findings:
 ```
-_via /process-review_
+_via /review:process_
 ```
 
 ---

@@ -9,7 +9,7 @@ use Symfony\Component\Finder\Finder;
  * Self-policing guard: every `//` line-comment that begins with an AAA label
  * (Arrange / Act / Assert) across the test suite and the React frontend must
  * conform to the one canonical form. See the "Test-comment standard (strict)"
- * section of `.claude/skills/laravel-testing/SKILL.md`.
+ * section of `.claude/skills/tdd-laravel-testing/SKILL.md`.
  *
  * NB: example offender strings live in PHP string literals (never in `//`
  * comments) so this file's own scanner never trips on its own examples.

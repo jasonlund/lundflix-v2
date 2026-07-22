@@ -64,7 +64,7 @@ and `COUNTS`. Do not block on it yet.
 
 ## Phase 2: Run /review:claude inline (top-level)
 
-Invoke the **`review-pr`** skill, passing through the same PR number and ticket
+Invoke `/review:claude`, passing through the same PR number and ticket
 id. Let it run its full pipeline and emit its markdown report.
 
 Then **persist that report** so it can be posted uniformly:
@@ -86,8 +86,9 @@ Collect the CodeRabbit subagent's final report block (it has completed by now):
 ## Phase 4: Post both (you do this — one /review:add per engine)
 
 For each engine that produced a report file (`reviewpr.report.md`,
-`coderabbit.report.md`), invoke the **`add-to-pr`** skill with the **report file
+`coderabbit.report.md`), invoke `/review:add` with the **report file
 path as the argument**, once per file:
+
 
 ```
 /review:add <RUN_DIR>/reviewpr.report.md
@@ -108,7 +109,7 @@ land cleanly.
 
 | Engine     | Status | Blocking | Should Fix | Consider | Review |
 |------------|--------|----------|------------|----------|--------|
-| review-pr  | ✅     | …        | …          | …        | <url>  |
+| review:claude | ✅  | …        | …          | …        | <url>  |
 | CodeRabbit | ✅     | …        | …          | …        | <url>  |
 
 Reports: {RUN_DIR}/

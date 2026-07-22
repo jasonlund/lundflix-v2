@@ -19,22 +19,34 @@ INPUT="$(cat)"
 
 # --- pull the user's prompt text out of the hook payload -----------------------
 PROMPT="$(printf '%s' "$INPUT" | jq -r '.prompt // ""' 2>/dev/null || true)"
+PROJECT_DIR="$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)"
+[ -z "$PROJECT_DIR" ] && PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 
 LOWER="$(printf '%s' "$PROMPT" | tr '[:upper:]' '[:lower:]')"
 
 # --- defer to feedback-router: feedback on existing work is tdd-feedback's job --
-# Same signal set as feedback-router-reminder.sh; if it matches, stay silent so
-# the two hooks never both fire on one prompt.
+# Same signal set as feedback-router-reminder.sh; if EITHER of its signals matches,
+# stay silent so the two hooks never both fire on one prompt.
+#
+# Signal 1: feedback-shaped language.
 if printf '%s' "$LOWER" | grep -Eq \
   'review(er)?|pr comment|code review|diff comment|this comment was left|after merge|post-merge|already merged|\bbug\b|regression|reproduce|doesn'\''t work|is broken|should (be|have been)|why (is|does|did) (this|it)|\bremove\b|\brename\b|\bchange\b'; then
   exit 0
+fi
+
+# Signal 2: a Conductor diff-comment attachment landed recently.
+COMMENTS_DIR="$PROJECT_DIR/.context/attachments/comments"
+if [ -d "$COMMENTS_DIR" ]; then
+  if find "$COMMENTS_DIR" -name '*.md' -type f -mmin -5 2>/dev/null | grep -q .; then
+    exit 0
+  fi
 fi
 
 # --- signal: new-feature / implementation language -----------------------------
 # Conservative: targets building something that does not exist yet, not edits to
 # existing work (those are feedback-router's / tdd-feedback's territory).
 if printf '%s' "$LOWER" | grep -Eq \
-  '\bimplement\b|\bbuild\b|\bscaffold\b|\badd (a|an|the|support|new)\b|\bcreate (a|an|the|new)\b|\bwrite (a|an|the)\b|\bnew (feature|endpoint|page|action|command|model|migration|component)\b|\bfeature\b'; then
+  '\bimplement\b|\bbuild\b|\bscaffold\b|\badd (a|an|the|support|new)\b|\bcreate (a|an|the|new)\b|\bwrite (a|an|the)\b|\bnew (feature|endpoint|page|action|command|model|migration|component)\b'; then
   cat <<'EOF'
 [tdd-router] This prompt looks like NEW FEATURE / implementation work — the
 trigger for the `tdd` skill (RED -> GREEN -> REFACTOR).

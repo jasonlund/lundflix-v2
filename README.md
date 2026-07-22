@@ -70,9 +70,9 @@ Built **test-first (TDD)**, and the architecture defends itself:
   the code (see the `tdd` skill in `.claude/skills/tdd`). Ahead of it, the
   `plan-draft` skill turns a rough Linear ticket into one concrete, decision-locked
   plan through an interactive interview; `plan-breakdown` decomposes a large
-  plan/PRD into parallelizable Linear tickets; and `tdd-plan` turns each
+  plan/PRD into parallelizable Linear tickets; and `plan-slices` turns each
   ticket/plan into an ordered, test-first slice backlog to feed it
-  (`.claude/skills/{plan-draft,plan-breakdown,tdd-plan}`).
+  (`.claude/skills/{plan-draft,plan-breakdown,plan-slices}`).
 - **Backend:** feature and unit tests via **Pest v4**, run with `php artisan test`.
 - **Frontend:** component/page tests via **Vitest + React Testing Library**, run
   with `npm test`.

@@ -143,7 +143,7 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
   role/text; mock `@inertiajs/react`; jsdom, setup `resources/js/test/setup.ts`.
 - **Full-stack Inertia** → two cycles, backend first (assert component + props),
   then frontend (RTL renders with those props).
-- Detailed conventions: `.claude/skills/laravel-testing` + `react-testing`.
+- Detailed conventions: `.claude/skills/tdd-laravel-testing` + `tdd-react-testing`.
 
 Domain boundaries are enforced by **Pest architecture tests** (a domain's
 `Models` used only within it; `Common` depends on no concrete domain). The arch
