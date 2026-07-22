@@ -87,6 +87,22 @@ it('skips a season whose _tvdb_id normalizes to null', function (): void {
     $this->assertDatabaseCount('seasons', 12);
 });
 
+it('returns only the accepted count, not the raw input count, when a row is skipped', function (): void {
+    // Arrange
+    $show = Show::factory()->create();
+    $seasons = [
+        ['id' => 30272, 'seriesId' => 81189, 'number' => 1],
+        ['id' => '1335814-slug', 'seriesId' => 81189, 'number' => 2],
+    ];
+
+    // Act
+    $count = (new UpsertTvdbSeasons)->handle($show, $seasons);
+
+    // Assert
+    expect($count)->toBe(1);
+    $this->assertDatabaseCount('seasons', 1);
+});
+
 it('returns 0 and persists nothing for empty seasons', function (): void {
     // Arrange
     $show = Show::factory()->create();

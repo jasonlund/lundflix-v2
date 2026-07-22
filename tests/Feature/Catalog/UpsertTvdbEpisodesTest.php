@@ -73,6 +73,35 @@ it('skips an episode whose _tvdb_id normalizes to null', function (): void {
     $this->assertDatabaseCount('episodes', 2);
 });
 
+it('nulls an unparseable aired date instead of crashing the run', function (): void {
+    // Arrange
+    $show = Show::factory()->create();
+    $episode = ['id' => 8675309, 'name' => 'Unaired', 'aired' => 'TBA', 'seasonNumber' => 1, 'number' => 1];
+
+    // Act
+    (new UpsertTvdbEpisodes)->handle($show, [$episode]);
+
+    // Assert
+    $persisted = Episode::where('_tvdb_id', 8675309)->firstOrFail();
+    expect($persisted->_tvdb_aired)->toBeNull();
+});
+
+it('returns only the accepted count, not the raw input count, when a row is skipped', function (): void {
+    // Arrange
+    $show = Show::factory()->create();
+    $episodes = [
+        ['id' => 4350173, 'seriesId' => 71663, 'seasonNumber' => 0, 'number' => 1],
+        ['id' => '1335814-slug', 'seriesId' => 71663, 'seasonNumber' => 0, 'number' => 2],
+    ];
+
+    // Act
+    $count = (new UpsertTvdbEpisodes)->handle($show, $episodes);
+
+    // Assert
+    expect($count)->toBe(1);
+    $this->assertDatabaseCount('episodes', 1);
+});
+
 it('returns 0 and persists nothing for empty episodes', function (): void {
     // Arrange
     $show = Show::factory()->create();

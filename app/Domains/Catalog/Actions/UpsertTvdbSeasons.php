@@ -26,6 +26,8 @@ final class UpsertTvdbSeasons
      */
     public function handle(Show $show, array $seasons): int
     {
+        $processed = 0;
+
         foreach ($seasons as $season) {
             // `_tvdb_id` is the `updateOrCreate` conflict key, so the raw native id
             // must normalize to a clean queryable id; a malformed/oversized id
@@ -40,8 +42,10 @@ final class UpsertTvdbSeasons
                 ['_tvdb_id' => $tvdbId],
                 [...RawSourceColumns::map('tvdb', self::RAW_COLUMNS, $season), 'tvdb_synced_at' => now()],
             );
+
+            $processed++;
         }
 
-        return count($seasons);
+        return $processed;
     }
 }
