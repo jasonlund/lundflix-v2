@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Models\Movie;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
@@ -75,6 +77,23 @@ function fakeTmdbUpdateSync(): void
             ? Http::response($detailBody)
             : Http::response('', 404),
     ]);
+}
+
+/*
+| Shared by the marker-derived window tests: asserts the /movie/changes request
+| carried the given start/end dates, ignoring every non-changes request.
+*/
+function assertRequestedChangesWindow(string $start, string $end): void
+{
+    Http::assertSent(function (Request $request) use ($start, $end): bool {
+        if (! Str::contains($request->url(), '/movie/changes')) {
+            return false;
+        }
+        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+        return ($query['start_date'] ?? null) === $start
+            && ($query['end_date'] ?? null) === $end;
+    });
 }
 
 it('persists hydrated movies with _tmdb_ columns', function (): void {
@@ -253,9 +272,14 @@ it('ignores a changed id not in the local catalog', function (): void {
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/1648226'));
 });
 
-it('requests the rolling 14-day changes window', function (): void {
+it('requests the changes window from the cached marker with a 6h overlap', function (): void {
     // Arrange
-    Date::setTestNow('2026-07-09');
+    Cache::flush();
+    Date::setTestNow('2026-07-16 12:00:00');
+    // Marker at 04:00 (time-of-day < the 6h overlap): marker − 6h crosses to the
+    // previous calendar day, so start_date must floor to 2026-07-15. A bare marker
+    // (overlap dropped) would floor to today, 2026-07-16, and fail the assertion.
+    Cache::put(SyncFeed::TmdbMovies->cacheKey(), now()->subHours(8)->toImmutable());
     Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
     fakeTmdbUpdateSync();
 
@@ -263,15 +287,21 @@ it('requests the rolling 14-day changes window', function (): void {
     $this->artisan('catalog:sync-movies');
 
     // Assert
-    Http::assertSent(function (Request $request): bool {
-        if (! Str::contains($request->url(), '/movie/changes')) {
-            return false;
-        }
-        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+    assertRequestedChangesWindow('2026-07-15', '2026-07-16');
+});
 
-        return ($query['start_date'] ?? null) === '2026-06-25'
-            && ($query['end_date'] ?? null) === '2026-07-09';
-    });
+it('falls back to a 24h changes window when no marker is cached', function (): void {
+    // Arrange
+    Cache::flush();
+    Date::setTestNow('2026-07-16 12:00:00');
+    Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
+    fakeTmdbUpdateSync();
+
+    // Act
+    $this->artisan('catalog:sync-movies');
+
+    // Assert
+    assertRequestedChangesWindow('2026-07-15', '2026-07-16');
 });
 
 it('skips the update phase with --fresh', function (): void {
@@ -355,4 +385,92 @@ it('reports a persistent changes-feed failure and still exits SUCCESS', function
 
     // Assert
     Exceptions::assertReported(TmdbRequestFailed::class);
+});
+
+it('advances the movies marker to run-start on a clean default run', function (): void {
+    // Arrange
+    Cache::flush();
+    Date::setTestNow('2026-07-16 12:00:00');
+    fakeTmdbSync();
+
+    // Act
+    $this->artisan('catalog:sync-movies');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbMovies->cacheKey())->equalTo(now()))->toBeTrue();
+});
+
+it('advances the movies marker on a --fresh run', function (): void {
+    // Arrange
+    Cache::flush();
+    Date::setTestNow('2026-07-16 12:00:00');
+    fakeTmdbSync();
+
+    // Act
+    $this->artisan('catalog:sync-movies', ['--fresh' => true]);
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbMovies->cacheKey())->equalTo(now()))->toBeTrue();
+});
+
+it('does not advance the movies marker on a --limit run', function (): void {
+    // Arrange
+    Cache::flush();
+    fakeTmdbSync();
+
+    // Act
+    $this->artisan('catalog:sync-movies', ['--limit' => 1]);
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
+});
+
+it('does not advance the movies marker when an insert-phase batch fails', function (): void {
+    // Arrange
+    Cache::flush();
+    Exceptions::fake();
+    // The lone exported id 500s persistently; the pool aggregates it as a per-id
+    // failure and drops the key from its result, so the insert phase reports failure.
+    Http::fake([
+        '*movie_ids*' => Http::response(gzencode(json_encode(['id' => 500]))),
+        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/500')
+            ? Http::response('', 500)
+            : Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('catalog:sync-movies');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
+});
+
+it('does not advance the movies marker when a changes-phase re-hydrate fails', function (): void {
+    // Arrange
+    Cache::flush();
+    Exceptions::fake();
+    // Empty export → a clean insert phase; a locally-held changed id (345, present
+    // in the changes feed) whose detail 500s persistently makes the CHANGES phase
+    // report failure on its own — a distinct failure site from the insert phase.
+    Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
+    Http::fake([
+        '*movie_ids*' => Http::response(gzencode('')),
+        '*/movie/changes*' => function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return (int) ($query['page'] ?? 1) === 2
+                ? Http::response(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'));
+        },
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/345')
+            ? Http::response('', 500)
+            : Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('catalog:sync-movies');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
 });

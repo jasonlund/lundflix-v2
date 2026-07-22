@@ -6,15 +6,18 @@ namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Actions\UpsertTmdbMovies;
+use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Services\TmdbExportService;
+use App\Domains\Catalog\Support\SyncMarker;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\LazyCollection;
 
-#[Description('Two-phase TMDB movie sync: insert-new from the ids export, then update-changed from the rolling changes feed')]
+#[Description('Two-phase TMDB movie sync: insert-new from the ids export, then update-changed from the marker-derived changes window')]
 #[Signature('catalog:sync-movies {--fresh} {--limit=}')]
 class SyncTmdbMovies extends Command
 {
@@ -38,7 +41,13 @@ class SyncTmdbMovies extends Command
         TmdbApiService $api,
         UpsertTmdbMovies $upsertMovies,
         UpsertTmdbImages $upsertImages,
+        SyncMarker $marker,
     ): int {
+        // Capture the run-start before the export download so the marker advances to
+        // when this run began, not when it finished — updates landing mid-run are
+        // then re-covered by the next run's overlap window.
+        $startedAt = CarbonImmutable::now();
+
         // Plain writeln progress, not spin()/progress(): those fork a renderer
         // that overwrites the terminal (and render nothing under catalog:sync's
         // nested Artisan::call), which swallowed the per-batch heartbeat below.
@@ -47,7 +56,7 @@ class SyncTmdbMovies extends Command
 
         try {
             $this->output->writeln('Syncing movies…');
-            $this->syncRows($export, $file, $api, $upsertMovies, $upsertImages);
+            $insertFailed = $this->syncRows($export, $file, $api, $upsertMovies, $upsertImages);
         } finally {
             @unlink($file);
         }
@@ -56,8 +65,17 @@ class SyncTmdbMovies extends Command
         // re-hydrates every exported id above (a changes pass would be redundant),
         // and --limit is a bounded partial run that a full changes sweep would blow
         // past.
+        $changesFailed = false;
+
         if (! $this->option('fresh') && $this->option('limit') === null) {
-            $this->updateChanged($api, $upsertMovies, $upsertImages);
+            $changesFailed = $this->updateChanged($marker, $api, $upsertMovies, $upsertImages);
+        }
+
+        // Advance only on a clean, unbounded run: a per-id or changes-feed failure
+        // means this run didn't fully cover its window, and --limit is a partial run,
+        // so the marker must not move past the span still owed to the next run.
+        if (! $insertFailed && ! $changesFailed && $this->option('limit') === null) {
+            $marker->advance(SyncFeed::TmdbMovies, $startedAt);
         }
 
         return self::SUCCESS;
@@ -65,25 +83,28 @@ class SyncTmdbMovies extends Command
 
     /**
      * Update-changed phase: refresh locally held movies that TMDB reports as
-     * changed within the rolling 14-day window, hydrating the intersection of the
+     * changed within the marker-derived window, hydrating the intersection of the
      * changes feed and our synced rows through the shared insert-phase plumbing.
+     *
+     * Returns true if the changes-feed fetch failed or any re-hydrate chunk failed,
+     * so the caller can leave the marker where it is and re-cover this window later.
      */
     private function updateChanged(
+        SyncMarker $marker,
         TmdbApiService $api,
         UpsertTmdbMovies $upsertMovies,
         UpsertTmdbImages $upsertImages,
-    ): void {
+    ): bool {
         $this->output->writeln('Updating changed movies…');
 
-        $end = now()->utc()->format('Y-m-d');
-        $start = now()->utc()->subDays(14)->format('Y-m-d');
+        $window = $marker->window(SyncFeed::TmdbMovies);
 
         // Report rather than propagate a changes-feed or id-resolution failure so a
         // transient error — paging the feed or querying our rows — can't abort the
         // whole command; the insert phase already ran, so we exit SUCCESS with what
         // we have.
         try {
-            $changedIds = $api->changedMovieIds($start, $end);
+            $changedIds = $api->changedMovieIds($window->startDate(), $window->endDate());
 
             // Only refresh ids we already hold — a changed id we've never synced is an
             // insert candidate the export phase owns, not an update. The changes feed
@@ -103,16 +124,22 @@ class SyncTmdbMovies extends Command
         } catch (\Throwable $e) {
             report($e);
 
-            return;
+            return true;
         }
 
+        $failed = false;
+
         foreach (array_chunk($ids, self::BATCH_SIZE) as $chunk) {
-            $this->syncChunkSafely($chunk, $api, $upsertMovies, $upsertImages);
+            $failed = $this->syncChunkSafely($chunk, $api, $upsertMovies, $upsertImages) || $failed;
         }
+
+        return $failed;
     }
 
     /**
      * Stream the kept rows, hydrating and upserting in BATCH_SIZE chunks.
+     *
+     * Returns true if any chunk failed, so the caller can leave the marker untouched.
      */
     private function syncRows(
         TmdbExportService $export,
@@ -120,27 +147,33 @@ class SyncTmdbMovies extends Command
         TmdbApiService $api,
         UpsertTmdbMovies $upsertMovies,
         UpsertTmdbImages $upsertImages,
-    ): void {
+    ): bool {
         $ids = [];
+        $failed = false;
 
         foreach ($this->keptRows($export, $file) as $row) {
             $ids[] = (int) $row['id'];
 
             if (count($ids) >= self::BATCH_SIZE) {
-                $this->syncChunkSafely($ids, $api, $upsertMovies, $upsertImages);
+                $failed = $this->syncChunkSafely($ids, $api, $upsertMovies, $upsertImages) || $failed;
                 $ids = [];
             }
         }
 
         if ($ids !== []) {
-            $this->syncChunkSafely($ids, $api, $upsertMovies, $upsertImages);
+            $failed = $this->syncChunkSafely($ids, $api, $upsertMovies, $upsertImages) || $failed;
         }
+
+        return $failed;
     }
 
     /**
      * Run one chunk, reporting rather than propagating a failure so one bad batch
      * (a transient API failure or a single malformed row) can't abort the entire
      * ingest and silently truncate the catalog — the loop moves on to the next.
+     *
+     * Returns true if the chunk failed (a per-id pool miss, or a thrown error), so
+     * the failure gates the run's marker advance.
      *
      * @param  array<int, int>  $ids
      */
@@ -149,11 +182,13 @@ class SyncTmdbMovies extends Command
         TmdbApiService $api,
         UpsertTmdbMovies $upsertMovies,
         UpsertTmdbImages $upsertImages,
-    ): void {
+    ): bool {
         try {
-            $this->syncChunk($ids, $api, $upsertMovies, $upsertImages);
+            return $this->syncChunk($ids, $api, $upsertMovies, $upsertImages);
         } catch (\Throwable $e) {
             report($e);
+
+            return true;
         }
     }
 
@@ -181,6 +216,12 @@ class SyncTmdbMovies extends Command
      * Hydrate one chunk of exported ids, upsert the non-404 movies, then persist
      * each hydrated payload's images against its freshly upserted movie row.
      *
+     * Returns true if a per-id fetch failed. The pool reports-not-throws a non-404
+     * per-id failure and drops that id from the keyed result, so a missing key —
+     * a short count against the requested ids — is the only signal it happened. A
+     * 404 stays present-as-null and a video:true entry stays present-as-key, so
+     * neither counts as a failure.
+     *
      * @param  array<int, int>  $ids
      */
     private function syncChunk(
@@ -188,16 +229,20 @@ class SyncTmdbMovies extends Command
         TmdbApiService $api,
         UpsertTmdbMovies $upsertMovies,
         UpsertTmdbImages $upsertImages,
-    ): void {
+    ): bool {
+        $results = $api->movies($ids);
+
+        $failed = count($results) < count(array_unique($ids));
+
         // Drop 404 (null) payloads, and video:true entries — a video:true TMDB
         // record is a promo/trailer, not a real film, so it never gets ingested.
         $payloads = array_values(array_filter(
-            $api->movies($ids),
+            $results,
             static fn (?array $payload): bool => $payload !== null && empty($payload['video']),
         ));
 
         if ($payloads === []) {
-            return;
+            return $failed;
         }
 
         $upsertMovies->handle($payloads);
@@ -227,5 +272,7 @@ class SyncTmdbMovies extends Command
                 $upsertImages->handle($movie, $payload['images']);
             }
         }
+
+        return $failed;
     }
 }
