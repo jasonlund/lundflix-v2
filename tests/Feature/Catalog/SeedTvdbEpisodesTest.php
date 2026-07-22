@@ -97,6 +97,28 @@ it('leaves season_id null when no matching default-type season exists', function
     expect(Episode::where('_tvdb_seasonNumber', 20)->pluck('season_id')->unique()->all())->toBe([null]);
 });
 
+it('leaves season_id null when the only seasonNumber match is a non-default-type season', function (): void {
+    // Arrange
+    $show = Show::factory()->create(['_tvdb_id' => 71663, '_tvdb_defaultSeasonType' => 1]);
+    Season::factory()->create([
+        'show_id' => $show->id,
+        '_tvdb_number' => 0,
+        '_tvdb_type' => ['id' => 2, 'name' => 'DVD Order', 'type' => 'dvd'],
+    ]);
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series/*' => Http::sequence()
+            ->push(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), 200)
+            ->push(fixtureBytes('Catalog/tvdb/series_episodes_page2.json'), 200),
+    ]);
+
+    // Act
+    resolve(SeedTvdbEpisodes::class)->handle($show);
+
+    // Assert
+    expect(Episode::where('_tvdb_seasonNumber', 0)->pluck('season_id')->unique()->all())->toBe([null]);
+});
+
 it('stamps the show\'s episodes_synced_at', function (): void {
     // Arrange
     $show = Show::factory()->create(['_tvdb_id' => 71663, '_tvdb_defaultSeasonType' => 1]);
@@ -112,6 +134,57 @@ it('stamps the show\'s episodes_synced_at', function (): void {
 
     // Assert
     expect($show->fresh()->episodes_synced_at)->not->toBeNull();
+});
+
+it('completes when a default-type season has a null _tvdb_number', function (): void {
+    // Arrange
+    $show = Show::factory()->create(['_tvdb_id' => 71663, '_tvdb_defaultSeasonType' => 1]);
+    Season::factory()->create([
+        'show_id' => $show->id,
+        '_tvdb_number' => null,
+        '_tvdb_type' => ['id' => 1, 'name' => 'Aired Order', 'type' => 'official'],
+    ]);
+    Season::factory()->create([
+        'show_id' => $show->id,
+        '_tvdb_number' => 0,
+        '_tvdb_type' => ['id' => 1, 'name' => 'Aired Order', 'type' => 'official'],
+    ]);
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series/*' => Http::sequence()
+            ->push(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), 200)
+            ->push(fixtureBytes('Catalog/tvdb/series_episodes_page2.json'), 200),
+    ]);
+
+    // Act
+    resolve(SeedTvdbEpisodes::class)->handle($show);
+
+    // Assert
+    expect($show->fresh()->episodes_synced_at)->not->toBeNull();
+});
+
+it('re-seeds idempotently — clears season_id when the default-type season no longer matches', function (): void {
+    // Arrange
+    $show = Show::factory()->create(['_tvdb_id' => 71663, '_tvdb_defaultSeasonType' => 1]);
+    Season::factory()->create([
+        'show_id' => $show->id,
+        '_tvdb_number' => 0,
+        '_tvdb_type' => ['id' => 1, 'name' => 'Aired Order', 'type' => 'official'],
+    ]);
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series/*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+            ? Http::response(fixtureBytes('Catalog/tvdb/series_episodes_page2.json'))
+            : Http::response(fixtureBytes('Catalog/tvdb/series_episodes_page1.json')),
+    ]);
+    resolve(SeedTvdbEpisodes::class)->handle($show);
+    $show->update(['_tvdb_defaultSeasonType' => 2]);
+
+    // Act
+    resolve(SeedTvdbEpisodes::class)->handle($show);
+
+    // Assert
+    expect(Episode::where('_tvdb_seasonNumber', 0)->pluck('season_id')->unique()->all())->toBe([null]);
 });
 
 it('is idempotent — a second seed adds no duplicate episodes', function (): void {

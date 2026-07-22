@@ -41,13 +41,17 @@ class SyncTvdbEpisodes extends Command
 
         $limit = $this->option('limit');
         if ($limit !== null) {
-            $query->limit((int) $limit);
+            // Order before capping so a --limit run picks a reproducible subset,
+            // not whatever arbitrary order the DB happens to return.
+            $query->orderBy('id')->limit((int) $limit);
         }
 
-        // Read-only walk over a bounded, --limit-capped set that dispatches a
-        // per-show seed; not an iterate-and-write over these rows, so chunkById
-        // does not apply. Report-and-continue so one bad show can't abort the run.
-        foreach ($query->get() as $show) {
+        // Forward-only read-stream dispatching per-show work, so there is no
+        // offset-pagination skip/double-process hazard for chunkById to guard:
+        // the only write (handle() stamps episodes_synced_at) hits a non-key
+        // column on the current row and doesn't disturb the cursor's forward
+        // scan. Report-and-continue so one bad show can't abort the run.
+        foreach ($query->cursor() as $show) {
             try {
                 $seed->handle($show);
             } catch (Throwable $e) {

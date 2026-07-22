@@ -61,6 +61,33 @@ it('casts episode _tvdb_* attributes when fetched fresh from the database', func
         ->and($fresh->tvdb_synced_at)->toBeInstanceOf(Carbon::class);
 });
 
+it('reads a blank episode _tvdb_aired back as null', function (): void {
+    // Arrange
+    $episode = Episode::factory()->create([
+        '_tvdb_aired' => '',
+    ]);
+
+    // Act
+    $fresh = Episode::query()->findOrFail($episode->id);
+
+    // Assert
+    expect($fresh->_tvdb_aired)->toBeNull();
+});
+
+it('round-trips a real episode _tvdb_aired date', function (): void {
+    // Arrange
+    $episode = Episode::factory()->create([
+        '_tvdb_aired' => '2011-04-17',
+    ]);
+
+    // Act
+    $fresh = Episode::query()->findOrFail($episode->id);
+
+    // Assert
+    expect($fresh->_tvdb_aired)->toBeInstanceOf(Carbon::class)
+        ->and($fresh->_tvdb_aired->toDateString())->toBe('2011-04-17');
+});
+
 it('resolves season and episode relations to their parents', function (): void {
     // Arrange
     $show = Show::factory()->create();

@@ -106,6 +106,19 @@ it('caps shows processed with --limit', function (): void {
     expect($initialEpisodeFetches)->toBe(1);
 });
 
+it('processes the lowest-id show first under --limit so a capped run is deterministic', function (): void {
+    // Arrange
+    $first = Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+    Show::factory()->create(['_tvdb_id' => 371082, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+
+    // Act
+    $this->artisan('catalog:sync-episodes-tvdb', ['--limit' => 1]);
+
+    // Assert
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series/'.$first->_tvdb_id.'/episodes'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/371082/episodes'));
+});
+
 it('exits SUCCESS', function (): void {
     // Arrange
     // feed + fakes wired in beforeEach, no per-test state needed

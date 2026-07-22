@@ -73,6 +73,20 @@ it('does not duplicate seasons on re-run', function (): void {
     $this->assertDatabaseCount('seasons', 13);
 });
 
+it('skips a season whose _tvdb_id normalizes to null', function (): void {
+    // Arrange
+    $show = Show::factory()->create();
+    $seasons = json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)['data']['seasons'];
+    $seasons[0]['id'] = 99999999999999; // oversized id SourceId::positiveInt() rejects
+
+    // Act
+    (new UpsertTvdbSeasons)->handle($show, $seasons);
+
+    // Assert
+    expect(Season::where('_tvdb_id', 99999999999999)->exists())->toBeFalse();
+    $this->assertDatabaseCount('seasons', 12);
+});
+
 it('returns 0 and persists nothing for empty seasons', function (): void {
     // Arrange
     $show = Show::factory()->create();

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Models;
 
+use App\Domains\Catalog\Casts\NullableDate;
 use App\Domains\Catalog\Database\Factories\EpisodeFactory;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -50,7 +51,7 @@ class Episode extends Model
             '_tvdb_absoluteNumber' => 'integer',
             '_tvdb_seasonNumber' => 'integer',
             '_tvdb_year' => 'integer',
-            '_tvdb_aired' => 'date',
+            '_tvdb_aired' => NullableDate::class,
             'tvdb_synced_at' => 'datetime',
         ];
     }

@@ -59,6 +59,20 @@ it('does not duplicate episodes on re-run', function (): void {
     $this->assertDatabaseCount('episodes', 3);
 });
 
+it('skips an episode whose _tvdb_id normalizes to null', function (): void {
+    // Arrange
+    $show = Show::factory()->create();
+    $episodes = json_decode(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), true)['data']['episodes'];
+    $episodes[0]['id'] = 99999999999999; // oversized id SourceId::positiveInt() rejects
+
+    // Act
+    (new UpsertTvdbEpisodes)->handle($show, $episodes);
+
+    // Assert
+    expect(Episode::where('_tvdb_id', 99999999999999)->exists())->toBeFalse();
+    $this->assertDatabaseCount('episodes', 2);
+});
+
 it('returns 0 and persists nothing for empty episodes', function (): void {
     // Arrange
     $show = Show::factory()->create();

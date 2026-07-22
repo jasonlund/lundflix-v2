@@ -78,6 +78,23 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
   raw body map (`null` on 404) plus `failedIds` (non-404 http/connection
   failures). Callers upsert the bodies and feed `failedIds` back for retry.
 
+## TVDB episodes sync (`catalog:sync-episodes-tvdb`)
+
+- Same rolling 14-day `/updates?type=episodes` window as the shows sync: the
+  overlap window **is** the self-heal — idempotent upserts re-cover any dropped
+  update on a later run, so no persisted marker and re-processing is harmless.
+- Refreshes **only already-seeded shows** — the working set is the feed's
+  `seriesId`s intersected with `whereNotNull('episodes_synced_at')`. A show is
+  "episode-seeded" once `SeedTvdbEpisodes` stamps `episodes_synced_at`; the
+  **on-demand seed trigger is a separate consumer** (out of scope of FLIX-197), so
+  the command is intentionally dormant until that consumer exists and stamps the
+  first shows.
+- **Season resolution** — `SeedTvdbEpisodes` resolves each episode's `season_id`
+  by matching its `_tvdb_seasonNumber` against the show's seasons filtered to
+  `_tvdb_type->id === $show._tvdb_defaultSeasonType` (the default ordering the
+  episodes were fetched under). Custom orderings (DVD/absolute/alternate) are
+  deferred to FLIX-225.
+
 ## Ratings update (`UpdateImdbRatings`)
 
 Ratings apply as a **single bulk CASE update per table** (Movie, Show), returning

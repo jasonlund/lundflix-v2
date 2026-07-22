@@ -23,12 +23,21 @@ final readonly class SeedTvdbEpisodes
         // Episodes carry a raw `seasonNumber` but no local season id, so resolve
         // `season_id` by matching that number against the show's default-type
         // seasons — the same ordering these episodes were fetched under.
-        $show->seasons()
+        $seasonIdByNumber = $show->seasons()
             ->where('_tvdb_type->id', $show->_tvdb_defaultSeasonType)
-            ->pluck('id', '_tvdb_number')
-            ->each(fn (int $seasonId, int $number) => $show->episodes()
+            ->whereNotNull('_tvdb_number')
+            ->pluck('id', '_tvdb_number');
+
+        // Re-derive every episode group's `season_id` from the CURRENT default-type
+        // seasons, resetting to null where no match remains — a changed default type
+        // or removed season must clear a now-stale link on re-seed, not keep it.
+        $show->episodes()
+            ->whereNotNull('_tvdb_seasonNumber')
+            ->distinct()
+            ->pluck('_tvdb_seasonNumber')
+            ->each(fn (int $number) => $show->episodes()
                 ->where('_tvdb_seasonNumber', $number)
-                ->update(['season_id' => $seasonId]));
+                ->update(['season_id' => $seasonIdByNumber[$number] ?? null]));
 
         $show->update(['episodes_synced_at' => now()]);
 

@@ -6,6 +6,7 @@ namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
+use App\Domains\Catalog\Support\SourceId;
 
 final class UpsertTvdbEpisodes
 {
@@ -27,8 +28,17 @@ final class UpsertTvdbEpisodes
     public function handle(Show $show, array $episodes): int
     {
         foreach ($episodes as $episode) {
+            // `_tvdb_id` is the `updateOrCreate` conflict key, so the raw native id
+            // must normalize to a clean queryable id; a malformed/oversized id
+            // becomes null and the row is skipped rather than written null-keyed.
+            $tvdbId = SourceId::positiveInt($episode['id'] ?? null);
+
+            if ($tvdbId === null) {
+                continue;
+            }
+
             $show->episodes()->updateOrCreate(
-                ['_tvdb_id' => $episode['id']],
+                ['_tvdb_id' => $tvdbId],
                 [...RawSourceColumns::map('tvdb', self::RAW_COLUMNS, $episode), 'tvdb_synced_at' => now()],
             );
         }
