@@ -2,11 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Exceptions\TmdbShowCrosswalkCollision;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
@@ -90,6 +92,23 @@ function fakeTmdbShowUpdateSync(): void
             ? Http::response($detailBody)
             : Http::response('', 404),
     ]);
+}
+
+/*
+| Shared by the marker-derived window tests: asserts the /tv/changes request
+| carried the given start/end dates, ignoring every non-changes request.
+*/
+function assertRequestedShowChangesWindow(string $start, string $end): void
+{
+    Http::assertSent(function (Request $request) use ($start, $end): bool {
+        if (! Str::contains($request->url(), '/tv/changes')) {
+            return false;
+        }
+        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+        return ($query['start_date'] ?? null) === $start
+            && ($query['end_date'] ?? null) === $end;
+    });
 }
 
 it('hydrates a not-yet-synced show carrying a _tmdb_id directly', function (): void {
@@ -233,9 +252,14 @@ it('ignores a changed tv id not in the local catalog', function (): void {
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/325296'));
 });
 
-it('requests the rolling 14-day changes window', function (): void {
+it('requests the changes window from the cached marker with a 6h overlap', function (): void {
     // Arrange
-    Date::setTestNow('2026-07-09');
+    Cache::flush();
+    Date::setTestNow('2026-07-16 12:00:00');
+    // Marker at 04:00 (time-of-day < the 6h overlap): marker − 6h crosses to the
+    // previous calendar day, so start_date must floor to 2026-07-15. A bare marker
+    // (overlap dropped) would floor to today, 2026-07-16, and fail the assertion.
+    Cache::put(SyncFeed::TmdbShows->cacheKey(), now()->subHours(8)->toImmutable());
     Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
     fakeTmdbShowUpdateSync();
 
@@ -243,15 +267,21 @@ it('requests the rolling 14-day changes window', function (): void {
     $this->artisan('catalog:sync-shows-tmdb');
 
     // Assert
-    Http::assertSent(function (Request $request): bool {
-        if (! Str::contains($request->url(), '/tv/changes')) {
-            return false;
-        }
-        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+    assertRequestedShowChangesWindow('2026-07-15', '2026-07-16');
+});
 
-        return ($query['start_date'] ?? null) === '2026-06-25'
-            && ($query['end_date'] ?? null) === '2026-07-09';
-    });
+it('falls back to a 24h changes window when no marker is cached', function (): void {
+    // Arrange
+    Cache::flush();
+    Date::setTestNow('2026-07-16 12:00:00');
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
+    fakeTmdbShowUpdateSync();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    assertRequestedShowChangesWindow('2026-07-15', '2026-07-16');
 });
 
 it('skips the update phase with --fresh', function (): void {
@@ -398,4 +428,92 @@ it('stamps one of two shows sharing an imdb id and never aborts the chunk', func
     expect($shared->whereNull('_tmdb_id'))->toHaveCount(1);
     expect($shared->firstWhere('_tmdb_id', 1396)->_tmdb_name)->toBe('Game of Thrones');
     expect(Show::count())->toBe(3);
+});
+
+it('advances the shows marker to run-start on a clean default run', function (): void {
+    // Arrange
+    Cache::flush();
+    Date::setTestNow('2026-07-16 12:00:00');
+    fakeTmdbShowSync();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbShows->cacheKey())->equalTo(now()))->toBeTrue();
+});
+
+it('advances the shows marker on a --fresh run', function (): void {
+    // Arrange
+    Cache::flush();
+    Date::setTestNow('2026-07-16 12:00:00');
+    fakeTmdbShowSync();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbShows->cacheKey())->equalTo(now()))->toBeTrue();
+});
+
+it('does not advance the shows marker on a --limit run', function (): void {
+    // Arrange
+    Cache::flush();
+    fakeTmdbShowSync();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb', ['--limit' => 1]);
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
+});
+
+it('does not advance the shows marker when an insert-phase per-id hydrate fails', function (): void {
+    // Arrange
+    Cache::flush();
+    Exceptions::fake();
+    // A held candidate carrying _tmdb_id 500 whose /tv/500 detail 500s persistently;
+    // the pool aggregates it as a per-id failure and drops the key from its result,
+    // so the insert phase reports failure.
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 500, 'tmdb_synced_at' => null]);
+    Http::fake([
+        '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/tv/500')
+            ? Http::response('', 500)
+            : Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
+});
+
+it('does not advance the shows marker when a changes-phase re-hydrate fails', function (): void {
+    // Arrange
+    Cache::flush();
+    Exceptions::fake();
+    // An already-synced row → a clean insert phase; a locally-held changed id (23310,
+    // present in the changes feed) whose /tv/23310 detail 500s persistently makes the
+    // CHANGES phase report failure on its own — a distinct failure site from insert.
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
+    Http::fake([
+        '*/tv/changes*' => function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return (int) ($query['page'] ?? 1) === 2
+                ? Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'));
+        },
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/tv/23310')
+            ? Http::response('', 500)
+            : Http::response('', 404),
+    ]);
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
 });
