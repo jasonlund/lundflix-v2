@@ -6,46 +6,63 @@ namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
+use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Services\TvdbApiService;
+use App\Domains\Catalog\Support\SyncMarker;
+use Carbon\CarbonImmutable;
 use Generator;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 
-#[Description('Sync TheTVDB shows from the rolling 14-day updates feed')]
+/**
+ * Incremental TheTVDB show sync. The /updates `since` is derived from the feed's
+ * persisted marker: a 6h overlap re-fetches behind the marker, a first run with no
+ * marker reaches back 24h, and the reach is capped at 14 days. A clean, unbounded
+ * run advances the marker to its start time; a run with any failure or `--limit`
+ * leaves the marker untouched so the missed span is re-covered next run.
+ */
+#[Description('Sync TheTVDB shows incrementally from the /updates feed since the last run marker')]
 #[Signature('catalog:sync-shows-tvdb {--limit=}')]
 class SyncTvdbShows extends TvdbShowsCommand
 {
     /**
-     * Rolling overlap window fed to the /updates feed. Far wider than the 12h
-     * sync cadence: a dropped update is re-covered by ~28 later runs, and
-     * idempotent upserts make the re-processing harmless — so the window itself
-     * is the self-heal, needing zero persisted state (no marker, no skip set).
+     * The /updates `since` timestamp for this run, resolved from the feed marker in
+     * handle() before ids() walks the feed.
      */
-    private const int WINDOW_DAYS = 14;
+    private int $since = 0;
 
     public function handle(
         TvdbApiService $api,
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
+        SyncMarker $marker,
     ): int {
+        $startedAt = CarbonImmutable::now();
+
+        $this->since = $marker->window(SyncFeed::TvdbShows)->sinceTimestamp();
+
         $this->output->writeln('Syncing shows…');
-        $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks);
+        $failed = $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks);
+
+        // Advance only on a clean, unbounded run: a failed id or a --limit cap means
+        // this run didn't cover the whole window, so the marker must not move past it.
+        if ($failed === [] && $this->option('limit') === null) {
+            $marker->advance(SyncFeed::TvdbShows, $startedAt);
+        }
 
         return self::SUCCESS;
     }
 
     /**
-     * Pull the series /updates feed since `now − WINDOW_DAYS`, yielding each
-     * flattened record's numeric `recordId`. No skip-synced: the overlap window
-     * plus idempotent upsert re-cover any dropped update on a later run.
+     * Pull the series /updates feed since the marker-derived `since`, yielding each
+     * flattened record's numeric `recordId`. No skip-synced: the overlap window plus
+     * idempotent upsert re-cover any dropped update on a later run.
      *
      * @return Generator<int, int>
      */
     protected function ids(TvdbApiService $api): Generator
     {
-        $since = now()->subDays(self::WINDOW_DAYS)->timestamp;
-
-        foreach ($api->updates($since, 'series') as $record) {
+        foreach ($api->updates($this->since, 'series') as $record) {
             if (is_numeric($record['recordId'])) {
                 yield (int) $record['recordId'];
             }

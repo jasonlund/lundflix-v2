@@ -130,6 +130,8 @@ they work. After `composer setup`, fill in every key below:
 | `DOWNLOADS_UID` | Download — provider authentication | The `uid` browser cookie value from a logged-in provider session. Seeds the initial value; rotate later in the admin panel without a redeploy |
 | `DOWNLOADS_PASS` | Download — provider authentication | The `pass` browser cookie value from a logged-in provider session. Seeds the initial value; rotate later in the admin panel without a redeploy |
 | `DOWNLOADS_RSS_KEY` | Download — RSS feed authentication | The account-level `tp` token from the provider's Generate RSS page. Seeds the initial value; rotate later in the admin panel without a redeploy |
+| `SLACK_BOT_USER_OAUTH_TOKEN` | Notifications — Slack delivery | The Bot User OAuth Token from your Slack app's [OAuth & Permissions](https://api.slack.com/apps) page; authenticates `chat.postMessage` |
+| `SLACK_BOT_USER_DEFAULT_CHANNEL` | Notifications — Slack delivery | The Slack channel name or ID notifications post to by default (e.g. `#alerts`); choose a channel your bot is a member of |
 
 ### MCP servers (Claude Code)
 

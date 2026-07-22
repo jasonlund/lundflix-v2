@@ -10,6 +10,13 @@ External-source attributes are stored **raw**, one column each, prefixed
 order follows source priority: imdb → tmdb → tvdb. Persist the source value
 verbatim; derive/normalize downstream, not on ingest.
 
+**Exception — crosswalk ids SQL keys on** (`_imdb_id`, `_tmdb_id`): the raw stays
+(e.g. `_tvdb_remoteIds`), but the queryable id is **normalized at write time**
+through `Support\SourceId` (an upsert/`whereIn`/join key can't be a read accessor).
+Malformed upstream → null. `Support\TvdbCrosswalk::normalize()` is the shared
+remoteIds → `{_imdb_id, _tmdb_id}` derivation used by `UpsertTvdbShows`. See the
+raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
+
 ## IMDb dataset streaming (`ImdbDatasetService`)
 
 - `rows()` returns a `LazyCollection` over a gzip stream. The gz handle is closed
@@ -49,8 +56,8 @@ verbatim; derive/normalize downstream, not on ingest.
   `_tmdb_id`) — the row stays TVDB-only and the collision is reported, same as an
   empty `/find` result.
 - Update-changed phase (default full run only, skipped under `--fresh`/`--limit`)
-  — re-hydrates the intersection of the rolling 14-day changes feed and rows we've
-  already synced.
+  — re-hydrates the intersection of the marker-derived changes window (see
+  **Incremental sync markers** below) and rows we've already synced.
 
 ## TVDB sync split (`catalog:seed-shows-tvdb` / `catalog:sync-shows-tvdb`)
 
@@ -58,13 +65,39 @@ verbatim; derive/normalize downstream, not on ingest.
   series and upserts each. TheTVDB offers no re-download list, so failures heal
   **within the run**: one retry pass over the crawl's failures, then report the
   remainder. No persisted skip state.
-- `catalog:sync-shows-tvdb` — the rolling 14-day `/updates`-feed sync, wired into
-  `catalog:sync`. The 14-day overlap window **is** the self-heal: idempotent
-  upserts re-cover any dropped update on a later run, so it needs no persisted
-  marker.
+  - `--ids-file=<path>` re-hydrates only the series ids in that single-line CSV
+    (skipping the crawl) — the recovery path for the still-failing ids the run
+    logged; a missing path refuses (exit 1) rather than falling back to the full
+    crawl. No TMDB flag is needed: the rows it creates carry no `tmdb_synced_at`,
+    so the next default `catalog:sync-shows-tmdb` hydrates them.
+- `catalog:sync-shows-tvdb` — the incremental `/updates`-feed sync, wired into
+  `catalog:sync`. Reads the `tvdb_shows` marker (see **Incremental sync markers**)
+  for `since`, and advances it only on a clean, unbounded run; idempotent upserts
+  make the overlap re-processing harmless.
 - `seriesMany(array $ids)` returns a `PooledResult` — the input-ordered id →
   raw body map (`null` on 404) plus `failedIds` (non-404 http/connection
   failures). Callers upsert the bodies and feed `failedIds` back for retry.
+
+## Incremental sync markers (`SyncMarker` / `SyncFeed`)
+
+All three catalog syncs (`catalog:sync-movies`, `catalog:sync-shows-tmdb`,
+`catalog:sync-shows-tvdb`) fetch only what changed since their last successful run
+via a per-feed cache marker — no fixed rolling window.
+
+- `SyncMarker` (`Support/`) owns read + advance. `window(SyncFeed)` derives the
+  fetch interval as a `SyncWindow` VO: `since` = marker − 6h overlap (24h fallback
+  when unset), floored at `now − 14d` (TMDB's max `/changes` span; TVDB matched for
+  parity). `advance(SyncFeed, $startedAt)` persists **run-start** via
+  `Cache::forever` — one key per `SyncFeed` case (`TvdbShows`/`TmdbShows`/
+  `TmdbMovies`), so the three feeds advance independently.
+- **Zero-failure gate:** a run advances its marker only if it finished with **no**
+  failed ids/chunks **and** no `--limit`; `--fresh` still advances (clean
+  baseline). A per-id hydrate failure counts — the pooled `movies()`/`tvShows()`/
+  `seriesMany()` results **drop a failed id's key** (report-not-throw), so a short
+  result count (`count($results) < count(array_unique($ids))`) flags the failure
+  and holds the marker. Any failure → marker unchanged → the next run re-covers the
+  whole gap (idempotent upserts make that safe). A cache flush just drops to the
+  24h fallback, not data loss.
 
 ## Ratings update (`UpdateImdbRatings`)
 

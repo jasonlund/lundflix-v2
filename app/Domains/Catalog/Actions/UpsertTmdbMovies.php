@@ -6,6 +6,7 @@ namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Support\RawSourceColumns;
+use App\Domains\Catalog\Support\SourceId;
 use Illuminate\Support\Carbon;
 
 final class UpsertTmdbMovies
@@ -70,13 +71,25 @@ final class UpsertTmdbMovies
             $payloads,
         );
 
+        // The native `_tmdb_id` is the upsert conflict key; a payload whose id
+        // normalized to null has no primary identity, so drop it rather than
+        // writing a null-keyed row that SQL would reject.
+        $rows = array_values(array_filter(
+            $rows,
+            fn (array $row): bool => $row['_tmdb_id'] !== null,
+        ));
+
+        if ($rows === []) {
+            return 0;
+        }
+
         Movie::upsert($rows, ['_tmdb_id'], array_keys($rows[0]));
 
         Movie::query()
             ->whereIn('_tmdb_id', array_column($rows, '_tmdb_id'))
             ->searchable();
 
-        return count($payloads);
+        return count($rows);
     }
 
     /**
@@ -107,9 +120,15 @@ final class UpsertTmdbMovies
     {
         $row = $this->tmdbColumnsFor($payload, $now);
 
-        // TMDB carries IMDb's identity key on its payload; copy it raw so the
-        // `_tmdb_id` upsert also seeds `_imdb_id` (null when absent).
-        $row['_imdb_id'] = $payload['imdb_id'] ?? null;
+        // The native `_tmdb_id` is the upsert conflict key, so normalize the raw
+        // payload id through `SourceId` (a malformed/oversized value → null),
+        // keeping a bad native id from ever reaching SQL as the key.
+        $row['_tmdb_id'] = SourceId::positiveInt($payload['id'] ?? null);
+
+        // TMDB carries IMDb's identity key on its payload; validate it through
+        // `SourceId` so the `_tmdb_id` upsert seeds a canonical `_imdb_id`
+        // (malformed or absent values normalize to null).
+        $row['_imdb_id'] = SourceId::imdb($payload['imdb_id'] ?? null);
 
         foreach (self::JSON_COLUMNS as $column) {
             $row[$column] = $row[$column] === null ? null : json_encode($row[$column]);

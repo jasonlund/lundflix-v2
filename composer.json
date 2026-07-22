@@ -16,6 +16,7 @@
         "laravel/nightwatch": "^1.28",
         "laravel/pennant": "^1.23",
         "laravel/scout": "^11.2",
+        "laravel/slack-notification-channel": "^3.8",
         "laravel/tinker": "^3.0",
         "spatie/laravel-data": "^4.23",
         "spatie/laravel-settings": "^3.9",

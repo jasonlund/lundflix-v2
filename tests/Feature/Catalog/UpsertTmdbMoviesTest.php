@@ -59,6 +59,43 @@ it('leaves _imdb_id null when the payload has no imdb_id key', function (): void
     expect($movie->_imdb_id)->toBeNull();
 });
 
+it('drops a malformed payload imdb_id to null, still importing the movie', function (): void {
+    // Arrange
+    $payload = tmdbPayload(['id' => 909001, 'imdb_id' => '0167577']);
+
+    // Act
+    resolve(UpsertTmdbMovies::class)->handle([$payload]);
+
+    // Assert
+    $movie = Movie::query()->where('_tmdb_id', 909001)->firstOrFail();
+    expect($movie->_imdb_id)->toBeNull();
+});
+
+it('drops a payload whose native id is malformed, writing no row and no QueryException', function (): void {
+    // Arrange
+    $payload = tmdbPayload(['id' => 12.5]);
+
+    // Act
+    $count = resolve(UpsertTmdbMovies::class)->handle([$payload]);
+
+    // Assert
+    expect($count)->toBe(0)
+        ->and(Movie::query()->count())->toBe(0);
+});
+
+it('drops only the malformed-native-id payload, upserting the valid one', function (): void {
+    // Arrange
+    $good = tmdbPayload(['id' => 603]);
+    $bad = tmdbPayload(['id' => 12.5]);
+
+    // Act
+    $count = resolve(UpsertTmdbMovies::class)->handle([$good, $bad]);
+
+    // Assert
+    expect($count)->toBe(1)
+        ->and(Movie::query()->pluck('_tmdb_id')->all())->toBe([603]);
+});
+
 it('maps _tmdb_* columns raw, stamps tmdb_synced_at, and stores _tmdb_genres byte-for-byte', function (): void {
     // Arrange
     $payload = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);

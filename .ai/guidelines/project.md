@@ -205,6 +205,28 @@ cross-source value "conflicts" to resolve at ingest (e.g. `_imdb_runtime` and
 `_tmdb_runtime` coexist rather than fighting over one `runtime` column). The
 source of truth is chosen per read, not baked into the schema.
 
+### Crosswalk / queryable-id columns — the one ingest-normalize exception
+
+"No transform at ingest" holds for descriptive fields (normalize at read). It does
+**not** hold for a **crosswalk id that SQL must key on** — an `upsert` conflict key,
+a `whereIn` target, a join key (`_imdb_id`, `_tmdb_id`). A read-time accessor can't
+be any of those, so the clean value **must be materialized into the column at write
+time**. Ingest therefore does two writes from one source: the **raw** value verbatim
+into its own column (e.g. TVDB's whole `_tvdb_remoteIds` crosswalk list — dumb parse,
+full parity), **and** the **normalized** id into the queryable column.
+
+- **One shared normalizer, never an inline guard.** Every crosswalk parse site routes
+  through the single `App\Domains\Catalog\Support\SourceId` (`imdb`/`tmdb`/`positiveInt`)
+  — regex/range validate, `ctype_digit` before any `(int)` cast (so `1335814-slug` →
+  null, not a truncated int). No per-callsite range checks or magnitude caps.
+- **Malformed upstream → `null`, never trusted.** Third-party crosswalks ship free-text
+  garbage (overflow, slug-appended, URLs, wrong-entity ids); a bad value nulls out while
+  the row still imports. It is not an "API failure" — do not let a `QueryException` from
+  a bad crosswalk masquerade as a retryable fetch failure.
+- **Because the raw is retained, corrections need no reseed** — the queryable column can
+  be re-derived from the stored raw via the same `SourceId` (e.g.
+  `TvdbCrosswalk::normalize()` over a show's stored `_tvdb_remoteIds`).
+
 ## Persistence: Eloquent is globally unguarded
 
 Eloquent runs **unguarded application-wide** by deliberate decision (FLIX-153):
