@@ -241,11 +241,17 @@ it('under --fresh crawls the full TVDB seed and forwards --fresh to both TMDB sy
     $this->artisan('catalog:sync', ['--fresh' => true]);
 
     // Assert
-    // --fresh swaps the TVDB step to the full crawl (/series?page) and never the
-    // updates feed; forwarding --fresh reprocesses the already-synced 603/1399
-    // rows that a plain run would skip, so both hydrations fire.
+    // --fresh swaps the TVDB show step to the full crawl (/series?page), so the
+    // series-updates feed's driver call (type=series at page 0, no page cursor)
+    // must never fire. The marker-driven episodes step still walks /updates, and
+    // the shared fixture's real next-link is a type=series&page=1 capture, so we
+    // discriminate on the page-0 entry rather than that borrowed cursor; the
+    // type=episodes dispatch itself is asserted elsewhere. Forwarding --fresh
+    // reprocesses the already-synced 603/1399 rows a plain run skips, so both
+    // hydrations fire.
     Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=series')
+        && ! Str::contains($request->url(), 'page='));
     Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
     Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
 });
@@ -278,4 +284,33 @@ it('exercises both TMDB changes feeds on a default run', function (): void {
     // Assert
     Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
     Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
+});
+
+it('on a default run dispatches the episodes sync after the show sync', function (): void {
+    // Arrange
+    fakeCatalogSync();
+
+    // Act
+    $this->artisan('catalog:sync');
+
+    // Assert
+    // The type=episodes updates call only fires from catalog:sync-episodes-tvdb;
+    // seeing it proves the episodes command ran inside the orchestrator (ordering
+    // after the show sync is enforced structurally by its list placement).
+    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=episodes'));
+});
+
+it('under --fresh also dispatches the episodes sync after the show crawl', function (): void {
+    // Arrange
+    fakeCatalogSyncFreshAndUpdates();
+
+    // Act
+    $this->artisan('catalog:sync', ['--fresh' => true]);
+
+    // Assert
+    // The type=episodes updates call only fires from catalog:sync-episodes-tvdb;
+    // --fresh swaps the show step to the crawl but the episodes step is purely
+    // marker-driven with no --fresh flag, so it must still run — seeing type=episodes
+    // proves it did (ordering after the crawl is enforced by its list placement).
+    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=episodes'));
 });

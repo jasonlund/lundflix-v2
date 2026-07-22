@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
+use App\Domains\Catalog\Actions\UpsertTvdbSeasons;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Services\TvdbApiService;
@@ -35,6 +36,7 @@ class SyncTvdbShows extends TvdbShowsCommand
         TvdbApiService $api,
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
+        UpsertTvdbSeasons $upsertSeasons,
         SyncMarker $marker,
     ): int {
         $startedAt = CarbonImmutable::now();
@@ -42,7 +44,7 @@ class SyncTvdbShows extends TvdbShowsCommand
         $this->since = $marker->window(SyncFeed::TvdbShows)->sinceTimestamp();
 
         $this->output->writeln('Syncing shows…');
-        $failed = $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks);
+        $failed = $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks, $upsertSeasons);
 
         // Advance only on a clean, unbounded run: a failed id or a --limit cap means
         // this run didn't cover the whole window, so the marker must not move past it.

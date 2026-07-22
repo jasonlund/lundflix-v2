@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
+use App\Domains\Catalog\Actions\UpsertTvdbSeasons;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
 use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
@@ -34,7 +35,7 @@ abstract class TvdbShowsCommand extends Command
 
     /**
      * Hydrate the streamed ids in chunks, upserting each chunk's non-404 shows and
-     * their artworks. A chunk whose upsert throws is reported and skipped so one bad
+     * their artworks and seasons. A chunk whose upsert throws is reported and skipped so one bad
      * batch can't abort the ingest. Returns the ids that failed to sync: each chunk's
      * pooled `failedIds` unioned with every id in a chunk that threw.
      *
@@ -46,6 +47,7 @@ abstract class TvdbShowsCommand extends Command
         TvdbApiService $api,
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
+        UpsertTvdbSeasons $upsertSeasons,
     ): array {
         $failed = [];
         $chunk = [];
@@ -54,13 +56,13 @@ abstract class TvdbShowsCommand extends Command
             $chunk[] = $id;
 
             if (count($chunk) >= self::BATCH_SIZE) {
-                $failed = [...$failed, ...$this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks)];
+                $failed = [...$failed, ...$this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks, $upsertSeasons)];
                 $chunk = [];
             }
         }
 
         if ($chunk !== []) {
-            $failed = [...$failed, ...$this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks)];
+            $failed = [...$failed, ...$this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks, $upsertSeasons)];
         }
 
         return $failed;
@@ -81,9 +83,10 @@ abstract class TvdbShowsCommand extends Command
         TvdbApiService $api,
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
+        UpsertTvdbSeasons $upsertSeasons,
     ): array {
         try {
-            return $this->syncChunk($ids, $api, $upsertShows, $upsertArtworks);
+            return $this->syncChunk($ids, $api, $upsertShows, $upsertArtworks, $upsertSeasons);
         } catch (TvdbRequestFailed|TvdbAuthenticationFailed $e) {
             report($e);
 
@@ -93,8 +96,8 @@ abstract class TvdbShowsCommand extends Command
 
     /**
      * Hydrate one chunk of ids, upsert the non-404 shows, then persist each hydrated
-     * payload's artworks against its freshly upserted show row. Returns the pooled
-     * `failedIds` — ids whose hydration request failed outright.
+     * payload's artworks and seasons against its freshly upserted show row. Returns the
+     * pooled `failedIds` — ids whose hydration request failed outright.
      *
      * @param  array<int, int>  $ids
      * @return list<int>
@@ -104,6 +107,7 @@ abstract class TvdbShowsCommand extends Command
         TvdbApiService $api,
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
+        UpsertTvdbSeasons $upsertSeasons,
     ): array {
         // seriesMany() returns the raw TheTVDB `{status, data}` envelope per id (or
         // null on 404); unwrap to the `data` series payload and drop the misses.
@@ -139,6 +143,7 @@ abstract class TvdbShowsCommand extends Command
 
             if ($show instanceof Show) {
                 $upsertArtworks->handle($show, $payload['artworks'] ?? []);
+                $upsertSeasons->handle($show, $payload['seasons'] ?? []);
             }
         }
 

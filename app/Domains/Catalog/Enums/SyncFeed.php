@@ -7,6 +7,7 @@ namespace App\Domains\Catalog\Enums;
 enum SyncFeed
 {
     case TvdbShows;
+    case TvdbEpisodes;
     case TmdbShows;
     case TmdbMovies;
 
@@ -14,6 +15,7 @@ enum SyncFeed
     {
         return match ($this) {
             self::TvdbShows => 'catalog:sync:marker:tvdb_shows',
+            self::TvdbEpisodes => 'catalog:sync:marker:tvdb_episodes',
             self::TmdbShows => 'catalog:sync:marker:tmdb_shows',
             self::TmdbMovies => 'catalog:sync:marker:tmdb_movies',
         };

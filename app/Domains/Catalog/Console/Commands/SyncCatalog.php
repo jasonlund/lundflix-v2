@@ -34,12 +34,15 @@ class SyncCatalog extends Command
 
     /**
      * The ordered command => arguments to dispatch: TMDB and TVDB establish the
-     * source-of-truth rows first, then IMDb ratings enrich them by _imdb_id last.
+     * source-of-truth rows first (the TVDB show sync followed by the episodes
+     * sync for already-seeded shows), then IMDb ratings enrich them by _imdb_id
+     * last.
      *
-     * `--fresh` forces a full re-seed: the TVDB step swaps from the updates-only
-     * sync to the full allSeries crawl, and --fresh is forwarded to both TMDB
-     * syncs to reprocess every already-synced row. Seed and ratings take no
-     * --fresh — passing it would error.
+     * `--fresh` forces a full re-seed: the TVDB show step swaps from the
+     * updates-only sync to the full allSeries crawl, and --fresh is forwarded to
+     * both TMDB syncs to reprocess every already-synced row. Seed, episodes, and
+     * ratings take no --fresh — passing it would error; the marker-driven episodes
+     * sync runs identically in both flows.
      *
      * @return array<class-string<Command>, array<string, bool>>
      */
@@ -49,6 +52,7 @@ class SyncCatalog extends Command
             return [
                 SyncTmdbMovies::class => ['--fresh' => true],
                 SeedTvdbShows::class => [],
+                SyncTvdbEpisodes::class => [],
                 SyncTmdbShows::class => ['--fresh' => true],
                 SyncImdbRatings::class => [],
             ];
@@ -57,6 +61,7 @@ class SyncCatalog extends Command
         return [
             SyncTmdbMovies::class => [],
             SyncTvdbShows::class => [],
+            SyncTvdbEpisodes::class => [],
             SyncTmdbShows::class => [],
             SyncImdbRatings::class => [],
         ];

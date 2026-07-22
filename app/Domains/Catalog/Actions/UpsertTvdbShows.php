@@ -22,7 +22,7 @@ final readonly class UpsertTvdbShows
     private const array RAW_COLUMNS = [
         'id', 'name', 'slug', 'overview', 'score', 'firstAired', 'lastAired',
         'year', 'averageRuntime', 'status', 'originalLanguage', 'originalCountry',
-        'genres', 'remoteIds',
+        'defaultSeasonType', 'genres', 'remoteIds',
     ];
 
     /**

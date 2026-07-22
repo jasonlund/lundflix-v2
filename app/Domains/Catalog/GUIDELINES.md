@@ -78,18 +78,39 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
   raw body map (`null` on 404) plus `failedIds` (non-404 http/connection
   failures). Callers upsert the bodies and feed `failedIds` back for retry.
 
+## TVDB episodes sync (`catalog:sync-episodes-tvdb`)
+
+- The incremental `/updates?type=episodes` sync. Reads the `tvdb_episodes` marker
+  (see **Incremental sync markers**) for `since` — a 6h overlap, 24h first-run
+  fallback, capped at 14 days — and advances it only on a clean, unbounded run;
+  idempotent upserts make the overlap re-processing harmless. The `catch` is
+  narrowed to `TvdbRequestFailed`/`TvdbAuthenticationFailed` so a real bug (e.g. a
+  `QueryException`) surfaces instead of being swallowed as a fetch failure.
+- Refreshes **only already-seeded shows** — the working set is the feed's
+  `seriesId`s intersected with `whereNotNull('episodes_synced_at')`. A show is
+  "episode-seeded" once `SeedTvdbEpisodes` stamps `episodes_synced_at`; the
+  **on-demand seed trigger is a separate consumer** (out of scope of FLIX-197), so
+  the command is intentionally dormant until that consumer exists and stamps the
+  first shows.
+- **Season resolution** — `SeedTvdbEpisodes` resolves each episode's `season_id`
+  by matching its `_tvdb_seasonNumber` against the show's seasons filtered to
+  `_tvdb_type->id === $show._tvdb_defaultSeasonType` (the default ordering the
+  episodes were fetched under). Custom orderings (DVD/absolute/alternate) are
+  deferred to FLIX-225.
+
 ## Incremental sync markers (`SyncMarker` / `SyncFeed`)
 
-All three catalog syncs (`catalog:sync-movies`, `catalog:sync-shows-tmdb`,
-`catalog:sync-shows-tvdb`) fetch only what changed since their last successful run
-via a per-feed cache marker — no fixed rolling window.
+All four catalog syncs (`catalog:sync-movies`, `catalog:sync-shows-tmdb`,
+`catalog:sync-shows-tvdb`, `catalog:sync-episodes-tvdb`) fetch only what changed
+since their last successful run via a per-feed cache marker — no fixed rolling
+window.
 
 - `SyncMarker` (`Support/`) owns read + advance. `window(SyncFeed)` derives the
   fetch interval as a `SyncWindow` VO: `since` = marker − 6h overlap (24h fallback
   when unset), floored at `now − 14d` (TMDB's max `/changes` span; TVDB matched for
   parity). `advance(SyncFeed, $startedAt)` persists **run-start** via
-  `Cache::forever` — one key per `SyncFeed` case (`TvdbShows`/`TmdbShows`/
-  `TmdbMovies`), so the three feeds advance independently.
+  `Cache::forever` — one key per `SyncFeed` case (`TvdbShows`/`TvdbEpisodes`/
+  `TmdbShows`/`TmdbMovies`), so the four feeds advance independently.
 - **Zero-failure gate:** a run advances its marker only if it finished with **no**
   failed ids/chunks **and** no `--limit`; `--fresh` still advances (clean
   baseline). A per-id hydrate failure counts — the pooled `movies()`/`tvShows()`/

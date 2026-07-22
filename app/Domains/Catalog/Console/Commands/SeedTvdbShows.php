@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
+use App\Domains\Catalog\Actions\UpsertTvdbSeasons;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Services\TvdbApiService;
@@ -15,7 +16,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
-#[Description('Crawl every TheTVDB series and upsert shows with their artworks (one-time bootstrap); pass --ids-file (a CSV file of series ids) to re-hydrate specific series instead of crawling')]
+#[Description('Crawl every TheTVDB series and upsert shows with their artworks and seasons (one-time bootstrap); pass --ids-file (a CSV file of series ids) to re-hydrate specific series instead of crawling')]
 #[Signature('catalog:seed-shows-tvdb {--limit=} {--ids-file=}')]
 class SeedTvdbShows extends TvdbShowsCommand
 {
@@ -23,6 +24,7 @@ class SeedTvdbShows extends TvdbShowsCommand
         TvdbApiService $api,
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
+        UpsertTvdbSeasons $upsertSeasons,
     ): int {
         $idsFile = $this->option('ids-file');
 
@@ -51,11 +53,11 @@ class SeedTvdbShows extends TvdbShowsCommand
         }
 
         $this->output->writeln('Syncing shows…');
-        $failed = $this->syncIds($this->limited($ids), $api, $upsertShows, $upsertArtworks);
+        $failed = $this->syncIds($this->limited($ids), $api, $upsertShows, $upsertArtworks, $upsertSeasons);
 
         // TheTVDB offers no re-download list, so a dropped id has to heal within the
         // same run: one retry pass over the crawl's failures, then report the remainder.
-        $stillFailing = $failed === [] ? [] : $this->syncIds($failed, $api, $upsertShows, $upsertArtworks);
+        $stillFailing = $failed === [] ? [] : $this->syncIds($failed, $api, $upsertShows, $upsertArtworks, $upsertSeasons);
 
         $recovered = count($failed) - count($stillFailing);
         $this->output->writeln("catalog:seed-shows-tvdb retry: {$recovered} recovered, ".count($stillFailing).' still failing');

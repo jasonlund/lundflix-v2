@@ -245,6 +245,30 @@ it('inserts two rows when two payloads share one imdb id', function (): void {
     expect(Show::query()->count())->toBe(2);
 });
 
+it('maps _tvdb_defaultSeasonType raw from the extended payload as an int', function (): void {
+    // Arrange
+    $series = json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)['data'];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([$series]);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 81189)->firstOrFail();
+    expect($show->_tvdb_defaultSeasonType)->toBe(1);
+});
+
+it('leaves _tvdb_defaultSeasonType null when the payload omits it', function (): void {
+    // Arrange
+    $payloads = [tvdbSeries(['id' => 909090])];
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle($payloads);
+
+    // Assert
+    $show = Show::query()->where('_tvdb_id', 909090)->firstOrFail();
+    expect($show->_tvdb_defaultSeasonType)->toBeNull();
+});
+
 it('returns 0 and persists nothing for empty input', function (): void {
     // Arrange
     $payloads = [];

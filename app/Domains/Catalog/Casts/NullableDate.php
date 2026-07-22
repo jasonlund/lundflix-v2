@@ -47,6 +47,10 @@ class NullableDate implements CastsAttributes
             return null;
         }
 
-        return Date::parse($value)->format('Y-m-d');
+        try {
+            return Date::parse($value)->format('Y-m-d');
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

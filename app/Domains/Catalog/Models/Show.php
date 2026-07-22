@@ -9,6 +9,7 @@ use App\Domains\Catalog\Database\Factories\ShowFactory;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Laravel\Scout\Searchable;
 
@@ -25,6 +26,22 @@ class Show extends Model
     public function media(): MorphMany
     {
         return $this->morphMany(Media::class, 'mediable');
+    }
+
+    /**
+     * @return HasMany<Season, $this>
+     */
+    public function seasons(): HasMany
+    {
+        return $this->hasMany(Season::class);
+    }
+
+    /**
+     * @return HasMany<Episode, $this>
+     */
+    public function episodes(): HasMany
+    {
+        return $this->hasMany(Episode::class);
     }
 
     /**
@@ -74,7 +91,9 @@ class Show extends Model
             '_tvdb_status' => 'array',
             '_tvdb_genres' => 'array',
             '_tvdb_remoteIds' => 'array',
+            '_tvdb_defaultSeasonType' => 'integer',
             'tvdb_synced_at' => 'datetime',
+            'episodes_synced_at' => 'datetime',
         ];
     }
 }
