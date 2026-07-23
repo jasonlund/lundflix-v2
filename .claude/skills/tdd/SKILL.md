@@ -71,6 +71,14 @@ Then briefly answer, before any code (keeps design testable):
 
 ## Step 1 — 🔴 RED (presented for approval via Conductor's plan UI)
 
+**On the first slice for a ticket, move it to In Progress.** Before presenting
+that ticket's first RED card, advance the ticket to **In Progress** per the
+*Automatic ticket status transitions* contract in `project.md` (forward-only,
+active ticket only). Only the ticket whose slice is starting moves — on a
+multi-ticket branch, each ticket transitions when the loop (Step 4) reaches its
+own first slice; already-started tickets are untouched (forward-only makes
+re-entry a no-op).
+
 The RED slice is the contract you commit to, so present it for approval first:
 
 1. Call **`EnterPlanMode`**.

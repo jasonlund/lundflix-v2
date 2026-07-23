@@ -153,6 +153,13 @@ Confirm the backlog is appended to the target, then tell the user: review the
 testability findings, then **invoke the `tdd` skill** to execute the first slice.
 Do nothing else.
 
+**Advance the ticket to Todo.** When the target is a **Linear ticket** and the
+backlog has been appended, the ticket is planned and ready — move it to **Todo**
+per the *Automatic ticket status transitions* contract in `project.md`
+(forward-only, active ticket only), and note the move in the hand-off line. When
+called per-ticket by `plan-breakdown`, do this for each ticket you slice. Skip
+when the target is a plain plan file (no ticket to move).
+
 ## Reference
 
 - `.claude/skills/plan-breakdown/SKILL.md` — the front half; decomposes a PRD into

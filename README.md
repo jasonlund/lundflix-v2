@@ -73,6 +73,15 @@ Built **test-first (TDD)**, and the architecture defends itself:
   plan/PRD into parallelizable Linear tickets; and `plan-slices` turns each
   ticket/plan into an ordered, test-first slice backlog to feed it
   (`.claude/skills/{plan-draft,plan-breakdown,plan-slices}`).
+- **Ticket status tracks the flow automatically.** The flow skills advance the
+  Linear ticket as work crosses each boundary — see "Automatic ticket status
+  transitions" in `.ai/guidelines/project.md` for the full boundary → status map.
+  The one exception is the final **Done** transition, which is not skill-driven: it
+  comes from **Linear's native GitHub integration**, a one-time operator setup. In
+  Linear → Settings → Integrations → GitHub, map a **merged** linked PR to **Done**,
+  and make sure its "PR opened" automation is off (or also set to In Review) so it
+  doesn't conflict with the skill-driven In Review. Without this integration
+  configured, merged tickets never move to Done.
 - **Backend:** feature and unit tests via **Pest v4**, run with `php artisan test`.
 - **Frontend:** component/page tests via **Vitest + React Testing Library**, run
   with `npm test`.
