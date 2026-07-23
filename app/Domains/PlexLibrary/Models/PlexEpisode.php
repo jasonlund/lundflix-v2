@@ -1,0 +1,42 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Domains\PlexLibrary\Models;
+
+use App\Domains\Catalog\Models\Episode;
+use App\Domains\PlexLibrary\Database\Factories\PlexEpisodeFactory;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class PlexEpisode extends Model
+{
+    /** @use HasFactory<PlexEpisodeFactory> */
+    use HasFactory;
+
+    /**
+     * @return BelongsTo<Episode, $this>
+     */
+    public function episode(): BelongsTo
+    {
+        return $this->belongsTo(Episode::class, '_tvdb_id', '_tvdb_id');
+    }
+
+    protected static function newFactory(): Factory
+    {
+        return PlexEpisodeFactory::new();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    protected function casts(): array
+    {
+        return [
+            '_plex_guids' => 'array',
+        ];
+    }
+}

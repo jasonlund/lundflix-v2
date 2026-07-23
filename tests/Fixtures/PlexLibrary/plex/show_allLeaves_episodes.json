@@ -1,0 +1,3206 @@
+{
+    "MediaContainer": {
+        "size": 24,
+        "allowSync": true,
+        "art": "\/library\/metadata\/34112\/art\/1782985591",
+        "identifier": "com.plexapp.plugins.library",
+        "key": "34112",
+        "librarySectionID": 2,
+        "librarySectionTitle": "TV Shows",
+        "librarySectionUUID": "0be8114b-46ad-4ca1-872d-bb587e638350",
+        "mediaTagPrefix": "\/system\/bundle\/media\/flags\/",
+        "mediaTagVersion": 1777730215,
+        "mixedParents": true,
+        "nocache": true,
+        "parentIndex": 1,
+        "parentTitle": "24",
+        "parentYear": 2001,
+        "theme": "\/library\/metadata\/34112\/theme\/1782985591",
+        "title1": "TV Shows",
+        "title2": "24",
+        "viewGroup": "episode",
+        "viewMode": 65592,
+        "Metadata": [
+            {
+                "ratingKey": "34425",
+                "key": "\/library\/metadata\/34425",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13507d06d9001fffb37d",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 8:00 A.M.-9:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "It's been a year since Jack lost his wife, and the emotional toll includes estrangement from his daughter Kim, who is now a live-in au pair for a troubled family. Jack is no longer with CTU, and no longer interested in that line of work - until he's summoned directly by President Palmer. The situation: terrorists have planted a nuclear device somewhere in Los Angeles and plan to detonate it within 24 hours.",
+                "index": 1,
+                "parentIndex": 2,
+                "audienceRating": 8.4,
+                "year": 2002,
+                "thumb": "\/library\/metadata\/34425\/thumb\/1776560525",
+                "art": "\/library\/metadata\/34112\/art\/1776560519",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560519",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560519",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560519",
+                "duration": 3113761,
+                "originallyAvailableAt": "2002-10-29",
+                "addedAt": 1776560519,
+                "updatedAt": 1776560525,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47902,
+                        "duration": 3113761,
+                        "bitrate": 1450,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91103,
+                                "key": "\/library\/parts\/91103\/1776560429\/file.mkv",
+                                "duration": 3113761,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E01 - Day 2 - 8.00 A.M. - 9.00 A.M.mkv",
+                                "size": 564410552,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 8:00 A.M.-9:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560519"
+                    },
+                    {
+                        "alt": "Day 2: 8:00 A.M.-9:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34425\/thumb\/1776560525"
+                    },
+                    {
+                        "alt": "Day 2: 8:00 A.M.-9:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560519"
+                    },
+                    {
+                        "alt": "Day 2: 8:00 A.M.-9:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560519"
+                    },
+                    {
+                        "alt": "Day 2: 8:00 A.M.-9:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560519"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "213418",
+                    "topRight": "152611",
+                    "bottomRight": "53652f",
+                    "bottomLeft": "291108"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502205"
+                    },
+                    {
+                        "id": "tmdb:\/\/134418"
+                    },
+                    {
+                        "id": "tvdb:\/\/189279"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Michael Loceff"
+                    },
+                    {
+                        "tag": "Joel Surnow"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34426",
+                "key": "\/library\/metadata\/34426",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13502192ba001f38eaa4",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 9:00 A.M.-10:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack goes undercover to find Joseph Wald, where he learns that CTU is going to be bombed. While Kim tries to save Meghan from her abusive father, Gary. Kate Warner becomes suspicious of sister's Middle-Eastern fianc\u00e9.",
+                "index": 2,
+                "parentIndex": 2,
+                "audienceRating": 8.2,
+                "year": 2002,
+                "thumb": "\/library\/metadata\/34426\/thumb\/1776560525",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2622603,
+                "originallyAvailableAt": "2002-11-05",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560525,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47903,
+                        "duration": 2622603,
+                        "bitrate": 1441,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91104,
+                                "key": "\/library\/parts\/91104\/1776560429\/file.mkv",
+                                "duration": 2622603,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E02 - Day 2 - 9.00 A.M. - 10.00 A.M.mkv",
+                                "size": 472291204,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 9:00 A.M.-10:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 9:00 A.M.-10:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34426\/thumb\/1776560525"
+                    },
+                    {
+                        "alt": "Day 2: 9:00 A.M.-10:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 9:00 A.M.-10:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 9:00 A.M.-10:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "322a26",
+                    "topRight": "4f5123",
+                    "bottomRight": "14030c",
+                    "bottomLeft": "191412"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502207"
+                    },
+                    {
+                        "id": "tmdb:\/\/134419"
+                    },
+                    {
+                        "id": "tvdb:\/\/189280"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Michael Loceff"
+                    },
+                    {
+                        "tag": "Joel Surnow"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34427",
+                "key": "\/library\/metadata\/34427",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13507d06d9001fffb374",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 10:00 A.M.-11:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack tries to undermine Eddie's mission to bomb CTU while George investigates intel leading him to the site of the nuclear bomb's construction and Kim tries to make contact with her father by heading for CTU headquarters.",
+                "index": 3,
+                "parentIndex": 2,
+                "audienceRating": 8.5,
+                "year": 2002,
+                "thumb": "\/library\/metadata\/34427\/thumb\/1776560526",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2623062,
+                "originallyAvailableAt": "2002-11-12",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560526,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47904,
+                        "duration": 2623062,
+                        "bitrate": 1449,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91105,
+                                "key": "\/library\/parts\/91105\/1776560428\/file.mkv",
+                                "duration": 2623062,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E03 - Day 2 - 10.00 A.M. - 11.00 A.M.mkv",
+                                "size": 475118061,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 10:00 A.M.-11:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 10:00 A.M.-11:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34427\/thumb\/1776560526"
+                    },
+                    {
+                        "alt": "Day 2: 10:00 A.M.-11:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 10:00 A.M.-11:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 10:00 A.M.-11:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "482114",
+                    "topRight": "372e2e",
+                    "bottomRight": "2c0d04",
+                    "bottomLeft": "3c1614"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502185"
+                    },
+                    {
+                        "id": "tmdb:\/\/134420"
+                    },
+                    {
+                        "id": "tvdb:\/\/189281"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "James Whitmore Jr."
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Howard Gordon"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34428",
+                "key": "\/library\/metadata\/34428",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13507d06d9001fffb37a",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 11:00 A.M.-12:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "George returns to CTU where he orders the medics to revive a badly injured Paula, who has vital information. Palmer comes down hard on Eric for his deception. Kim takes Megan to the hospital, but the staff accuses her of abuse. Jack locates the leader of the American terrorist cell. He learns that the woman who gave them inside information on CTU is an old enemy.",
+                "index": 4,
+                "parentIndex": 2,
+                "audienceRating": 8.5,
+                "year": 2002,
+                "thumb": "\/library\/metadata\/34428\/thumb\/1776560526",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2652966,
+                "originallyAvailableAt": "2002-11-19",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560526,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47905,
+                        "duration": 2652966,
+                        "bitrate": 1430,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91106,
+                                "key": "\/library\/parts\/91106\/1776560427\/file.mkv",
+                                "duration": 2652966,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E04 - Day 2 - 11.00 A.M. - 12.00 P.M.mkv",
+                                "size": 474054697,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 11:00 A.M.-12:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 11:00 A.M.-12:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34428\/thumb\/1776560526"
+                    },
+                    {
+                        "alt": "Day 2: 11:00 A.M.-12:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 11:00 A.M.-12:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 11:00 A.M.-12:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "4b1d1b",
+                    "topRight": "2f100d",
+                    "bottomRight": "320c13",
+                    "bottomLeft": "0e0202"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502187"
+                    },
+                    {
+                        "id": "tmdb:\/\/134421"
+                    },
+                    {
+                        "id": "tvdb:\/\/189282"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "James Whitmore Jr."
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Remi Aubuchon"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34429",
+                "key": "\/library\/metadata\/34429",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13507d06d9001fffb36e",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 12:00 P.M.-1:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "George refuses to allow Jack to assist in Nina's interrogation. Jack resorts to blackmail to change George's mind. Palmer and Stanton meet with a Middle Eastern ambassador who may be in league with Second Wave. Tony visits the Warner home and questions Reza about his possible connection with Syed Ali.",
+                "index": 5,
+                "parentIndex": 2,
+                "audienceRating": 7.8,
+                "year": 2002,
+                "thumb": "\/library\/metadata\/34429\/thumb\/1776560526",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2652383,
+                "originallyAvailableAt": "2002-11-26",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560526,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47906,
+                        "duration": 2652383,
+                        "bitrate": 1425,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91107,
+                                "key": "\/library\/parts\/91107\/1776560429\/file.mkv",
+                                "duration": 2652383,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E05 - Day 2 - 12.00 P.M. - 1.00 P.M.mkv",
+                                "size": 472473544,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 12:00 P.M.-1:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 12:00 P.M.-1:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34429\/thumb\/1776560526"
+                    },
+                    {
+                        "alt": "Day 2: 12:00 P.M.-1:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 12:00 P.M.-1:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 12:00 P.M.-1:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "191f46",
+                    "topRight": "150e0e",
+                    "bottomRight": "3e1715",
+                    "bottomLeft": "161315"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502190"
+                    },
+                    {
+                        "id": "tmdb:\/\/134422"
+                    },
+                    {
+                        "id": "tvdb:\/\/189283"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Gil Grant"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34430",
+                "key": "\/library\/metadata\/34430",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13507d06d9001fffb371",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 1:00 P.M.-2:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack begins his interrogation of Nina and pushes all boundaries in order to force her to divulge the name of her contact. Palmer is surprised and suspicious when his ex wife Sherry returns and claims to have information about a conspiracy against him from within his own administration. Kim and Miguel plan to kidnap Megan from the hospital in order to take her out of LA and away from the nuclear threat.",
+                "index": 6,
+                "parentIndex": 2,
+                "audienceRating": 7.7,
+                "year": 2002,
+                "thumb": "\/library\/metadata\/34430\/thumb\/1776560527",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2651382,
+                "originallyAvailableAt": "2002-12-03",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560527,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47907,
+                        "duration": 2651382,
+                        "bitrate": 1474,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91108,
+                                "key": "\/library\/parts\/91108\/1776560429\/file.mkv",
+                                "duration": 2651382,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E06 - Day 2 - 1.00 P.M. - 2.00 P.M.mkv",
+                                "size": 488503599,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 1:00 P.M.-2:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 1:00 P.M.-2:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34430\/thumb\/1776560527"
+                    },
+                    {
+                        "alt": "Day 2: 1:00 P.M.-2:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 1:00 P.M.-2:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 1:00 P.M.-2:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "0b1c33",
+                    "topRight": "0b1634",
+                    "bottomRight": "101938",
+                    "bottomLeft": "0d0209"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502192"
+                    },
+                    {
+                        "id": "tmdb:\/\/134423"
+                    },
+                    {
+                        "id": "tvdb:\/\/189284"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Elizabeth M. Cosin"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34431",
+                "key": "\/library\/metadata\/34431",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13507d06d9001fffb377",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 2:00 P.M.-3:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack forces Nina to help with a sting operation against her contact in the hopes that he can lead them to the bomb. Palmer and Mike try to gage Stanton's loyalty when they investigate the chopper crash. George has a final conversation with his son.",
+                "index": 7,
+                "parentIndex": 2,
+                "audienceRating": 7.6,
+                "year": 2002,
+                "thumb": "\/library\/metadata\/34431\/thumb\/1776560527",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2651507,
+                "originallyAvailableAt": "2002-12-10",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560527,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47908,
+                        "duration": 2651507,
+                        "bitrate": 1480,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91109,
+                                "key": "\/library\/parts\/91109\/1776560428\/file.mkv",
+                                "duration": 2651507,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E07 - Day 2 - 2.00 P.M. - 3.00 P.M.mkv",
+                                "size": 490438871,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 2:00 P.M.-3:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 2:00 P.M.-3:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34431\/thumb\/1776560527"
+                    },
+                    {
+                        "alt": "Day 2: 2:00 P.M.-3:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 2:00 P.M.-3:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 2:00 P.M.-3:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "4b1e1a",
+                    "topRight": "2c2a29",
+                    "bottomRight": "413d3b",
+                    "bottomLeft": "1e1b19"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502194"
+                    },
+                    {
+                        "id": "tmdb:\/\/134428"
+                    },
+                    {
+                        "id": "tvdb:\/\/189285"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "James Whitmore Jr."
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Virgil Williams"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34432",
+                "key": "\/library\/metadata\/34432",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13507d06d9001fffb36b",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 3:00 P.M.-4:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Kim and Miguel are arrested and the police plan to take them back to LA. Tony questions Bob Warner at CTU and learns more about his government connections. Palmer discovers a traitor in his ranks when the journalist whom he was holding is set free. Nina pulls a deadly countermove, setting herself up as the main player in the search to locate the bomb.",
+                "index": 8,
+                "parentIndex": 2,
+                "audienceRating": 7.6,
+                "year": 2002,
+                "thumb": "\/library\/metadata\/34432\/thumb\/1776560527",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2621894,
+                "originallyAvailableAt": "2002-12-17",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560527,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47909,
+                        "duration": 2621894,
+                        "bitrate": 1484,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91110,
+                                "key": "\/library\/parts\/91110\/1776560429\/file.mkv",
+                                "duration": 2621894,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E08 - Day 2 - 3.00 P.M. - 4.00 P.M.mkv",
+                                "size": 486398137,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 3:00 P.M.-4:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 3:00 P.M.-4:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34432\/thumb\/1776560527"
+                    },
+                    {
+                        "alt": "Day 2: 3:00 P.M.-4:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 3:00 P.M.-4:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 3:00 P.M.-4:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "1e1915",
+                    "topRight": "306a56",
+                    "bottomRight": "110303",
+                    "bottomLeft": "385c9a"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502196"
+                    },
+                    {
+                        "id": "tmdb:\/\/134431"
+                    },
+                    {
+                        "id": "tvdb:\/\/189286"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "James Whitmore Jr."
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Michael Loceff"
+                    },
+                    {
+                        "tag": "Joel Surnow"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34433",
+                "key": "\/library\/metadata\/34433",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/60f6892054490d002c9bc6c7",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 4:00 P.M.-5:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "George pits Bob against Reza in hopes of learning which one is working with Second Wave. Sherry and Lynne clash over Palmer's speech to the press. Kate is interrogated by Syed Ali, who believes she knows too much about the bomb. Jack and Nina fight off a group of renegade soldiers while waiting to be rescued from the crash site. They nearly escape when Nina takes Jack hostage and demands to speak to the President.",
+                "index": 9,
+                "parentIndex": 2,
+                "audienceRating": 7.8,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34433\/thumb\/1776560527",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2622770,
+                "originallyAvailableAt": "2003-01-07",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560527,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47910,
+                        "duration": 2622770,
+                        "bitrate": 1443,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91111,
+                                "key": "\/library\/parts\/91111\/1776560429\/file.mkv",
+                                "duration": 2622770,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E09 - Day 2 - 4.00 P.M. - 5.00 P.M.mkv",
+                                "size": 473009659,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 4:00 P.M.-5:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 4:00 P.M.-5:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34433\/thumb\/1776560527"
+                    },
+                    {
+                        "alt": "Day 2: 4:00 P.M.-5:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 4:00 P.M.-5:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 4:00 P.M.-5:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "2e2e2e",
+                    "topRight": "353c44",
+                    "bottomRight": "183c54",
+                    "bottomLeft": "382d25"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502198"
+                    },
+                    {
+                        "id": "tmdb:\/\/134433"
+                    },
+                    {
+                        "id": "tvdb:\/\/189287"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Rodney Charters"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Howard Gordon"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34434",
+                "key": "\/library\/metadata\/34434",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/60f6891f54490d002c9bc6b4",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 5:00 P.M.-6:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Two traitors are uncovered. One is the mole in the Palmer administration who is working with Stanton. The other is the member of the Warner family who helped Syed Ali to bring the bomb into the country. Jack learns of Ali's location and tries to rescue Kate. Kim and Miguel hatch an escape plan to stay out of LA, but the results are disastrous.",
+                "index": 10,
+                "parentIndex": 2,
+                "audienceRating": 7.6,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34434\/thumb\/1776560528",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2591822,
+                "originallyAvailableAt": "2003-01-14",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560528,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47911,
+                        "duration": 2591822,
+                        "bitrate": 1444,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91112,
+                                "key": "\/library\/parts\/91112\/1776560429\/file.mkv",
+                                "duration": 2591822,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E10 - Day 2 - 5.00 P.M. - 6.00 P.M.mkv",
+                                "size": 467727148,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 5:00 P.M.-6:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 5:00 P.M.-6:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34434\/thumb\/1776560528"
+                    },
+                    {
+                        "alt": "Day 2: 5:00 P.M.-6:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 5:00 P.M.-6:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 5:00 P.M.-6:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "322c2c",
+                    "topRight": "200807",
+                    "bottomRight": "21191a",
+                    "bottomLeft": "130802"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502200"
+                    },
+                    {
+                        "id": "tmdb:\/\/134436"
+                    },
+                    {
+                        "id": "tvdb:\/\/189288"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Rodney Charters"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "David Ehrman"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34435",
+                "key": "\/library\/metadata\/34435",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c1350e98e47001eb8e43d",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 6:00 P.M.-7:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Kate helps Jack to locate and identify Syed Ali. Palmer places Stanton under arrest, but he won't break. Palmer realizes he must go to extremes to make Stanton talk. Kim hits her low point of the day when she encounters a cougar in the woods.",
+                "index": 11,
+                "parentIndex": 2,
+                "audienceRating": 8.4,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34435\/thumb\/1776560528",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2557037,
+                "originallyAvailableAt": "2003-02-04",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560528,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47912,
+                        "duration": 2557037,
+                        "bitrate": 1447,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91113,
+                                "key": "\/library\/parts\/91113\/1776560428\/file.mkv",
+                                "duration": 2557037,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E11 - Day 2 - 6.00 P.M. - 7.00 P.M.mkv",
+                                "size": 462536996,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 6:00 P.M.-7:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 6:00 P.M.-7:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34435\/thumb\/1776560528"
+                    },
+                    {
+                        "alt": "Day 2: 6:00 P.M.-7:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 6:00 P.M.-7:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 6:00 P.M.-7:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "3a200d",
+                    "topRight": "140305",
+                    "bottomRight": "404645",
+                    "bottomLeft": "1c1512"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502202"
+                    },
+                    {
+                        "id": "tmdb:\/\/134439"
+                    },
+                    {
+                        "id": "tvdb:\/\/189289"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Frederick King Keller"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Gil Grant"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34436",
+                "key": "\/library\/metadata\/34436",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c1350e98e47001eb8e452",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 7:00 P.M.-8:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack engages in a brutal contest of wills with Syed Ali. George questions Bob Warner to learn more about Marie's motivations for helping the terrorists. Kim is rescued by a mysterious hunter who offers her asylum. Lynne receives a dire warning from Sherry.",
+                "index": 12,
+                "parentIndex": 2,
+                "audienceRating": 8.5,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34436\/thumb\/1776560528",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2548612,
+                "originallyAvailableAt": "2003-02-11",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560528,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47913,
+                        "duration": 2548612,
+                        "bitrate": 1474,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91114,
+                                "key": "\/library\/parts\/91114\/1776560428\/file.mkv",
+                                "duration": 2548612,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E12 - Day 2 - 7.00 P.M. - 8.00 P.M.mkv",
+                                "size": 469453829,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 7:00 P.M.-8:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 7:00 P.M.-8:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34436\/thumb\/1776560528"
+                    },
+                    {
+                        "alt": "Day 2: 7:00 P.M.-8:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 7:00 P.M.-8:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 7:00 P.M.-8:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "0e0207",
+                    "topRight": "1e060d",
+                    "bottomRight": "483172",
+                    "bottomLeft": "4f4fa0"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502204"
+                    },
+                    {
+                        "id": "tmdb:\/\/134440"
+                    },
+                    {
+                        "id": "tvdb:\/\/189290"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Frederick King Keller"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Evan Katz"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34437",
+                "key": "\/library\/metadata\/34437",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c1350e98e47001eb8e43a",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 8:00 P.M.-9:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack and his men prepare for a confrontation with Stanton's renegade soldiers as they converge on the bomb. Kim becomes suspicious of her host, but is forced to stay because of her status with the police. Stanton finally breaks down and gives Palmer some unpleasant news.",
+                "index": 13,
+                "parentIndex": 2,
+                "audienceRating": 7.9,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34437\/thumb\/1776560528",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2561500,
+                "originallyAvailableAt": "2003-02-18",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560528,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47914,
+                        "duration": 2561500,
+                        "bitrate": 1469,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91115,
+                                "key": "\/library\/parts\/91115\/1776560429\/file.mkv",
+                                "duration": 2561500,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E13 - Day 2 - 8.00 P.M. - 9.00 P.M.mkv",
+                                "size": 470499854,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 8:00 P.M.-9:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 8:00 P.M.-9:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34437\/thumb\/1776560528"
+                    },
+                    {
+                        "alt": "Day 2: 8:00 P.M.-9:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 8:00 P.M.-9:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 8:00 P.M.-9:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "4c1b22",
+                    "topRight": "0d0206",
+                    "bottomRight": "110b26",
+                    "bottomLeft": "361117"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502206"
+                    },
+                    {
+                        "id": "tmdb:\/\/134448"
+                    },
+                    {
+                        "id": "tvdb:\/\/189291"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Maurice Hurley"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34438",
+                "key": "\/library\/metadata\/34438",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c1350e98e47001eb8e44c",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 9:00 P.M.-10:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack and Kate try to break Marie's resolve so they can learn the location of the bomb. Palmer confronts his ex wife with the information that Stanton gave them. George finally steps down as director of CTU and hands the position over to Tony. Kim discovers her host's deception.",
+                "index": 14,
+                "parentIndex": 2,
+                "audienceRating": 8.6,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34438\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2649588,
+                "originallyAvailableAt": "2003-02-25",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47915,
+                        "duration": 2649588,
+                        "bitrate": 1461,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91116,
+                                "key": "\/library\/parts\/91116\/1776560429\/file.mkv",
+                                "duration": 2649588,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E14 - Day 2 - 9.00 P.M. - 10.00 P.M.mkv",
+                                "size": 484006703,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 9:00 P.M.-10:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 9:00 P.M.-10:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34438\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 9:00 P.M.-10:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 9:00 P.M.-10:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 9:00 P.M.-10:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "171414",
+                    "topRight": "251b1a",
+                    "bottomRight": "45404a",
+                    "bottomLeft": "373230"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502208"
+                    },
+                    {
+                        "id": "tmdb:\/\/134451"
+                    },
+                    {
+                        "id": "tvdb:\/\/189292"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Michael Loceff"
+                    },
+                    {
+                        "tag": "Joel Surnow"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34439",
+                "key": "\/library\/metadata\/34439",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c1350e98e47001eb8e446",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 10:00 P.M.-11:00 P.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Palmer, Mike and Lynne discuss various ways to dispose of the ticking bomb. They conclude that the desert is the best place to set it off. Jack determines that one man must pilot the plane carrying the bomb. He chooses to fly the plane himself and bids a tearful goodbye to his daughter. Tony and Michelle become suspicious of a Middle Eastern diplomat who is asking questions about the evidence against Syed Ali. Palmer departs for Los Angeles so he can be on hand when news of the nuclear bomb reaches the public.",
+                "index": 15,
+                "parentIndex": 2,
+                "audienceRating": 8.7,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34439\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2653384,
+                "originallyAvailableAt": "2003-03-04",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47916,
+                        "duration": 2653384,
+                        "bitrate": 1451,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91117,
+                                "key": "\/library\/parts\/91117\/1776560426\/file.mkv",
+                                "duration": 2653384,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E15 - Day 2 - 10.00 P.M. - 11.00 P.M.mkv",
+                                "size": 481395058,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 10:00 P.M.-11:00 P.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 10:00 P.M.-11:00 P.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34439\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 10:00 P.M.-11:00 P.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 10:00 P.M.-11:00 P.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 10:00 P.M.-11:00 P.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "261e18",
+                    "topRight": "221403",
+                    "bottomRight": "824b2b",
+                    "bottomLeft": "2e241e"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502186"
+                    },
+                    {
+                        "id": "tmdb:\/\/134453"
+                    },
+                    {
+                        "id": "tvdb:\/\/189293"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Ian Toynton"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Robert Cochran"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34440",
+                "key": "\/library\/metadata\/34440",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c1350e98e47001eb8e443",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 11:00 P.M.-12:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack and Michelle question Syed Ali, who claims that the audio recordings are false. Palmer prepares to wage war against the three countries who were involved in the nuclear strike. Kim gets caught in a hostage situation. Jack is contacted by a man who wants to exchange information for Kate Warner.",
+                "index": 16,
+                "parentIndex": 2,
+                "audienceRating": 8.6,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34440\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2633072,
+                "originallyAvailableAt": "2003-03-25",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47917,
+                        "duration": 2633072,
+                        "bitrate": 1451,
+                        "width": 1904,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91118,
+                                "key": "\/library\/parts\/91118\/1776560427\/file.mkv",
+                                "duration": 2633072,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E16 - Day 2 - 11.00 P.M. - 12.00 A.M.mkv",
+                                "size": 477472130,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 11:00 P.M.-12:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 11:00 P.M.-12:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34440\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 11:00 P.M.-12:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 11:00 P.M.-12:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 11:00 P.M.-12:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "191613",
+                    "topRight": "393d37",
+                    "bottomRight": "1a454b",
+                    "bottomLeft": "1a0b03"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502188"
+                    },
+                    {
+                        "id": "tmdb:\/\/134457"
+                    },
+                    {
+                        "id": "tvdb:\/\/189294"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Ian Toynton"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Howard Gordon"
+                    },
+                    {
+                        "tag": "Evan Katz"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34441",
+                "key": "\/library\/metadata\/34441",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c1350e98e47001eb8e44f",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 12:00 A.M.-1:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack meets with the surviving Coral Snake Commando, who demands Kate Warner in exchange for evidence about the recordings. Tony and Carrie spy on Michelle when he suspects that she is working with Jack. Mike and the Vice-President turn up the pressure on Palmer, when he expresses his doubts about the impending war.",
+                "index": 17,
+                "parentIndex": 2,
+                "audienceRating": 8.4,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34441\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2653008,
+                "originallyAvailableAt": "2003-04-01",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47918,
+                        "duration": 2653008,
+                        "bitrate": 1443,
+                        "width": 1858,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91119,
+                                "key": "\/library\/parts\/91119\/1776560429\/file.mkv",
+                                "duration": 2653008,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E17 - Day 2 - 12.00 A.M. - 1.00 A.M.mkv",
+                                "size": 478595204,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 12:00 A.M.-1:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 12:00 A.M.-1:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34441\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 12:00 A.M.-1:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 12:00 A.M.-1:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 12:00 A.M.-1:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "192c52",
+                    "topRight": "3a5598",
+                    "bottomRight": "4158a0",
+                    "bottomLeft": "241f1d"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502189"
+                    },
+                    {
+                        "id": "tmdb:\/\/134460"
+                    },
+                    {
+                        "id": "tvdb:\/\/189295"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Gil Grant"
+                    },
+                    {
+                        "tag": "Evan Katz"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34442",
+                "key": "\/library\/metadata\/34442",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c1350e98e47001eb8e455",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 1:00 A.M.-2:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack, Kate and Wallace fight to escape from a deadly band of commandos. Palmer decides to take a stronger stance against the civil unrest resulting from the bomb explosion. Tony's trust in Michelle is broken when he suspects her of betraying him. Kim's worries seem to be over when she learns the charges against her have been dropped.",
+                "index": 18,
+                "parentIndex": 2,
+                "audienceRating": 8.1,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34442\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2652174,
+                "originallyAvailableAt": "2003-04-08",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47919,
+                        "duration": 2652174,
+                        "bitrate": 1451,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91120,
+                                "key": "\/library\/parts\/91120\/1776560428\/file.mkv",
+                                "duration": 2652174,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E18 - Day 2 - 1.00 A.M. - 2.00 A.M.mkv",
+                                "size": 481060385,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 1:00 A.M.-2:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 1:00 A.M.-2:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34442\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 1:00 A.M.-2:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 1:00 A.M.-2:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 1:00 A.M.-2:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "221d1d",
+                    "topRight": "20070d",
+                    "bottomRight": "1c1a1a",
+                    "bottomLeft": "42181a"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502191"
+                    },
+                    {
+                        "id": "tmdb:\/\/134463"
+                    },
+                    {
+                        "id": "tvdb:\/\/189296"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Michael Loceff"
+                    },
+                    {
+                        "tag": "Joel Surnow"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34443",
+                "key": "\/library\/metadata\/34443",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13503c3f87001f3ca3b2",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 2:00 A.M.-3:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack is captured and tortured by men who want the chip. Kate and Yusuf run into a group of angry rednecks before they can deliver the chip to CTU. Tony and Michelle share a tender moment after her brother flips out. Palmer leans towards holding off the attacks, while Lynne discovers a secret operation that the Vice-President is planning against Palmer.",
+                "index": 19,
+                "parentIndex": 2,
+                "audienceRating": 7.8,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34443\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2639787,
+                "originallyAvailableAt": "2003-04-15",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47920,
+                        "duration": 2639787,
+                        "bitrate": 1451,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91121,
+                                "key": "\/library\/parts\/91121\/1776560428\/file.mkv",
+                                "duration": 2639787,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E19 - Day 2 - 2.00 A.M. - 3.00 A.M.mkv",
+                                "size": 478837366,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 2:00 A.M.-3:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 2:00 A.M.-3:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34443\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 2:00 A.M.-3:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 2:00 A.M.-3:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 2:00 A.M.-3:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "181512",
+                    "topRight": "200b03",
+                    "bottomRight": "5e554f",
+                    "bottomLeft": "29261e"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502193"
+                    },
+                    {
+                        "id": "tmdb:\/\/134465"
+                    },
+                    {
+                        "id": "tvdb:\/\/189297"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "James Whitmore Jr."
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Howard Gordon"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34444",
+                "key": "\/library\/metadata\/34444",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13502df347001e425639",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 3:00 A.M.-4:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack finds an ally who may help him escape from Kingsley's men. Lynne meets with foul play before she can warn Palmer of the conspiracy against him. Chappelle interferes with Tony's efforts to assist Jack. Kate offers her captors money in exchange for the chip.",
+                "index": 20,
+                "parentIndex": 2,
+                "audienceRating": 8.6,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34444\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2586150,
+                "originallyAvailableAt": "2003-04-22",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47921,
+                        "duration": 2586150,
+                        "bitrate": 1455,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91122,
+                                "key": "\/library\/parts\/91122\/1776560429\/file.mkv",
+                                "duration": 2586150,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E20 - Day 2 - 3.00 A.M. - 4.00 A.M.mkv",
+                                "size": 470210361,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 3:00 A.M.-4:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 3:00 A.M.-4:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34444\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 3:00 A.M.-4:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 3:00 A.M.-4:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 3:00 A.M.-4:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "261503",
+                    "topRight": "371453",
+                    "bottomRight": "19061a",
+                    "bottomLeft": "4d2c15"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502195"
+                    },
+                    {
+                        "id": "tmdb:\/\/134468"
+                    },
+                    {
+                        "id": "tvdb:\/\/189298"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "James Whitmore Jr."
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Neil Cohen"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34445",
+                "key": "\/library\/metadata\/34445",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13502df347001e425640",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 4:00 A.M.-5:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Palmer's cabinet invokes the 25th Amendment in an attempt to remove him from power. They place him on trial for his extreme actions during the nuclear bomb threat. Jack and Michelle work against the clock to prove that the evidence against the Middle East is false.",
+                "index": 21,
+                "parentIndex": 2,
+                "audienceRating": 8.5,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34445\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2651674,
+                "originallyAvailableAt": "2003-04-29",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47922,
+                        "duration": 2651674,
+                        "bitrate": 1456,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91123,
+                                "key": "\/library\/parts\/91123\/1776560428\/file.mkv",
+                                "duration": 2651674,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E21 - Day 2 - 4.00 A.M. - 5.00 A.M.mkv",
+                                "size": 482578737,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 4:00 A.M.-5:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 4:00 A.M.-5:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34445\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 4:00 A.M.-5:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 4:00 A.M.-5:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 4:00 A.M.-5:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "202728",
+                    "topRight": "1e4564",
+                    "bottomRight": "232322",
+                    "bottomLeft": "1f4a61"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502197"
+                    },
+                    {
+                        "id": "tmdb:\/\/134470"
+                    },
+                    {
+                        "id": "tvdb:\/\/189299"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Ian Toynton"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Robert Cochran"
+                    },
+                    {
+                        "tag": "Howard Gordon"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34446",
+                "key": "\/library\/metadata\/34446",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13503c3f87001f3ca3ca",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 5:00 A.M.-6:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack locates the man who forged the audio evidence, but his efforts to break him down are sabotaged by Sherry Palmer, who has a hand in the conspiracy. Kim returns to the Matheson home, where she discovers that her problems are far from over. Palmer searches for an ally who will help him get a message out to CTU. Tony and Michelle take Chappelle out of action when he hinders their efforts to help Jack.",
+                "index": 22,
+                "parentIndex": 2,
+                "audienceRating": 8.6,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34446\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2651382,
+                "originallyAvailableAt": "2003-05-06",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47923,
+                        "duration": 2651382,
+                        "bitrate": 1453,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91124,
+                                "key": "\/library\/parts\/91124\/1776560429\/file.mkv",
+                                "duration": 2651382,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E22 - Day 2 - 5.00 A.M. - 6.00 A.M.mkv",
+                                "size": 481488206,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 5:00 A.M.-6:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 5:00 A.M.-6:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34446\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 5:00 A.M.-6:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 5:00 A.M.-6:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 5:00 A.M.-6:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "312d29",
+                    "topRight": "3b4440",
+                    "bottomRight": "0f0202",
+                    "bottomLeft": "2c2b33"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502199"
+                    },
+                    {
+                        "id": "tmdb:\/\/134472"
+                    },
+                    {
+                        "id": "tvdb:\/\/189300"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Ian Toynton"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Virgil Williams"
+                    },
+                    {
+                        "tag": "Duppy Demetrius"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34447",
+                "key": "\/library\/metadata\/34447",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13503c3f87001f3ca3b8",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 6:00 A.M.-7:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "When Jack hits a dead end with his lead, he realizes he must persuade Sherry to help him get evidence against Kingsley. Things go awry at CTU when Division becomes suspicious of Chappelle's absence. Michelle goes off-site to work with Jack. Mike and Prescott ask Palmer to aid them as the bombers get closer to their targets.",
+                "index": 23,
+                "parentIndex": 2,
+                "audienceRating": 8.6,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34447\/thumb\/1776560529",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2592698,
+                "originallyAvailableAt": "2003-05-13",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560529,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47924,
+                        "duration": 2592698,
+                        "bitrate": 1461,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91125,
+                                "key": "\/library\/parts\/91125\/1776560429\/file.mkv",
+                                "duration": 2592698,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E23 - Day 2 - 6.00 A.M. - 7.00 A.M.mkv",
+                                "size": 473547349,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 6:00 A.M.-7:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 6:00 A.M.-7:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34447\/thumb\/1776560529"
+                    },
+                    {
+                        "alt": "Day 2: 6:00 A.M.-7:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 6:00 A.M.-7:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 6:00 A.M.-7:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "2a1407",
+                    "topRight": "391e0d",
+                    "bottomRight": "251206",
+                    "bottomLeft": "040404"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502201"
+                    },
+                    {
+                        "id": "tmdb:\/\/134474"
+                    },
+                    {
+                        "id": "tvdb:\/\/189301"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Gil Grant"
+                    },
+                    {
+                        "tag": "Evan Katz"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "34448",
+                "key": "\/library\/metadata\/34448",
+                "parentRatingKey": "34424",
+                "grandparentRatingKey": "34112",
+                "guid": "plex:\/\/episode\/5d9c13503c3f87001f3ca3c4",
+                "parentGuid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "grandparentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "grandparentSlug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "episode",
+                "title": "Day 2: 7:00 A.M.-8:00 A.M.",
+                "grandparentKey": "\/library\/metadata\/34112",
+                "parentKey": "\/library\/metadata\/34424",
+                "grandparentTitle": "24",
+                "parentTitle": "Season 2",
+                "contentRating": "TV-14",
+                "summary": "Jack and Sherry Palmer prepare for a dangerous meeting with the head of the war conspiracy at the L.A. Coliseum; David Palmer sits in as the Cabinet waits for confirmation of the Cypress Chip's invalidity; the air strike on the Middle East draws nearer; the conspiracy goes to an old agent to put Palmer out of play.",
+                "index": 24,
+                "parentIndex": 2,
+                "audienceRating": 8.8,
+                "year": 2003,
+                "thumb": "\/library\/metadata\/34448\/thumb\/1776560530",
+                "art": "\/library\/metadata\/34112\/art\/1776560520",
+                "parentThumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "grandparentThumb": "\/library\/metadata\/34112\/thumb\/1776560520",
+                "grandparentArt": "\/library\/metadata\/34112\/art\/1776560520",
+                "grandparentTheme": "\/library\/metadata\/34112\/theme\/1776560520",
+                "duration": 2590195,
+                "originallyAvailableAt": "2003-05-20",
+                "addedAt": 1776560520,
+                "updatedAt": 1776560530,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Media": [
+                    {
+                        "id": 47926,
+                        "duration": 2590195,
+                        "bitrate": 1462,
+                        "width": 1912,
+                        "height": 1072,
+                        "aspectRatio": 1.78,
+                        "audioChannels": 2,
+                        "audioCodec": "aac",
+                        "videoCodec": "hevc",
+                        "videoResolution": "1080",
+                        "container": "mkv",
+                        "videoFrameRate": "24p",
+                        "audioProfile": "he-aac",
+                        "videoProfile": "main",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91127,
+                                "key": "\/library\/parts\/91127\/1776560429\/file.mkv",
+                                "duration": 2590195,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E24 - Day 2 - 7.00 A.M. - 8.00 A.M.mkv",
+                                "size": 473416354,
+                                "audioProfile": "he-aac",
+                                "container": "mkv",
+                                "videoProfile": "main"
+                            }
+                        ]
+                    },
+                    {
+                        "id": 47925,
+                        "duration": 2536038,
+                        "bitrate": 497,
+                        "width": 400,
+                        "height": 240,
+                        "aspectRatio": 1.66,
+                        "audioChannels": 2,
+                        "audioCodec": "mp3",
+                        "videoCodec": "mpeg4",
+                        "videoResolution": "sd",
+                        "container": "avi",
+                        "videoFrameRate": "24p",
+                        "videoProfile": "simple",
+                        "hasVoiceActivity": false,
+                        "Part": [
+                            {
+                                "id": 91126,
+                                "key": "\/library\/parts\/91126\/1776560429\/file.avi",
+                                "duration": 2536038,
+                                "file": "\/data\/media\/TV Shows\/24\/Season 02\/24 - S02E24 - Day 2 - 7.00 A.M. - 8.00 A.M.avi",
+                                "size": 157403136,
+                                "container": "avi",
+                                "videoProfile": "simple"
+                            }
+                        ]
+                    }
+                ],
+                "Image": [
+                    {
+                        "alt": "Day 2: 7:00 A.M.-8:00 A.M.",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 7:00 A.M.-8:00 A.M.",
+                        "type": "snapshot",
+                        "url": "\/library\/metadata\/34448\/thumb\/1776560530"
+                    },
+                    {
+                        "alt": "Day 2: 7:00 A.M.-8:00 A.M.",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 7:00 A.M.-8:00 A.M.",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1776560520"
+                    },
+                    {
+                        "alt": "Day 2: 7:00 A.M.-8:00 A.M.",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1776560520"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "3d1d0f",
+                    "topRight": "7e3931",
+                    "bottomRight": "5c2e1c",
+                    "bottomLeft": "91413e"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0502203"
+                    },
+                    {
+                        "id": "tmdb:\/\/134476"
+                    },
+                    {
+                        "id": "tvdb:\/\/189302"
+                    }
+                ],
+                "Director": [
+                    {
+                        "tag": "Jon Cassar"
+                    }
+                ],
+                "Writer": [
+                    {
+                        "tag": "Michael Loceff"
+                    },
+                    {
+                        "tag": "Howard Gordon"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Dennis Haysbert"
+                    },
+                    {
+                        "tag": "Elisha Cuthbert"
+                    }
+                ]
+            }
+        ]
+    }
+}
