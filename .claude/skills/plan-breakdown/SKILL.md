@@ -143,6 +143,11 @@ honest-RED notes → traceability). `plan-slices` **appends the slice backlog in
 same ticket body**, so one ticket = one self-contained body an executor can pick up
 and run `tdd` against. Then **stop** — execution is the `tdd` skill's job, unchanged.
 
+Phase D creates each sub-ticket in the default (Backlog) status; it sets no status
+itself. Each sub-ticket reaches **Todo** through its own `plan-slices` pass here
+(the *Automatic ticket status transitions* contract in `project.md`), not from
+breakdown. The parent ticket's status is left untouched.
+
 ## Reference
 
 - `.claude/skills/plan-slices/SKILL.md` — the back half; slice planning + the

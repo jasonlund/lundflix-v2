@@ -143,6 +143,17 @@ Delete the temp file after. Do not pass `--draft`.
 
 ---
 
+## Phase 4b: Move ticket(s) to In Review
+
+Once the PR is confirmed open, advance **every ticket the PR covers** to **In
+Review** per the *Automatic ticket status transitions* contract in `project.md`
+(forward-only; skip Canceled/Duplicate; no-op if already In Review or later).
+"Covered" = every `FLIX-XXX` id in the branch name, not just the one used for the
+title — a multi-ticket branch moves all of them together at PR open. No ticket
+resolves → skip silently.
+
+---
+
 ## Phase 5: Report
 
 ```
@@ -150,6 +161,7 @@ Delete the temp file after. Do not pass `--draft`.
    {title}
 
 Branch pushed · {N} commit(s) · lint clean · tests green
+{ticket(s)} → In Review
 
 View: {PR URL}
 
