@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Domains\Catalog\Support\SourceId;
+use App\Domains\Common\Support\SourceId;
 
 it('validates and coerces IMDb crosswalk ids, malformed to null', function (): void {
     // Arrange

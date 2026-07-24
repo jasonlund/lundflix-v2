@@ -8,8 +8,8 @@ use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexSeason;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use App\Domains\PlexLibrary\Support\PlexGuids;
+use App\Domains\PlexLibrary\Support\PlexTimestamp;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Facades\Date;
 
 final class ReconcilePlexEpisodes
 {
@@ -97,8 +97,8 @@ final class ReconcilePlexEpisodes
             '_plex_index' => $season['index'] ?? null,
             '_plex_title' => $season['title'] ?? null,
             '_plex_leafCount' => $season['leafCount'] ?? null,
-            '_plex_addedAt' => isset($season['addedAt']) ? Date::createFromTimestamp($season['addedAt']) : null,
-            '_plex_updatedAt' => isset($season['updatedAt']) ? Date::createFromTimestamp($season['updatedAt']) : null,
+            '_plex_addedAt' => PlexTimestamp::fromEpoch($season['addedAt'] ?? null),
+            '_plex_updatedAt' => PlexTimestamp::fromEpoch($season['updatedAt'] ?? null),
             '_tvdb_id' => $ids['tvdb'],
             'synced_at' => $now,
         ];
@@ -123,8 +123,8 @@ final class ReconcilePlexEpisodes
             '_plex_parentIndex' => $episode['parentIndex'] ?? null,
             '_plex_index' => $episode['index'] ?? null,
             '_plex_title' => $episode['title'] ?? null,
-            '_plex_addedAt' => isset($episode['addedAt']) ? Date::createFromTimestamp($episode['addedAt']) : null,
-            '_plex_updatedAt' => isset($episode['updatedAt']) ? Date::createFromTimestamp($episode['updatedAt']) : null,
+            '_plex_addedAt' => PlexTimestamp::fromEpoch($episode['addedAt'] ?? null),
+            '_plex_updatedAt' => PlexTimestamp::fromEpoch($episode['updatedAt'] ?? null),
             '_plex_guids' => $episode['Guid'] ?? null,
             '_imdb_id' => $ids['imdb'],
             '_tmdb_id' => $ids['tmdb'],

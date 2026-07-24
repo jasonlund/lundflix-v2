@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domains\Catalog\Support;
+namespace App\Domains\Common\Support;
 
 use Illuminate\Support\Str;
 use Stringable;

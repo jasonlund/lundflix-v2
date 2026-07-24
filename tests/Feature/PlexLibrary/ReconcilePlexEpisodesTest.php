@@ -7,7 +7,7 @@ use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexSeason;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Date;
 
 uses(RefreshDatabase::class);
 
@@ -62,8 +62,8 @@ it('upserts a season row mapping raw plex facts and the tvdb crosswalk', functio
         ->and($season->_tvdb_id)->toBe(10064);
     $this->assertDatabaseHas('plex_seasons', [
         '_plex_ratingKey' => '34424',
-        '_plex_addedAt' => Carbon::createFromTimestamp(1776560519)->toDateTimeString(),
-        '_plex_updatedAt' => Carbon::createFromTimestamp(1776560524)->toDateTimeString(),
+        '_plex_addedAt' => Date::createFromTimestamp(1776560519)->toDateTimeString(),
+        '_plex_updatedAt' => Date::createFromTimestamp(1776560524)->toDateTimeString(),
     ]);
 });
 

@@ -26,7 +26,7 @@ use App\Domains\PlexLibrary\Support\PlexGuids;
  * empty-remainder value (plus a wrong-scheme `anidb://` entry) — real Plex never
  * emits these. Each retains two valid sibling ids, so the case both pins the
  * null target and proves the siblings still extract. These characterize the
- * boundaries `App\Domains\Catalog\Support\SourceId` already enforces (the id
+ * boundaries `App\Domains\Common\Support\SourceId` already enforces (the id
  * normalizers `PlexGuids` routes through), guarding against a future inline
  * normalizer in `PlexGuids` that diverges from `SourceId`.
  */

@@ -250,7 +250,7 @@ into its own column (e.g. TVDB's whole `_tvdb_remoteIds` crosswalk list — dumb
 full parity), **and** the **normalized** id into the queryable column.
 
 - **One shared normalizer, never an inline guard.** Every crosswalk parse site routes
-  through the single `App\Domains\Catalog\Support\SourceId` (`imdb`/`tmdb`/`positiveInt`)
+  through the single `App\Domains\Common\Support\SourceId` (`imdb`/`tmdb`/`positiveInt`)
   — regex/range validate, `ctype_digit` before any `(int)` cast (so `1335814-slug` →
   null, not a truncated int). No per-callsite range checks or magnitude caps.
 - **Malformed upstream → `null`, never trusted.** Third-party crosswalks ship free-text

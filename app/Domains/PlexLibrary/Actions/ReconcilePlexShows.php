@@ -8,8 +8,8 @@ use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use App\Domains\PlexLibrary\Support\PlexGuids;
+use App\Domains\PlexLibrary\Support\PlexTimestamp;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Facades\Date;
 
 final class ReconcilePlexShows
 {
@@ -33,7 +33,7 @@ final class ReconcilePlexShows
         // could never tell a moved show apart from an unchanged one.
         $changedRatingKeys = $this->changedRatingKeys($server, $rows);
 
-        $this->upsertAndPrune($server, $rows, $incomingRatingKeys);
+        $this->upsertAndPrune($server, $library, $rows, $incomingRatingKeys);
 
         // Resolve ids only now, AFTER the write: a newly inserted show has no id
         // until the upsert creates its row.
@@ -69,7 +69,7 @@ final class ReconcilePlexShows
      * @param  array<int, array<string, mixed>>  $rows
      * @param  list<string>  $incomingRatingKeys
      */
-    private function upsertAndPrune(PlexServer $server, array $rows, array $incomingRatingKeys): void
+    private function upsertAndPrune(PlexServer $server, PlexLibrary $library, array $rows, array $incomingRatingKeys): void
     {
         if ($rows !== []) {
             $updateColumns = array_values(array_diff(
@@ -80,11 +80,12 @@ final class ReconcilePlexShows
             PlexShow::upsert($rows, ['plex_server_id', '_plex_ratingKey'], $updateColumns);
         }
 
-        // Scoped to the server because `_plex_ratingKey` is only unique within a
-        // server, so a global prune would delete another server's shows that
-        // share a key.
+        // The payload only speaks for this server's library, so the prune is scoped
+        // to both: server because `_plex_ratingKey` is unique only within a server,
+        // and library so reconciling one never deletes a sibling library's shows.
         PlexShow::query()
             ->where('plex_server_id', $server->id)
+            ->where('plex_library_id', $library->id)
             ->whereNotIn('_plex_ratingKey', $incomingRatingKeys)
             ->delete();
     }
@@ -156,8 +157,8 @@ final class ReconcilePlexShows
             '_plex_year' => $item['year'] ?? null,
             '_plex_leafCount' => $item['leafCount'] ?? null,
             '_plex_childCount' => $item['childCount'] ?? null,
-            '_plex_addedAt' => isset($item['addedAt']) ? Date::createFromTimestamp($item['addedAt'])->toDateTimeString() : null,
-            '_plex_updatedAt' => isset($item['updatedAt']) ? Date::createFromTimestamp($item['updatedAt'])->toDateTimeString() : null,
+            '_plex_addedAt' => PlexTimestamp::fromEpoch($item['addedAt'] ?? null)?->toDateTimeString(),
+            '_plex_updatedAt' => PlexTimestamp::fromEpoch($item['updatedAt'] ?? null)?->toDateTimeString(),
             '_imdb_id' => $ids['imdb'],
             '_tmdb_id' => $ids['tmdb'],
             '_tvdb_id' => $ids['tvdb'],

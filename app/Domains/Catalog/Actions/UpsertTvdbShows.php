@@ -6,8 +6,8 @@ namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
-use App\Domains\Catalog\Support\SourceId;
 use App\Domains\Catalog\Support\TvdbCrosswalk;
+use App\Domains\Common\Support\SourceId;
 use Illuminate\Support\Carbon;
 
 final readonly class UpsertTvdbShows

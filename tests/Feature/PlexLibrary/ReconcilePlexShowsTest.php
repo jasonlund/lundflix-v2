@@ -254,6 +254,49 @@ it('prunes only within the reconciled server, sparing other servers', function (
     $this->assertDatabaseHas('plex_shows', ['id' => $otherShow->id, 'plex_server_id' => $otherServer->id, '_plex_ratingKey' => '55555']);
 });
 
+it('prunes only within the reconciled library, sparing sibling libraries on the same server', function (): void {
+    // Arrange
+    $server = PlexServer::factory()->create();
+    $tvShows = PlexLibrary::factory()->create(['plex_server_id' => $server->id, '_plex_type' => 'show', '_plex_title' => 'TV Shows']);
+    $anime = PlexLibrary::factory()->create(['plex_server_id' => $server->id, '_plex_type' => 'show', '_plex_title' => 'Anime']);
+    (new ReconcilePlexShows)->handle($server, $tvShows, plexShowPayload());
+    $animePayload = [
+        plexShowMetadata([
+            'ratingKey' => '41001',
+            'guid' => 'plex://show/5d9c081e2192ba001f313d0e',
+            'title' => 'Cowboy Bebop',
+            'year' => 1998,
+            'Guid' => [
+                ['id' => 'imdb://tt0213338'],
+                ['id' => 'tmdb://30991'],
+                ['id' => 'tvdb://76885'],
+            ],
+        ]),
+        plexShowMetadata([
+            'ratingKey' => '41002',
+            'guid' => 'plex://show/5d9c08254eefaa001f1b6b32',
+            'title' => 'Death Note',
+            'year' => 2006,
+            'Guid' => [
+                ['id' => 'imdb://tt0877057'],
+                ['id' => 'tmdb://13916'],
+                ['id' => 'tvdb://79481'],
+            ],
+        ]),
+    ];
+
+    // Act
+    (new ReconcilePlexShows)->handle($server, $anime, $animePayload);
+
+    // Assert
+    $this->assertDatabaseHas('plex_shows', ['plex_library_id' => $tvShows->id, '_plex_ratingKey' => '34112']);
+    $this->assertDatabaseHas('plex_shows', ['plex_library_id' => $tvShows->id, '_plex_ratingKey' => '27520']);
+    $this->assertDatabaseHas('plex_shows', ['plex_library_id' => $tvShows->id, '_plex_ratingKey' => '32204']);
+    $this->assertDatabaseHas('plex_shows', ['plex_library_id' => $anime->id, '_plex_ratingKey' => '41001']);
+    $this->assertDatabaseHas('plex_shows', ['plex_library_id' => $anime->id, '_plex_ratingKey' => '41002']);
+    expect(PlexShow::query()->where('plex_library_id', $tvShows->id)->count())->toBe(3);
+});
+
 it('returns a newly inserted show carrying its ratingKey and persisted row id', function (): void {
     // Arrange
     $server = PlexServer::factory()->create();

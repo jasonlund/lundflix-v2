@@ -9,7 +9,7 @@ use App\Domains\Catalog\Actions\UpsertTvdbSeasons;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Services\TvdbApiService;
-use App\Domains\Catalog\Support\SourceId;
+use App\Domains\Common\Support\SourceId;
 use Generator;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;

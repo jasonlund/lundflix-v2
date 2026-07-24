@@ -6,7 +6,7 @@ namespace App\Domains\PlexLibrary\Actions;
 
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexServer;
-use Illuminate\Support\Facades\Date;
+use App\Domains\PlexLibrary\Support\PlexTimestamp;
 
 final class ReconcilePlexLibraries
 {
@@ -32,8 +32,7 @@ final class ReconcilePlexLibraries
                         '_plex_type' => $section['type'],
                         '_plex_title' => $section['title'],
                         '_plex_uuid' => $section['uuid'],
-                        // Plex sends updatedAt as a unix epoch; persist it as a datetime.
-                        '_plex_updatedAt' => Date::createFromTimestamp($section['updatedAt']),
+                        '_plex_updatedAt' => PlexTimestamp::fromEpoch($section['updatedAt']),
                         'synced_at' => now(),
                     ],
                 );

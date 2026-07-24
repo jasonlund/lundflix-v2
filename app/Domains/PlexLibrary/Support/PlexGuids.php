@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\PlexLibrary\Support;
 
-use App\Domains\Catalog\Support\SourceId;
+use App\Domains\Common\Support\SourceId;
 use Illuminate\Support\Str;
 
 final class PlexGuids

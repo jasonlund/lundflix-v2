@@ -8,8 +8,8 @@ use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Support\PlexGuids;
+use App\Domains\PlexLibrary\Support\PlexTimestamp;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Date;
 
 final class ReconcilePlexMovies
 {
@@ -21,12 +21,17 @@ final class ReconcilePlexMovies
         $now = now();
 
         $rows = array_map(
-            fn (array $item): array => $this->rawRow($server, $library, $item, $now),
+            fn (array $item): array => $this->rowFor($server, $library, $item, $now),
             $items,
         );
 
         if ($rows !== []) {
-            PlexMovie::upsert($rows, ['plex_server_id', '_plex_ratingKey'], array_keys($rows[0]));
+            $updateColumns = array_values(array_diff(
+                array_keys($rows[0]),
+                ['plex_server_id', '_plex_ratingKey'],
+            ));
+
+            PlexMovie::upsert($rows, ['plex_server_id', '_plex_ratingKey'], $updateColumns);
         }
 
         // Prune this library's rows that were absent from the payload. Reuse the
@@ -49,7 +54,7 @@ final class ReconcilePlexMovies
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>
      */
-    private function rawRow(PlexServer $server, PlexLibrary $library, array $item, Carbon $now): array
+    private function rowFor(PlexServer $server, PlexLibrary $library, array $item, Carbon $now): array
     {
         $ids = PlexGuids::extract($item);
 
@@ -63,15 +68,10 @@ final class ReconcilePlexMovies
             '_plex_guid' => $item['guid'],
             '_plex_title' => $item['title'],
             '_plex_year' => $item['year'] ?? null,
-            '_plex_addedAt' => $this->toDateTime($item['addedAt'] ?? null),
-            '_plex_updatedAt' => $this->toDateTime($item['updatedAt'] ?? null),
+            '_plex_addedAt' => PlexTimestamp::fromEpoch($item['addedAt'] ?? null)?->toDateTimeString(),
+            '_plex_updatedAt' => PlexTimestamp::fromEpoch($item['updatedAt'] ?? null)?->toDateTimeString(),
             '_plex_guids' => json_encode($item['Guid'] ?? []),
             'synced_at' => $now->toDateTimeString(),
         ];
-    }
-
-    private function toDateTime(?int $epoch): ?string
-    {
-        return $epoch === null ? null : Date::createFromTimestamp($epoch)->toDateTimeString();
     }
 }

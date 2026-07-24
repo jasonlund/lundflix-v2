@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Actions;
 
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Support\RawSourceColumns;
-use App\Domains\Catalog\Support\SourceId;
+use App\Domains\Common\Support\SourceId;
 use Illuminate\Support\Carbon;
 
 final class UpsertTmdbMovies
