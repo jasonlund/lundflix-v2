@@ -45,4 +45,17 @@ class PlexShow extends Model
     {
         return PlexShowFactory::new();
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    protected function casts(): array
+    {
+        return [
+            '_plex_addedAt' => 'immutable_datetime',
+            '_plex_updatedAt' => 'immutable_datetime',
+            '_plex_guids' => 'array',
+        ];
+    }
 }

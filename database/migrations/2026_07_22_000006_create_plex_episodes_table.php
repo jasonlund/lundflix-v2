@@ -19,7 +19,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('plex_server_id')->constrained()->cascadeOnDelete();
             $table->foreignId('plex_show_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('plex_season_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('plex_season_id')->nullable()->constrained()->cascadeOnDelete();
 
             $table->string($plex('ratingKey'));
             $table->string($plex('guid'));

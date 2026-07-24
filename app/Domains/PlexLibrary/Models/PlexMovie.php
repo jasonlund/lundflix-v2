@@ -39,6 +39,8 @@ class PlexMovie extends Model
             '_plex_addedAt' => 'immutable_datetime',
             '_plex_updatedAt' => 'immutable_datetime',
             '_plex_guids' => 'array',
+            '_tmdb_id' => 'integer',
+            '_tvdb_id' => 'integer',
         ];
     }
 }
