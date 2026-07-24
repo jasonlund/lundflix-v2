@@ -6,6 +6,9 @@
 *.md diff=markdown
 *.php diff=php
 
+# Version-controlled DB seed: gzipped blobs, regenerated wholesale — never diff, exclude from language stats
+/database/dumps/*.gz binary linguist-generated
+
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore

@@ -26,20 +26,36 @@ if [[ "${CONDUCTOR_IS_LOCAL:-1}" == "1" ]] && command -v herd >/dev/null 2>&1; t
   sed -i '' "s#^APP_URL=.*#APP_URL=https://$SITE.test#" .env
 fi
 
-# DB — TODO(FLIX-126): provision a PER-WORKSPACE db (create + migrate + seed).
-# For now all workspaces SHARE the root checkout's MySQL db (name + creds from the
-# copied root .env). Setup only ensures the db EXISTS — it deliberately does NOT
-# migrate: a workspace on a branch with new migrations would apply them to the
-# shared db and break every other workspace. Run `php artisan migrate` by hand
-# when you actually want to move the shared schema.
-DB_NAME="$(grep -E '^DB_DATABASE=' .env | head -1 | cut -d= -f2-)"
+# DB — one isolated database PER workspace (FLIX-194). A shared db would let any
+# branch's migrations rewrite every other workspace's schema, so each workspace
+# gets its own `lundflix_<workspace>` and provisions it end to end: create →
+# migrate → Laravel seed (test user + settings from env) → import the committed
+# version-controlled catalog dumps. (Underscore the site slug — hyphens are awkward
+# in an unquoted db name.)
+DB_NAME="lundflix_${SITE//-/_}"
 DB_HOST="$(grep -E '^DB_HOST=' .env | head -1 | cut -d= -f2-)"
 DB_PORT="$(grep -E '^DB_PORT=' .env | head -1 | cut -d= -f2-)"
 DB_USER="$(grep -E '^DB_USERNAME=' .env | head -1 | cut -d= -f2-)"
 DB_PASS="$(grep -E '^DB_PASSWORD=' .env | head -1 | cut -d= -f2-)"
+
+# Point the workspace .env at its own db (override the value copied from root).
+# Temp-file rewrite, not `sed -i` — portable across macOS (BSD) and cloud (GNU).
+_env_tmp="$(mktemp)"
+if grep -q '^DB_DATABASE=' .env; then
+  sed "s#^DB_DATABASE=.*#DB_DATABASE=$DB_NAME#" .env > "$_env_tmp"
+else
+  cat .env > "$_env_tmp"
+  printf 'DB_DATABASE=%s\n' "$DB_NAME" >> "$_env_tmp"
+fi
+mv "$_env_tmp" .env
+
 mysql -h"${DB_HOST:-127.0.0.1}" -P"${DB_PORT:-3306}" -u"${DB_USER:-root}" \
   ${DB_PASS:+-p"$DB_PASS"} \
   -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+php artisan migrate --force
+php artisan db:seed --force
+php artisan db:import
 
 php artisan optimize:clear
 echo "✅  $WORKSPACE ready → https://$SITE.test"

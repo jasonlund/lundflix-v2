@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Actions;
 
+use App\Domains\Catalog\Models\Season;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
 use App\Domains\Catalog\Support\SourceId;
@@ -38,9 +39,14 @@ final class UpsertTvdbSeasons
                 continue;
             }
 
-            $show->seasons()->updateOrCreate(
+            // Match on `_tvdb_id` alone (the table's global unique key), not the
+            // show relation: the same season can already sit under another show
+            // from a prior run, so scoping the match to this show would miss it
+            // and insert a duplicate that the unique index rejects. Re-parent it
+            // to the show whose payload now carries it.
+            Season::updateOrCreate(
                 ['_tvdb_id' => $tvdbId],
-                [...RawSourceColumns::map('tvdb', self::RAW_COLUMNS, $season), 'tvdb_synced_at' => now()],
+                [...RawSourceColumns::map('tvdb', self::RAW_COLUMNS, $season), 'show_id' => $show->id, 'tvdb_synced_at' => now()],
             );
 
             $processed++;
