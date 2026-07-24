@@ -269,6 +269,47 @@ it('leaves _tvdb_defaultSeasonType null when the payload omits it', function ():
     expect($show->_tvdb_defaultSeasonType)->toBeNull();
 });
 
+it('imports a new show whose TheMovieDB.com id already belongs to a different show, nulling only the newcomer', function (): void {
+    // Arrange
+    Show::factory()->create(['_tvdb_id' => 7001, '_imdb_id' => 'tt9990001', '_tmdb_id' => 9990001]);
+
+    // Act
+    $b = tvdbSeries(['id' => 7002, 'remoteIds' => [['id' => 'tt9990002', 'type' => 2, 'sourceName' => 'IMDB'], ['id' => '9990001', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]]);
+    resolve(UpsertTvdbShows::class)->handle([$b]);
+
+    // Assert
+    expect(Show::query()->where('_tvdb_id', 7002)->exists())->toBeTrue()
+        ->and(Show::query()->where('_tvdb_id', 7002)->value('_tmdb_id'))->toBeNull()
+        ->and(Show::query()->where('_tvdb_id', 7001)->value('_tmdb_id'))->toBe(9990001);
+});
+
+it('updates an existing show whose new TheMovieDB.com id collides with another show, nulling only the updated row', function (): void {
+    // Arrange
+    Show::factory()->create(['_tvdb_id' => 7001, '_imdb_id' => 'tt9990001', '_tmdb_id' => 9990001]);
+    Show::factory()->create(['_tvdb_id' => 7002, '_imdb_id' => 'tt9990002', '_tmdb_id' => 9990002]);
+
+    // Act
+    $bMoved = tvdbSeries(['id' => 7002, 'remoteIds' => [['id' => 'tt9990002', 'type' => 2, 'sourceName' => 'IMDB'], ['id' => '9990001', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]]);
+    resolve(UpsertTvdbShows::class)->handle([$bMoved]);
+
+    // Assert
+    expect(Show::query()->where('_tvdb_id', 7002)->exists())->toBeTrue()
+        ->and(Show::query()->where('_tvdb_id', 7002)->value('_tmdb_id'))->toBeNull()
+        ->and(Show::query()->where('_tvdb_id', 7001)->value('_tmdb_id'))->toBe(9990001);
+});
+
+it('keeps the TheMovieDB.com id on an idempotent re-seed of the same show, not over-nulling', function (): void {
+    // Arrange
+    Show::factory()->create(['_tvdb_id' => 7001, '_imdb_id' => 'tt9990001', '_tmdb_id' => 9990001]);
+    $a = tvdbSeries(['id' => 7001, 'remoteIds' => [['id' => 'tt9990001', 'type' => 2, 'sourceName' => 'IMDB'], ['id' => '9990001', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]]);
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([$a]);
+
+    // Assert
+    expect(Show::query()->where('_tvdb_id', 7001)->value('_tmdb_id'))->toBe(9990001);
+});
+
 it('returns 0 and persists nothing for empty input', function (): void {
     // Arrange
     $payloads = [];
