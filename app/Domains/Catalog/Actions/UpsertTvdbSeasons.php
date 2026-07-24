@@ -21,7 +21,8 @@ final class UpsertTvdbSeasons
     ];
 
     /**
-     * Persist a show's TVDB seasons, deduped on `_tvdb_id` and scoped to the show.
+     * Persist a show's TVDB seasons, deduped globally on `_tvdb_id` (re-parenting a
+     * season to this show if TVDB has reassigned it).
      *
      * @param  array<int, array<string, mixed>>  $seasons
      */

@@ -271,8 +271,7 @@ it('leaves _tvdb_defaultSeasonType null when the payload omits it', function ():
 
 it('imports a new show whose TheMovieDB.com id already belongs to a different show, nulling only the newcomer', function (): void {
     // Arrange
-    $a = tvdbSeries(['id' => 7001, 'remoteIds' => [['id' => 'tt9990001', 'type' => 2, 'sourceName' => 'IMDB'], ['id' => '9990001', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]]);
-    resolve(UpsertTvdbShows::class)->handle([$a]);
+    Show::factory()->create(['_tvdb_id' => 7001, '_imdb_id' => 'tt9990001', '_tmdb_id' => 9990001]);
 
     // Act
     $b = tvdbSeries(['id' => 7002, 'remoteIds' => [['id' => 'tt9990002', 'type' => 2, 'sourceName' => 'IMDB'], ['id' => '9990001', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]]);
@@ -286,9 +285,8 @@ it('imports a new show whose TheMovieDB.com id already belongs to a different sh
 
 it('updates an existing show whose new TheMovieDB.com id collides with another show, nulling only the updated row', function (): void {
     // Arrange
-    $a = tvdbSeries(['id' => 7001, 'remoteIds' => [['id' => 'tt9990001', 'type' => 2, 'sourceName' => 'IMDB'], ['id' => '9990001', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]]);
-    $b = tvdbSeries(['id' => 7002, 'remoteIds' => [['id' => 'tt9990002', 'type' => 2, 'sourceName' => 'IMDB'], ['id' => '9990002', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]]);
-    resolve(UpsertTvdbShows::class)->handle([$a, $b]);
+    Show::factory()->create(['_tvdb_id' => 7001, '_imdb_id' => 'tt9990001', '_tmdb_id' => 9990001]);
+    Show::factory()->create(['_tvdb_id' => 7002, '_imdb_id' => 'tt9990002', '_tmdb_id' => 9990002]);
 
     // Act
     $bMoved = tvdbSeries(['id' => 7002, 'remoteIds' => [['id' => 'tt9990002', 'type' => 2, 'sourceName' => 'IMDB'], ['id' => '9990001', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]]);
@@ -302,8 +300,8 @@ it('updates an existing show whose new TheMovieDB.com id collides with another s
 
 it('keeps the TheMovieDB.com id on an idempotent re-seed of the same show, not over-nulling', function (): void {
     // Arrange
+    Show::factory()->create(['_tvdb_id' => 7001, '_imdb_id' => 'tt9990001', '_tmdb_id' => 9990001]);
     $a = tvdbSeries(['id' => 7001, 'remoteIds' => [['id' => 'tt9990001', 'type' => 2, 'sourceName' => 'IMDB'], ['id' => '9990001', 'type' => 12, 'sourceName' => 'TheMovieDB.com']]]);
-    resolve(UpsertTvdbShows::class)->handle([$a]);
 
     // Act
     resolve(UpsertTvdbShows::class)->handle([$a]);

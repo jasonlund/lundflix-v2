@@ -31,7 +31,7 @@ class DumpDatabase extends Command
     private const array TABLES = ['movies', 'shows', 'seasons', 'media', 'downloads'];
 
     /**
-     * mysqldump connection args (`-h -P -u -p <db>`), resolved once from the mysql
+     * mysqldump connection args (`-h -P -u <db>`), resolved once from the mysql
      * connection config and reused across every table and measurement.
      */
     private ?string $connectionArgs = null;
@@ -135,7 +135,25 @@ class DumpDatabase extends Command
 
     private function dumpTable(string $table, ?string $where, string $dest): void
     {
-        $this->runProcess("{$this->mysqldumpCommand($table, $where)} | gzip -c > {$dest}");
+        // Write to a temp sibling first, then atomically rename onto $dest only after
+        // the pipeline succeeds — so a failed mysqldump never clobbers the committed
+        // dump with a corrupt/empty file.
+        $temp = $dest.'.tmp';
+
+        $result = $this->runProcess($this->pipefail(
+            "{$this->mysqldumpCommand($table, $where)} | gzip -c > ".escapeshellarg($temp),
+        ));
+
+        if (! $result->successful()) {
+            File::delete($temp);
+            $this->fail("mysqldump failed for [{$table}]: ".Str::trim($result->errorOutput()));
+        }
+
+        // On the fake Process facade (tests) no temp file is produced; guard the move
+        // so the success assertion still holds without a real dump on disk.
+        if (File::exists($temp)) {
+            File::move($temp, $dest);
+        }
     }
 
     /**
@@ -143,9 +161,27 @@ class DumpDatabase extends Command
      */
     private function measure(string $table, ?string $where): int
     {
-        $bytes = Str::trim($this->runProcess("{$this->mysqldumpCommand($table, $where)} | gzip -c | wc -c")->output());
+        $result = $this->runProcess($this->pipefail(
+            "{$this->mysqldumpCommand($table, $where)} | gzip -c | wc -c",
+        ));
+
+        if (! $result->successful()) {
+            $this->fail("mysqldump failed while measuring [{$table}]: ".Str::trim($result->errorOutput()));
+        }
+
+        $bytes = Str::trim($result->output());
 
         return $bytes === '' ? 0 : (int) $bytes;
+    }
+
+    /**
+     * Wrap a shell pipeline in `bash -o pipefail -c` so an upstream mysqldump failure
+     * fails the whole pipeline. Without pipefail the exit status is the last stage's
+     * (gzip/wc) alone, masking a broken dump behind a healthy compressor.
+     */
+    private function pipefail(string $pipeline): string
+    {
+        return 'bash -o pipefail -c '.escapeshellarg($pipeline);
     }
 
     /**
@@ -154,7 +190,7 @@ class DumpDatabase extends Command
      */
     private function runProcess(string $command): ProcessResult
     {
-        return Process::forever()->run($command);
+        return Process::forever()->env(MysqlConnection::passwordEnv())->run($command);
     }
 
     private function mysqldumpCommand(string $table, ?string $where): string

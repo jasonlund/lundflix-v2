@@ -55,7 +55,7 @@ mysql -h"${DB_HOST:-127.0.0.1}" -P"${DB_PORT:-3306}" -u"${DB_USER:-root}" \
 
 php artisan migrate --force
 php artisan db:seed --force
-php artisan db:import
+php artisan db:import --force
 
 php artisan optimize:clear
 echo "✅  $WORKSPACE ready → https://$SITE.test"

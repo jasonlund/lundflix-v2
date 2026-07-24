@@ -8,6 +8,7 @@ use App\Domains\Catalog\Models\Season;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Download\Models\Download;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
@@ -133,6 +134,33 @@ it('writes only the VC set when --vc is passed', function (): void {
     $fullDir = config('database.dump_path');
     Process::assertRan(fn ($process): bool => Str::contains((string) $process->command, 'database/dumps/'));
     Process::assertNotRan(fn ($process): bool => Str::contains((string) $process->command, "{$fullDir}/"));
+});
+
+it('fails and writes no dump file when mysqldump errors', function (): void {
+    // Arrange
+    Movie::factory()->count(3)->create();
+    Process::fake(['*' => Process::result(exitCode: 1)]);
+
+    // Act
+    $result = $this->artisan('db:dump', ['--full' => true, '--path' => '/tmp/lundflix-dump-fail']);
+
+    // Assert
+    $result->assertFailed();
+    expect(File::exists('/tmp/lundflix-dump-fail/movies.sql.gz'))->toBeFalse();
+});
+
+it('guards the dump against pipe-masking and shell-unsafe destination paths', function (): void {
+    // Arrange
+    Movie::factory()->count(3)->create();
+    Process::fake();
+
+    // Act
+    $this->artisan('db:dump', ['--vc' => true])->assertSuccessful();
+
+    // Assert
+    Process::assertRan(fn ($process): bool => Str::contains((string) $process->command, 'bash -o pipefail -c')
+        && Str::contains((string) $process->command, 'database/dumps/movies.sql.gz')
+        && Str::contains((string) $process->command, "gzip -c > '"));
 });
 
 it('writes only the full set to the override dir when --full --path is passed', function (): void {
