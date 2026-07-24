@@ -412,6 +412,38 @@ cross-reference — don't duplicate.
   it as a convention. Bars *version-controlled* planning files only — gitignored
   scratch space (e.g. `.context`) is fine; it never enters the repo.
 
+### Automatic ticket status transitions
+
+The flow skills advance a ticket's status **automatically** as work crosses each
+lifecycle boundary — no manual status changes. The map (each fires once, at the
+boundary named):
+
+| Boundary | Fired by | Target status |
+| --- | --- | --- |
+| Planning done (TDD backlog appended) | `plan-slices` | **Todo** |
+| Execution begins (first slice for the ticket) | `tdd` | **In Progress** |
+| PR opened | `review:create-pr` | **In Review** |
+| PR merged | Linear's native GitHub integration | **Done** |
+
+The lifecycle order is `Backlog < Todo < In Progress < In Review < Done`. Each
+transition follows one shared contract — reference this section from the skills
+rather than restating it:
+
+- **Primitive.** `mcp__linear-server__save_issue(id: <FLIX-XXX>, state: "<name>")`
+  — pass the status **name**, never an id. MCP only; no bash/token path.
+- **Resolve the ticket from the branch** (`flix-XXX-…` → `FLIX-XXX`, the
+  review-pipeline Ticket ID Auto-Extraction). **No ticket resolves → skip
+  silently** (the "when applicable").
+- **Forward-only.** Apply the target **only if** the ticket's current status is
+  *strictly earlier* in the lifecycle. Never move backward; a re-run at or past
+  the target is a silent no-op.
+- **Never touch `Canceled` / `Duplicate`** tickets.
+- **Active ticket only.** Each ticket transitions when *its own* work runs;
+  sibling sub-tickets and a decomposed parent are left untouched. (Exception:
+  at PR-open, every ticket the PR covers moves to In Review together.)
+- **Report, don't ask.** State the transition in one line; the change is
+  automatic — never prompt for permission.
+
 === foundation rules ===
 
 # Laravel Boost Guidelines
