@@ -173,6 +173,27 @@ boilerplate that duplicates what the schema gives for free.
   past the native type hint, and framework stubs (a `@var string` that only
   restates a typed property).
 
+## Console commands: simple line-by-line heartbeat output
+
+**Every artisan command emits simple, line-by-line progress output — never silent,
+never fancy.** A command that runs a pipeline must let the operator see it working:
+one plain `writeln` line per phase, plus an indented bracketed heartbeat as work
+flows. The bar is a command someone runs at a prompt and gets a bare prompt back,
+unsure anything happened (the `plex:seed` regression) — that is a defect.
+
+- **Write through `$this->output->writeln(...)`** — the established convention
+  across `Catalog`/`Download` commands (`SyncTmdbMovies`, `SyncDownloadIndex`,
+  `PlexLibraryCommand`). Not `$this->info()`, not `$this->components`, not a logger.
+- **Two line shapes, that's it:**
+  - a plain phase line — `writeln('Syncing movies…')`, `writeln('Done.')`;
+  - an indented bracketed heartbeat — `writeln("  [movies {$count}]")`,
+    `writeln("  [episodes {$ratingKey}]")` (two-space indent, `[tag value]`).
+- **Simple, not fancy.** No progress bars, spinners, tables, colors, or ASCII art.
+  Line by line. A heartbeat per phase boundary and per item in a long fan-out —
+  enough to prove liveness, not a dashboard.
+- Put the output in the shared base when a family of commands share an engine
+  (e.g. `PlexLibraryCommand`), so every subcommand inherits it.
+
 ## Persistence: third-party API columns (raw-source prefix)
 
 A DB column populated directly by a third-party API's attribute is **prefixed

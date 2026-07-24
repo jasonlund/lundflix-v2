@@ -1,0 +1,298 @@
+{
+    "MediaContainer": {
+        "size": 3,
+        "totalSize": 35,
+        "offset": 0,
+        "allowSync": true,
+        "art": "\/:\/resources\/show-fanart.jpg",
+        "identifier": "com.plexapp.plugins.library",
+        "librarySectionID": 2,
+        "librarySectionTitle": "TV Shows",
+        "librarySectionUUID": "0be8114b-46ad-4ca1-872d-bb587e638350",
+        "mediaTagPrefix": "\/system\/bundle\/media\/flags\/",
+        "mediaTagVersion": 1777730215,
+        "nocache": true,
+        "thumb": "\/:\/resources\/show.png",
+        "title1": "TV Shows",
+        "title2": "All Shows",
+        "viewGroup": "show",
+        "viewMode": 65592,
+        "Metadata": [
+            {
+                "ratingKey": "34112",
+                "key": "\/library\/metadata\/34112\/children",
+                "guid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "slug": "24",
+                "studio": "Imagine Television Studios",
+                "type": "show",
+                "title": "24",
+                "contentRating": "TV-14",
+                "contentRatingAge": 15,
+                "summary": "In this concept drama, each season takes place within one 24 hour period. Day 1: Jack Bauer is the head of field ops for an elite team of CTU agents who uncover an assassination plot targeting Presidential nominee David Palmer. Meanwhile, Jack's strained marriage to his wife, Teri, is pushed to the brink by the sudden disappearance of their troubled teenage daughter. What will the next 24 hours hold?",
+                "index": 1,
+                "audienceRating": 7.8,
+                "year": 2001,
+                "tagline": "To the world, he's dead. But soon, he'll become the most wanted man alive (Season 5)",
+                "thumb": "\/library\/metadata\/34112\/thumb\/1782985591",
+                "art": "\/library\/metadata\/34112\/art\/1782985591",
+                "theme": "\/library\/metadata\/34112\/theme\/1782985591",
+                "duration": 2700000,
+                "originallyAvailableAt": "2001-11-06",
+                "leafCount": 24,
+                "viewedLeafCount": 0,
+                "childCount": 1,
+                "addedAt": 1775193014,
+                "updatedAt": 1782985591,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "primaryExtraKey": "\/library\/metadata\/34140",
+                "Image": [
+                    {
+                        "alt": "24",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34112\/thumb\/1782985591"
+                    },
+                    {
+                        "alt": "24",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1782985591"
+                    },
+                    {
+                        "alt": "24",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1782985591"
+                    },
+                    {
+                        "alt": "24",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1782985591"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "2c2e2d",
+                    "topRight": "282826",
+                    "bottomRight": "57605a",
+                    "bottomLeft": "1b1d1b"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt0285331"
+                    },
+                    {
+                        "id": "tmdb:\/\/1973"
+                    },
+                    {
+                        "id": "tvdb:\/\/76290"
+                    }
+                ],
+                "Genre": [
+                    {
+                        "tag": "Drama"
+                    },
+                    {
+                        "tag": "Crime"
+                    }
+                ],
+                "Country": [
+                    {
+                        "tag": "United States of America"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Kiefer Sutherland"
+                    },
+                    {
+                        "tag": "Mary Lynn Rajskub"
+                    },
+                    {
+                        "tag": "Carlos Bernard"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "27520",
+                "key": "\/library\/metadata\/27520\/children",
+                "guid": "plex:\/\/show\/65f48a3d97ad9a728e5208f5",
+                "slug": "adolescence",
+                "studio": "Warp Films",
+                "type": "show",
+                "title": "Adolescence",
+                "contentRating": "TV-MA",
+                "contentRatingAge": 15,
+                "summary": "A thirteen-year-old boy, Jamie Miller, is arrested for the brutal murder of a schoolgirl. To his family this all seems like a huge mistake - surely Jamie would not do something like that? To the police the evidence is clear but what motive could he possibly have?",
+                "index": 1,
+                "audienceRating": 7.8,
+                "viewCount": 11,
+                "lastViewedAt": 1756602238,
+                "year": 2025,
+                "tagline": "A child accused. Everyone left to answer.",
+                "thumb": "\/library\/metadata\/27520\/thumb\/1784194023",
+                "art": "\/library\/metadata\/27520\/art\/1784194023",
+                "duration": 3600000,
+                "originallyAvailableAt": "2025-03-13",
+                "leafCount": 4,
+                "viewedLeafCount": 4,
+                "childCount": 1,
+                "addedAt": 1742774000,
+                "updatedAt": 1784194023,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "primaryExtraKey": "\/library\/metadata\/27526",
+                "Image": [
+                    {
+                        "alt": "Adolescence",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/27520\/thumb\/1784194023"
+                    },
+                    {
+                        "alt": "Adolescence",
+                        "type": "background",
+                        "url": "\/library\/metadata\/27520\/art\/1784194023"
+                    },
+                    {
+                        "alt": "Adolescence",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/27520\/clearLogo\/1784194023"
+                    },
+                    {
+                        "alt": "Adolescence",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/27520\/squareArt\/1784194023"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "123433",
+                    "topRight": "0b2f2f",
+                    "bottomRight": "2b686c",
+                    "bottomLeft": "6c3226"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt31806037"
+                    },
+                    {
+                        "id": "tmdb:\/\/249042"
+                    },
+                    {
+                        "id": "tvdb:\/\/452467"
+                    }
+                ],
+                "Genre": [
+                    {
+                        "tag": "Crime"
+                    },
+                    {
+                        "tag": "Drama"
+                    }
+                ],
+                "Country": [
+                    {
+                        "tag": "United Kingdom"
+                    },
+                    {
+                        "tag": "United States of America"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Stephen Graham"
+                    },
+                    {
+                        "tag": "Owen Cooper"
+                    },
+                    {
+                        "tag": "Bidi Iredale"
+                    }
+                ]
+            },
+            {
+                "ratingKey": "32204",
+                "key": "\/library\/metadata\/32204\/children",
+                "guid": "plex:\/\/show\/5d9f410f4441b1001fa1ab87",
+                "slug": "american-vandal",
+                "studio": "3 Arts Entertainment",
+                "type": "show",
+                "title": "American Vandal",
+                "contentRating": "TV-MA",
+                "contentRatingAge": 15,
+                "summary": "A true-crime satire that explores the aftermath of a costly high school prank that left twenty-seven faculty cars vandalized with phallic images.",
+                "index": 1,
+                "audienceRating": 7.4,
+                "year": 2017,
+                "thumb": "\/library\/metadata\/32204\/thumb\/1782552566",
+                "art": "\/library\/metadata\/32204\/art\/1782552566",
+                "theme": "\/library\/metadata\/32204\/theme\/1782552566",
+                "duration": 1800000,
+                "originallyAvailableAt": "2017-09-05",
+                "leafCount": 16,
+                "viewedLeafCount": 0,
+                "childCount": 2,
+                "addedAt": 1766625117,
+                "updatedAt": 1782552566,
+                "audienceRatingImage": "themoviedb:\/\/image.rating",
+                "Image": [
+                    {
+                        "alt": "American Vandal",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/32204\/thumb\/1782552566"
+                    },
+                    {
+                        "alt": "American Vandal",
+                        "type": "background",
+                        "url": "\/library\/metadata\/32204\/art\/1782552566"
+                    },
+                    {
+                        "alt": "American Vandal",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/32204\/clearLogo\/1782552566"
+                    },
+                    {
+                        "alt": "American Vandal",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/32204\/squareArt\/1782552566"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "551019",
+                    "topRight": "a42c28",
+                    "bottomRight": "3e3d3e",
+                    "bottomLeft": "531118"
+                },
+                "Guid": [
+                    {
+                        "id": "imdb:\/\/tt6877772"
+                    },
+                    {
+                        "id": "tmdb:\/\/73126"
+                    },
+                    {
+                        "id": "tvdb:\/\/332828"
+                    }
+                ],
+                "Genre": [
+                    {
+                        "tag": "Comedy"
+                    },
+                    {
+                        "tag": "Crime"
+                    }
+                ],
+                "Country": [
+                    {
+                        "tag": "United States of America"
+                    }
+                ],
+                "Role": [
+                    {
+                        "tag": "Tyler Alvarez"
+                    },
+                    {
+                        "tag": "Griffin Gluck"
+                    },
+                    {
+                        "tag": "Jimmy Tatro"
+                    }
+                ]
+            }
+        ]
+    }
+}

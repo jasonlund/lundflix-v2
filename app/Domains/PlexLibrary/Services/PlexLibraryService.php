@@ -21,7 +21,7 @@ final readonly class PlexLibraryService
     public function __construct(private PlexApiService $plexApi) {}
 
     /**
-     * @return array{uri: string, accessToken: string}
+     * @return array{clientIdentifier: string, name: string, uri: string, accessToken: string}
      */
     public function serverConnection(): array
     {
@@ -34,7 +34,12 @@ final readonly class PlexLibraryService
             throw ConfiguredPlexServerUnavailable::forIdentifier($id);
         }
 
-        return ['uri' => $server['uri'], 'accessToken' => $server['accessToken']];
+        return [
+            'clientIdentifier' => $server['clientIdentifier'],
+            'name' => $server['name'],
+            'uri' => $server['uri'],
+            'accessToken' => $server['accessToken'],
+        ];
     }
 
     /**

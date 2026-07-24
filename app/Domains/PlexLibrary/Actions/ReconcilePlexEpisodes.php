@@ -16,8 +16,9 @@ final class ReconcilePlexEpisodes
     /**
      * @param  array<int, array<string, mixed>>  $children
      * @param  array<int, array<string, mixed>>  $allLeaves
+     * @return int the number of episodes reconciled
      */
-    public function handle(PlexShow $show, array $children, array $allLeaves = []): void
+    public function handle(PlexShow $show, array $children, array $allLeaves = []): int
     {
         $now = now();
         $seasonRatingKeys = [];
@@ -74,6 +75,8 @@ final class ReconcilePlexEpisodes
             ->where('plex_show_id', $show->id)
             ->whereNotIn('_plex_ratingKey', $episodeRatingKeys)
             ->delete();
+
+        return count($episodeRatingKeys);
     }
 
     /**

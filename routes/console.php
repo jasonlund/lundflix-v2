@@ -11,3 +11,5 @@ Artisan::command('inspire', function (): void {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('catalog:sync')->twiceDaily(0, 12)->timezone('America/Los_Angeles')->withoutOverlapping();
+
+Schedule::command('plex:sync')->everyFiveMinutes()->withoutOverlapping();
