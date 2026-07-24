@@ -34,7 +34,7 @@ final class MysqlConnection
      */
     public static function passwordEnv(): array
     {
-        $password = (string) (config('database.connections.mysql.password') ?? '');
+        $password = (string) (config('database.connections.mysql.password', ''));
 
         return $password === '' ? [] : ['MYSQL_PWD' => $password];
     }

@@ -63,7 +63,9 @@ it('skips absent dump files and leaves their tables untouched', function (): voi
 
     // Assert
     expect(DB::table('movies')->count())->toBe(0);
-    $untouched->each(fn (int $count, string $table) => expect(DB::table($table)->count())->toBe($count));
+    foreach ($untouched as $table => $count) {
+        expect(DB::table($table)->count())->toBe($count);
+    }
     Process::assertRan(fn ($process): bool => Str::contains((string) $process->command, 'movies.sql.gz')
         && Str::contains((string) $process->command, 'mysql'));
     $untouched->keys()->each(fn (string $absent) => Process::assertNotRan(
