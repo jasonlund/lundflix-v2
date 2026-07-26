@@ -8,12 +8,15 @@ use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexSeason;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Date;
 
 /**
- * Show Metadata items constructed inline from the real Plex capture
- * (.context/plex-captures/section_show_all_includeGuids.json) so the mapped
- * facts and Guid[] crosswalks match what the API actually emits.
+ * A verbatim transcription of the ratingKey 34112 Metadata item in the committed
+ * fixture tests/Fixtures/PlexLibrary/plex/section_show_all_includeGuids.json — diff
+ * the two to confirm the mapped facts and Guid[] crosswalks are what Plex emits.
+ * Transcribed rather than decoded only so a test can override a single field;
+ * new tests should load the fixture directly, as ReconcilePlexMoviesTest does.
  *
  * @param  array<string, mixed>  $overrides
  * @return array<string, mixed>
@@ -297,6 +300,43 @@ it('prunes only within the reconciled library, sparing sibling libraries on the 
     expect(PlexShow::query()->where('plex_library_id', $tvShows->id)->count())->toBe(3);
 });
 
+it('clears the reconciled library when the payload is empty', function (): void {
+    // Arrange
+    $server = PlexServer::factory()->create();
+    $tvShows = PlexLibrary::factory()->create(['plex_server_id' => $server->id, '_plex_type' => 'show', '_plex_title' => 'TV Shows']);
+    $anime = PlexLibrary::factory()->create(['plex_server_id' => $server->id, '_plex_type' => 'show', '_plex_title' => 'Anime']);
+    (new ReconcilePlexShows)->handle($server, $tvShows, plexShowPayload());
+    $animeShow = PlexShow::factory()->create(['plex_server_id' => $server->id, 'plex_library_id' => $anime->id, '_plex_ratingKey' => '41001']);
+
+    // Act
+    (new ReconcilePlexShows)->handle($server, $tvShows, []);
+
+    // Assert
+    $this->assertDatabaseMissing('plex_shows', ['plex_library_id' => $tvShows->id, '_plex_ratingKey' => '34112']);
+    $this->assertDatabaseMissing('plex_shows', ['plex_library_id' => $tvShows->id, '_plex_ratingKey' => '27520']);
+    $this->assertDatabaseMissing('plex_shows', ['plex_library_id' => $tvShows->id, '_plex_ratingKey' => '32204']);
+    expect(PlexShow::query()->where('plex_library_id', $tvShows->id)->count())->toBe(0);
+    $this->assertDatabaseHas('plex_shows', ['id' => $animeShow->id, 'plex_library_id' => $anime->id, '_plex_ratingKey' => '41001']);
+});
+
+it('cascades to seasons and episodes when an empty payload clears the library', function (): void {
+    // Arrange
+    $server = PlexServer::factory()->create();
+    $library = PlexLibrary::factory()->create(['plex_server_id' => $server->id]);
+    (new ReconcilePlexShows)->handle($server, $library, plexShowPayload());
+    $cleared = PlexShow::query()->where('plex_server_id', $server->id)->where('_plex_ratingKey', '34112')->firstOrFail();
+    $season = PlexSeason::factory()->create(['plex_server_id' => $server->id, 'plex_show_id' => $cleared->id]);
+    PlexEpisode::factory()->create(['plex_server_id' => $server->id, 'plex_show_id' => $cleared->id, 'plex_season_id' => $season->id]);
+
+    // Act
+    (new ReconcilePlexShows)->handle($server, $library, []);
+
+    // Assert
+    $this->assertDatabaseMissing('plex_shows', ['id' => $cleared->id]);
+    $this->assertDatabaseMissing('plex_seasons', ['plex_show_id' => $cleared->id]);
+    $this->assertDatabaseMissing('plex_episodes', ['plex_show_id' => $cleared->id]);
+});
+
 it('returns a newly inserted show carrying its ratingKey and persisted row id', function (): void {
     // Arrange
     $server = PlexServer::factory()->create();
@@ -370,4 +410,58 @@ it('reports an updatedAt-moved show though the row now stores the new value', fu
     expect(collect($changed)->firstWhere('_plex_ratingKey', '34112'))->not->toBeNull();
     $row = PlexShow::query()->where('_plex_ratingKey', '34112')->firstOrFail();
     expect($row->_plex_updatedAt->toDateTimeString())->toBe(Date::createFromTimestamp($newEpoch)->toDateTimeString());
+});
+
+/*
+|--------------------------------------------------------------------------
+| The malformed cases below unset a key from the real-capture-shaped item:
+| Plex always emits guid/title on a show element, so a missing one can only be
+| produced by hand. Both columns are NOT NULL, so the reconciler must fail while
+| mapping the item — a QueryException would mean it coalesced the missing key to
+| null and deferred the failure to the DB. The stakes are higher here than for
+| seasons/episodes: shows go through one bulk PlexShow::upsert() that
+| PlexLibraryCommand does not guard, so a single bad row aborts the whole
+| plex:seed / plex:sync run rather than writing a null show.
+|--------------------------------------------------------------------------
+*/
+describe('malformed payload', function (): void {
+    it('fails a show item missing the required guid without writing a null', function (): void {
+        // Arrange
+        $server = PlexServer::factory()->create();
+        $library = PlexLibrary::factory()->create(['plex_server_id' => $server->id]);
+        $show = plexShowMetadata();
+        unset($show['guid']);
+
+        // Act
+        $thrown = rescue(
+            fn (): array => (new ReconcilePlexShows)->handle($server, $library, [$show]),
+            fn (Throwable $e): Throwable => $e,
+            report: false,
+        );
+
+        // Assert
+        expect($thrown)->toBeInstanceOf(Throwable::class)
+            ->and($thrown)->not->toBeInstanceOf(QueryException::class);
+        $this->assertDatabaseCount('plex_shows', 0);
+    });
+
+    it('fails a show item missing the required title without writing a null', function (): void {
+        // Arrange
+        $server = PlexServer::factory()->create();
+        $library = PlexLibrary::factory()->create(['plex_server_id' => $server->id]);
+        $show = plexShowMetadata();
+        unset($show['title']);
+
+        // Act
+        $thrown = rescue(
+            fn (): array => (new ReconcilePlexShows)->handle($server, $library, [$show]),
+            fn (Throwable $e): Throwable => $e,
+            report: false,
+        );
+
+        // Assert
+        expect($thrown)->toBeInstanceOf(Throwable::class)
+            ->and($thrown)->not->toBeInstanceOf(QueryException::class);
+        $this->assertDatabaseCount('plex_shows', 0);
+    });
 });

@@ -93,9 +93,9 @@ final class ReconcilePlexEpisodes
 
         return [
             'plex_show_id' => $show->id,
-            '_plex_guid' => $season['guid'] ?? null,
-            '_plex_index' => $season['index'] ?? null,
-            '_plex_title' => $season['title'] ?? null,
+            '_plex_guid' => $season['guid'],
+            '_plex_index' => $season['index'],
+            '_plex_title' => $season['title'],
             '_plex_leafCount' => $season['leafCount'] ?? null,
             '_plex_addedAt' => PlexTimestamp::fromEpoch($season['addedAt'] ?? null),
             '_plex_updatedAt' => PlexTimestamp::fromEpoch($season['updatedAt'] ?? null),
@@ -119,10 +119,10 @@ final class ReconcilePlexEpisodes
         return [
             'plex_show_id' => $show->id,
             'plex_season_id' => $seasonId,
-            '_plex_guid' => $episode['guid'] ?? null,
-            '_plex_parentIndex' => $episode['parentIndex'] ?? null,
-            '_plex_index' => $episode['index'] ?? null,
-            '_plex_title' => $episode['title'] ?? null,
+            '_plex_guid' => $episode['guid'],
+            '_plex_parentIndex' => $episode['parentIndex'],
+            '_plex_index' => $episode['index'],
+            '_plex_title' => $episode['title'],
             '_plex_addedAt' => PlexTimestamp::fromEpoch($episode['addedAt'] ?? null),
             '_plex_updatedAt' => PlexTimestamp::fromEpoch($episode['updatedAt'] ?? null),
             '_plex_guids' => $episode['Guid'] ?? null,

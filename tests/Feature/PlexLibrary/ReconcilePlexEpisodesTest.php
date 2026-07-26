@@ -6,6 +6,7 @@ use App\Domains\PlexLibrary\Actions\ReconcilePlexEpisodes;
 use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexSeason;
 use App\Domains\PlexLibrary\Models\PlexShow;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Date;
 
@@ -38,6 +39,12 @@ uses(RefreshDatabase::class);
 | season, and an orphan case where a real episode's parentRatingKey is
 | overridden to 88888 (a key absent from the season set) to prove an
 | unmatched episode still persists with a null plex_season_id.
+|
+| The "malformed payload" section unsets a key from a synthetic line: Plex
+| always emits guid/index/parentIndex/title on these elements, so a missing
+| one can only be produced by hand. The columns behind them are NOT NULL, so
+| the reconciler must fail while mapping the item — a QueryException would mean
+| it coalesced the missing key to null and deferred the failure to the DB.
 |--------------------------------------------------------------------------
 */
 
@@ -274,6 +281,46 @@ describe('episode → season link', function (): void {
         // Assert
         $episode = PlexEpisode::query()->where('_plex_ratingKey', '34425')->sole();
         expect($episode->plex_season_id)->toBeNull();
+    });
+});
+
+describe('malformed payload', function (): void {
+    it('fails a season item missing the required title without writing a null', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $season = seasonMetadata();
+        unset($season['title']);
+
+        // Act
+        $thrown = rescue(
+            fn (): int => resolve(ReconcilePlexEpisodes::class)->handle($show, [$season], []),
+            fn (Throwable $e): Throwable => $e,
+            report: false,
+        );
+
+        // Assert
+        expect($thrown)->toBeInstanceOf(Throwable::class)
+            ->and($thrown)->not->toBeInstanceOf(QueryException::class);
+        $this->assertDatabaseCount('plex_seasons', 0);
+    });
+
+    it('fails an episode item missing the required guid without writing a null', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $episode = episodeMetadata();
+        unset($episode['guid']);
+
+        // Act
+        $thrown = rescue(
+            fn (): int => resolve(ReconcilePlexEpisodes::class)->handle($show, fixtureSeasonMetadata(), [$episode]),
+            fn (Throwable $e): Throwable => $e,
+            report: false,
+        );
+
+        // Assert
+        expect($thrown)->toBeInstanceOf(Throwable::class)
+            ->and($thrown)->not->toBeInstanceOf(QueryException::class);
+        $this->assertDatabaseCount('plex_episodes', 0);
     });
 });
 

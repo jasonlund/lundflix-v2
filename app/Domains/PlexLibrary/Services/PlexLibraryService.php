@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\PlexLibrary\Services;
 
+use App\Domains\Common\Exceptions\PlexAuthenticationFailed;
 use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\Common\Services\PlexApiService;
 use App\Domains\PlexLibrary\Exceptions\ConfiguredPlexServerUnavailable;
@@ -57,25 +58,7 @@ final readonly class PlexLibraryService
      */
     public function fetchSectionItems(string $uri, string $token, string $sectionKey): array
     {
-        $members = [];
-        $start = 0;
-
-        do {
-            $body = $this->get($uri, $token, "/library/sections/{$sectionKey}/all", ['includeGuids' => 1], [
-                'X-Plex-Container-Start' => (string) $start,
-                'X-Plex-Container-Size' => (string) self::PAGE_SIZE,
-            ])->json();
-
-            $page = data_get($body, 'MediaContainer.Metadata', []);
-            $totalSize = (int) data_get($body, 'MediaContainer.totalSize', 0);
-            $members = array_merge($members, $page);
-
-            // Advance by the count actually returned, not the page size — a page
-            // can come back short, and the empty-page guard below then stops us.
-            $start += count($page);
-        } while ($start < $totalSize && $page !== []);
-
-        return $members;
+        return $this->fetchPagedMetadata($uri, $token, "/library/sections/{$sectionKey}/all");
     }
 
     /**
@@ -99,14 +82,51 @@ final readonly class PlexLibraryService
      */
     private function fetchMetadataRelation(string $uri, string $token, string $ratingKey, string $relation): array
     {
-        $body = $this->get($uri, $token, "/library/metadata/{$ratingKey}/{$relation}", ['includeGuids' => 1])->json();
-
-        return data_get($body, 'MediaContainer.Metadata', []);
+        return $this->fetchPagedMetadata($uri, $token, "/library/metadata/{$ratingKey}/{$relation}");
     }
 
     /**
-     * Send a GET, mapping a raw transport-level failure that survives the global
-     * retry middleware to the domain-typed {@see PlexRequestFailed}.
+     * Walk a MediaContainer endpoint in X-Plex-Container-Start/Size pages,
+     * concatenating every page's Metadata. Shared by the section walk and the
+     * per-show children/leaves walks: a show with more episodes than one
+     * container would otherwise come back truncated, and the reconcilers read a
+     * truncated list as "everything else is gone" and hard-delete the remainder.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function fetchPagedMetadata(string $uri, string $token, string $path): array
+    {
+        $members = [];
+        $start = 0;
+
+        do {
+            $body = $this->get($uri, $token, $path, ['includeGuids' => 1], [
+                'X-Plex-Container-Start' => (string) $start,
+                'X-Plex-Container-Size' => (string) self::PAGE_SIZE,
+            ])->json();
+
+            $page = data_get($body, 'MediaContainer.Metadata', []);
+            $totalSize = (int) data_get($body, 'MediaContainer.totalSize', 0);
+            $members = array_merge($members, $page);
+
+            // Advance by the count actually returned, not the page size — a page
+            // can come back short, and the empty-page guard below then stops us.
+            $start += count($page);
+        } while ($start < $totalSize && $page !== []);
+
+        return $members;
+    }
+
+    /**
+     * Send a GET, mapping every failure — a raw transport-level one that survives
+     * the global retry middleware, and an unsuccessful HTTP status — to a
+     * domain-typed exception, so no caller can mistake a failure for an answer.
+     * An unthrown failure decodes to an empty MediaContainer, which the
+     * reconcilers treat as a confirmed-empty server and answer by pruning every
+     * local row. Status mapping follows {@see PlexApiService::decode()}: a 401 is
+     * the distinct {@see PlexAuthenticationFailed}, anything else failed is
+     * {@see PlexRequestFailed}. A 404 throws here rather than reading as a
+     * definitive miss — a vanished section or show must not authorize a delete.
      *
      * @param  array<string, mixed>  $query
      * @param  array<string, string>  $headers
@@ -116,10 +136,20 @@ final readonly class PlexLibraryService
         $url = "{$uri}{$path}";
 
         try {
-            return $this->request($token)->withHeaders($headers)->get($url, $query);
+            $response = $this->request($token)->withHeaders($headers)->get($url, $query);
         } catch (ConnectionException) {
             throw PlexRequestFailed::for($url);
         }
+
+        if ($response->status() === 401) {
+            throw PlexAuthenticationFailed::invalidToken();
+        }
+
+        if ($response->failed()) {
+            throw PlexRequestFailed::for($url);
+        }
+
+        return $response;
     }
 
     private function request(string $token): PendingRequest

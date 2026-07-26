@@ -20,11 +20,11 @@ class PlexSeasonFactory extends Factory
      */
     public function definition(): array
     {
-        $show = PlexShow::factory()->create();
-
         return [
-            'plex_server_id' => $show->plex_server_id,
-            'plex_show_id' => $show->id,
+            // Must stay ahead of the derived key: Laravel resolves closure attributes
+            // in definition order, so the show id is only an id once it has been passed.
+            'plex_show_id' => PlexShow::factory(),
+            'plex_server_id' => fn (array $attributes) => PlexShow::findOrFail($attributes['plex_show_id'])->plex_server_id,
             '_plex_ratingKey' => (string) fake()->unique()->numberBetween(1, 1_000_000),
             '_plex_guid' => 'plex://season/'.fake()->uuid(),
             '_plex_index' => fake()->numberBetween(1, 20),

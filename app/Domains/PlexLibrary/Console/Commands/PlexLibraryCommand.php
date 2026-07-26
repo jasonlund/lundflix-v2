@@ -90,6 +90,12 @@ abstract class PlexLibraryCommand extends Command
                 $children = $this->library->fetchShowChildren($uri, $token, $show->_plex_ratingKey);
                 $leaves = $this->library->fetchShowLeaves($uri, $token, $show->_plex_ratingKey);
                 $episodeTotal += $this->reconcileEpisodes->handle($show, $children, $leaves);
+
+                // Stamped only once the show's episodes actually landed. The show's
+                // own _plex_updatedAt was already written by ReconcilePlexShows, so
+                // this separate watermark is the only thing that can tell the next
+                // sync a failed show still owes a crawl.
+                $show->update(['episodes_synced_at' => now()]);
             } catch (Throwable $e) {
                 report($e);
                 $failed = true;

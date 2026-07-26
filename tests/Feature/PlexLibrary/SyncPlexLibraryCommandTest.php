@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
+use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Symfony\Component\Console\Command\Command;
 
 uses(RefreshDatabase::class);
 
@@ -25,6 +28,13 @@ uses(RefreshDatabase::class);
 | global). This slice asserts the observable end-state and the per-show crawl
 | requests only — never per-row identity, which the reconcilers own in their
 | own tests. The shared fake lives in fakePlexSeedCrawl().
+|
+| The changed set is NOT the whole selection: a show also gets crawled while its
+| episode crawl is behind, tracked by the app-owned episodes_synced_at watermark
+| (stamped only after a show's episode reconcile returns). Without it a show
+| whose /allLeaves fetch failed would be stranded — ReconcilePlexShows already
+| wrote its incoming _plex_updatedAt/_plex_leafCount, so the next run sees no
+| diff and would never retry it.
 |
 | A show is arranged "unchanged" by pre-seeding a PlexShow on the SAME server +
 | ratingKey whose _plex_updatedAt (rendered via Date::createFromTimestamp, the
@@ -96,6 +106,84 @@ it('skips the episode crawl when nothing changed', function (): void {
     Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/children'));
 });
 
+it('exits FAILURE when a show episode crawl failed', function (): void {
+    // Arrange
+    fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+
+    // Act & Assert
+    $this->artisan('plex:sync')->assertExitCode(Command::FAILURE);
+});
+
+it('stamps the episode watermark on every show it crawled', function (): void {
+    // Arrange
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:sync')->run();
+
+    // Assert
+    foreach (['34112', '27520', '32204'] as $ratingKey) {
+        expect(showByRatingKey($ratingKey)->episodes_synced_at)->not->toBeNull();
+    }
+});
+
+it('leaves the episode watermark unstamped for a show whose crawl failed', function (): void {
+    // Arrange
+    fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+
+    // Act
+    $this->artisan('plex:sync')->run();
+
+    // Assert
+    expect(showByRatingKey('34112')->episodes_synced_at)->toBeNull();
+    expect(showByRatingKey('27520')->episodes_synced_at)->not->toBeNull();
+});
+
+// The second fakePlexSeedCrawl() in Arrange also resets the recorded requests,
+// so the assertions below see the SECOND run only. Its payload is byte-identical
+// to the first run's, so show 34112 is NOT in the changed set — only its
+// unstamped episode watermark can put it back in the crawl. The 24 episodes of
+// the shared allLeaves fixture are re-parented to whichever show was crawled
+// last, so a row under 34112 proves that show was the one crawled.
+it('re-crawls a show whose episode crawl failed even though nothing changed', function (): void {
+    // Arrange
+    fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+    $this->artisan('plex:sync')->run();
+    freshPlexHttpFactory();
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:sync')->run();
+
+    // Assert
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves'));
+    expect(PlexEpisode::query()->where('plex_show_id', showByRatingKey('34112')->id)->count())->toBeGreaterThan(0);
+});
+
+/**
+ * Drop the faked HTTP factory so a second fakePlexSeedCrawl() in one test starts
+ * clean. Http::fake() MERGES its stubs into the existing ones (the earliest
+ * match wins) and never rewinds a spent Http::sequence(), so without this the
+ * second run would keep hitting the first run's exhausted section pagers and its
+ * throwing allLeaves stub. Re-arms the globally-armed preventStrayRequests() on
+ * the replacement factory.
+ */
+function freshPlexHttpFactory(): void
+{
+    app()->forgetInstance(Factory::class);
+    Http::clearResolvedInstance(Factory::class);
+    Http::preventStrayRequests();
+}
+
+/**
+ * The single show carrying the given Plex ratingKey — the crawl imports one row
+ * per ratingKey, so sole() also guards against a duplicate slipping in.
+ */
+function showByRatingKey(string $ratingKey): PlexShow
+{
+    return PlexShow::query()->where('_plex_ratingKey', $ratingKey)->sole();
+}
+
 /**
  * Pre-seed the server, its show library, and one PlexShow whose stored
  * _plex_updatedAt / _plex_leafCount match the fixture exactly, so the run
@@ -116,11 +204,16 @@ function seedUnchangedShow(string $ratingKey, int $leafCount, int $updatedAtEpoc
         PlexLibrary::factory()->raw(['plex_server_id' => $server->id, '_plex_key' => '2', '_plex_type' => 'show']),
     );
 
+    // episodes_synced_at is pinned to the show's own _plex_updatedAt (not now())
+    // so "unchanged" means unchanged at both levels — a caught-up episode crawl
+    // that the stale-show arm has no reason to pick back up, whatever the clock
+    // reads relative to the fixture's epochs.
     PlexShow::factory()->create([
         'plex_server_id' => $library->plex_server_id,
         'plex_library_id' => $library->id,
         '_plex_ratingKey' => $ratingKey,
         '_plex_leafCount' => $leafCount,
         '_plex_updatedAt' => Date::createFromTimestamp($updatedAtEpoch),
+        'episodes_synced_at' => Date::createFromTimestamp($updatedAtEpoch),
     ]);
 }

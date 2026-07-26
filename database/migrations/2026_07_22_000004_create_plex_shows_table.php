@@ -35,6 +35,7 @@ return new class extends Migration
             $table->unsignedInteger('_tvdb_id')->nullable()->index();
 
             $table->timestamp('synced_at')->nullable()->index();
+            $table->timestamp('episodes_synced_at')->nullable()->index();
             $table->timestamps();
 
             $table->unique(['plex_server_id', $plex('ratingKey')]);

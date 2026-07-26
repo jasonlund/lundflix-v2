@@ -28,4 +28,17 @@ class PlexSeason extends Model
     {
         return PlexSeasonFactory::new();
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    protected function casts(): array
+    {
+        return [
+            '_plex_addedAt' => 'immutable_datetime',
+            '_plex_updatedAt' => 'immutable_datetime',
+            '_tvdb_id' => 'integer',
+        ];
+    }
 }

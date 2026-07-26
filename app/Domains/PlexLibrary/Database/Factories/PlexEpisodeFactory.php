@@ -20,12 +20,20 @@ class PlexEpisodeFactory extends Factory
      */
     public function definition(): array
     {
-        $season = PlexSeason::factory()->create();
+        // Memoized per instance so the two derived keys share one lookup.
+        $parent = null;
+        $season = function (array $attributes) use (&$parent): PlexSeason {
+            return $parent?->getKey() === $attributes['plex_season_id']
+                ? $parent
+                : $parent = PlexSeason::findOrFail($attributes['plex_season_id']);
+        };
 
         return [
-            'plex_server_id' => $season->plex_server_id,
-            'plex_show_id' => $season->plex_show_id,
-            'plex_season_id' => $season->id,
+            // Must stay ahead of the derived keys: Laravel resolves closure attributes
+            // in definition order, so the season id is only an id once it has been passed.
+            'plex_season_id' => PlexSeason::factory(),
+            'plex_show_id' => fn (array $attributes) => $season($attributes)->plex_show_id,
+            'plex_server_id' => fn (array $attributes) => $season($attributes)->plex_server_id,
             '_plex_ratingKey' => (string) fake()->unique()->numberBetween(1, 1_000_000),
             '_plex_guid' => 'plex://episode/'.fake()->uuid(),
             '_plex_parentIndex' => fake()->numberBetween(1, 20),

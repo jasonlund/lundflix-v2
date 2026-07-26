@@ -24,6 +24,13 @@ use Illuminate\Support\Str;
 |     imdb://tt8368368.
 |   tests/Fixtures/PlexLibrary/plex/section_all_page2.json — offset:2 size:1
 |     totalSize:3, Metadata ratingKey 32202.
+|
+| The over-reported-totalSize tests have no real capture to load: a real Plex
+| container reports a totalSize consistent with what it eventually delivers, so a
+| server that over-reports (and then hands back an empty final page) can't be
+| captured. Those pages are therefore built here from the REAL 2 members of
+| section_all_page1.json, re-enveloped with a totalSize larger than the members
+| the sequence ever delivers — only the envelope is synthetic.
 */
 
 it('returns both directory entries from fetchSections', function (): void {
@@ -93,6 +100,58 @@ it('advances X-Plex-Container-Start across the two page requests', function (): 
         && ($request->header('X-Plex-Container-Start')[0] ?? null) === '0');
     Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/sections/1/all')
         && ($request->header('X-Plex-Container-Start')[0] ?? null) === '2');
+});
+
+it('returns only the delivered members when totalSize is over-reported', function (): void {
+    // Arrange
+    $uri = 'https://plex.test:6022';
+    $token = 'access-token-abc';
+    $members = data_get(json_decode(fixtureBytes('PlexLibrary/plex/section_all_page1.json'), true), 'MediaContainer.Metadata');
+    $page = fn (array $slice, int $offset): string => (string) json_encode(['MediaContainer' => [
+        'size' => count($slice),
+        'totalSize' => count($members) + 3,
+        'offset' => $offset,
+        'Metadata' => $slice,
+    ]]);
+    // The sequence holds exactly the two pages the walk may consume: a third
+    // request (the runaway loop this guards) exhausts it and errors out rather
+    // than spinning, so a lost empty-page guard fails here instead of hanging.
+    Http::fake([
+        '*/library/sections/1/all*' => Http::sequence()
+            ->push($page($members, 0))
+            ->push($page([], count($members))),
+    ]);
+
+    // Act
+    $items = resolve(PlexLibraryService::class)->fetchSectionItems($uri, $token, '1');
+
+    // Assert
+    expect($items)->toHaveCount(2)
+        ->and(collect($items)->pluck('ratingKey')->all())->toBe(collect($members)->pluck('ratingKey')->all());
+});
+
+it('stops requesting pages once one comes back empty', function (): void {
+    // Arrange
+    $uri = 'https://plex.test:6022';
+    $token = 'access-token-abc';
+    $members = data_get(json_decode(fixtureBytes('PlexLibrary/plex/section_all_page1.json'), true), 'MediaContainer.Metadata');
+    $page = fn (array $slice, int $offset): string => (string) json_encode(['MediaContainer' => [
+        'size' => count($slice),
+        'totalSize' => count($members) + 3,
+        'offset' => $offset,
+        'Metadata' => $slice,
+    ]]);
+    Http::fake([
+        '*/library/sections/1/all*' => Http::sequence()
+            ->push($page($members, 0))
+            ->push($page([], count($members))),
+    ]);
+
+    // Act
+    resolve(PlexLibraryService::class)->fetchSectionItems($uri, $token, '1');
+
+    // Assert
+    Http::assertSentCount(2);
 });
 
 it('requests includeGuids and members retain their Guid entries', function (): void {

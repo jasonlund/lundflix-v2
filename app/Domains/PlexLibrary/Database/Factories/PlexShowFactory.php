@@ -34,6 +34,7 @@ class PlexShowFactory extends Factory
             '_plex_addedAt' => now(),
             '_plex_updatedAt' => now(),
             'synced_at' => now(),
+            'episodes_synced_at' => now(),
         ];
     }
 }
