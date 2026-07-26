@@ -314,6 +314,36 @@ enough that materializing is provably fine — say why in a comment).
 - `--limit`-style caps don't compose with `chunkById` directly — track a
   processed count and `return false` from the closure to halt early.
 
+## Persistence: version-controlled database seed
+
+The catalog is seeded from **real data committed to the repo** so a fresh
+checkout/workspace has a usable dataset with no third-party API calls (FLIX-194).
+
+- **`db:dump` / `db:import`** live in the **`Local`** domain (local-development
+  tooling) — `App\Domains\Local\Console\Commands` (registered in `bootstrap/app.php`
+  `withCommands`), with `mysqldump`/`mysql` shelled through the `Process` facade
+  (fakeable) and the pure helpers in `App\Domains\Local\Database` (`DumpFit`
+  fitting, `DumpSelection` coherence, `MysqlConnection` args).
+- **`database/dumps/*.sql.gz`** are generated blobs: **one file per table**
+  (`movies`, `shows`, `seasons`, `media`, `downloads` — never `settings`, which is
+  secret + `APP_KEY`-encrypted), each capped under 50 MB. `movies`/`shows` are the
+  best-first prefix by `_tmdb_popularity`; `seasons` and `media` are kept
+  **coherent** to those included shows/titles (never orphaned); `downloads` are
+  seeded **independently**, best-first by `_provider_availability` — their title
+  links (`_imdb_id`/`_tmdb_id`) are optional and frequently unset, so coherence
+  would empty the file. Best-first prefixes carry a unique `, id DESC` tiebreak so
+  a parent dump and its child coherence subquery pick identical boundary rows on
+  `_tmdb_popularity` ties (otherwise a few children orphan). They are
+  `binary linguist-generated` in `.gitattributes` — never hand-edit; regenerate
+  with `php artisan db:dump`.
+- **The dumps are byte-exact real captures**, like `tests/Fixtures/`. The
+  download-vocabulary pre-finalize grep **excludes `database/dumps/`** (and
+  `tests/Fixtures/`) — real `_provider_*` values are logic-tied data, not prose.
+- **The test DB is sqlite `:memory:`; prod/dev is MySQL.** A MySQL-dialect dump
+  can't load into sqlite, so `db:import` tests assert the real truncate + the
+  faked load invocation, not reloaded rows — the byte-apply is covered by the
+  Conductor setup smoke, not a Pest test.
+
 ## Linting & formatting (finalize gates)
 
 Before finalizing **any** change, run every linter/formatter for the files you

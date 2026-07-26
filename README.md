@@ -116,12 +116,15 @@ Each Conductor workspace is its own git worktree; setup/teardown is automated by
 `.conductor/`:
 
 - **Create** → `.conductor/setup.sh` installs deps, builds assets, links a
-  per-workspace Herd site (`https://<workspace>.test`), and points the app at the
-  shared local SQLite db.
+  per-workspace Herd site (`https://<workspace>.test`), and provisions the
+  workspace its **own** MySQL database (`lundflix_<workspace>`): create → migrate →
+  seed → `db:import` of the committed catalog dumps. Each workspace is isolated, so
+  a branch's migrations never touch another's schema.
 - **Run** → `npm run dev` (Vite); Herd serves the PHP app. One workspace at a time
   (`run_mode = "nonconcurrent"`).
 - **Merge** → the workspace auto-archives on PR merge, `.conductor/archive.sh`
-  unlinks the Herd site, and the branch is deleted.
+  unlinks the Herd site, **drops** the workspace's database, and the branch is
+  deleted.
 
 **Env vars under Conductor:** new workspaces copy `.env` from the repository's
 **root checkout** (`~/conductor/repos/lundflix-v2/.env`), *not* from
@@ -170,6 +173,27 @@ and `npm run dev` (the Run button) only starts Vite.
 php artisan test   # backend (Pest)
 npm test           # frontend (Vitest)
 ```
+
+### Database seed (dumps)
+
+The catalog is seeded from real data committed to the repo, so a fresh checkout
+or workspace has a usable dataset without calling any third-party API.
+
+```bash
+php artisan db:import   # truncate the catalog tables and load database/dumps/*.sql.gz
+php artisan db:dump     # regenerate the dumps from the current database
+```
+
+- **`db:import`** loads the version-controlled seed (`database/dumps/`) into the
+  current database, truncating each table first. Pass `--from=<dir>` (or
+  `--path=<dir>`) to load a full local dump from elsewhere instead.
+- **`db:dump`** writes two artifacts: the **version-controlled set** — one gzipped
+  file per table under `database/dumps/`, each capped under 50 MB (a best-first
+  slice by popularity) so it stays git-friendly — and a **full local dump** to
+  `DB_DUMP_PATH` (optional; defaults to `storage/app/backups`, may point anywhere
+  including outside the project). `--vc` / `--full` write only one side;
+  `--unlimited` removes the size cap. Regenerating rewrites the committed blobs, so
+  do it deliberately (each regen grows git history by roughly the seed size).
 
 ## Configuration
 

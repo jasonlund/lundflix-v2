@@ -23,6 +23,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Database Dump Path
+    |--------------------------------------------------------------------------
+    |
+    | Local destination for full database dumps produced by the db:dump
+    | command. Override with DB_DUMP_PATH when a different location is
+    | required; otherwise dumps land in the application storage directory.
+    |
+    */
+
+    'dump_path' => env('DB_DUMP_PATH', storage_path('app/backups')),
+
+    /*
+    |--------------------------------------------------------------------------
     | Database Connections
     |--------------------------------------------------------------------------
     |

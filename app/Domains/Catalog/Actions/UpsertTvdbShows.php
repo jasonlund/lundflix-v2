@@ -63,7 +63,7 @@ final readonly class UpsertTvdbShows
 
         $rows = array_map(fn (array $payload): array => $this->rawTvdbRow($payload, $now), $payloads);
 
-        $touchedIds = $this->upsertByTvdbId($this->nullAmbiguousTmdbIds($this->withValidTvdbId($rows)));
+        $touchedIds = $this->upsertByTvdbId($this->nullExistingTmdbConflicts($this->nullAmbiguousTmdbIds($this->withValidTvdbId($rows))));
 
         Show::query()->whereIn('id', $touchedIds)->searchable();
 
@@ -102,6 +102,38 @@ final readonly class UpsertTvdbShows
 
         return array_map(static function (array $row) use ($counts): array {
             if (($counts[$row['_tmdb_id']] ?? 0) > 1) {
+                $row['_tmdb_id'] = null;
+            }
+
+            return $row;
+        }, $rows);
+    }
+
+    /**
+     * Null `_tmdb_id` on every batch row whose crosswalk already belongs to a
+     * *different* existing show: `_tmdb_id` is a unique column, so a row upserting
+     * by `_tvdb_id` must not overwrite/steal a crosswalk another `_tvdb_id` already
+     * owns (the DB would reject the whole batch). A row whose `_tmdb_id` maps back
+     * to its own `_tvdb_id` is a genuine idempotent re-seed and keeps it. Nobody
+     * claims an ambiguous crosswalk.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function nullExistingTmdbConflicts(array $rows): array
+    {
+        $ids = array_values(array_filter(array_column($rows, '_tmdb_id')));
+
+        if ($ids === []) {
+            return array_values($rows);
+        }
+
+        $owners = Show::query()->whereIn('_tmdb_id', $ids)->pluck('_tvdb_id', '_tmdb_id');
+
+        return array_map(static function (array $row) use ($owners): array {
+            $tmdbId = $row['_tmdb_id'];
+
+            if ($tmdbId !== null && $owners->has($tmdbId) && (int) $owners->get($tmdbId) !== (int) $row['_tvdb_id']) {
                 $row['_tmdb_id'] = null;
             }
 
