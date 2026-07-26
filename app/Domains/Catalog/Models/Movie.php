@@ -37,8 +37,8 @@ class Movie extends Model
             'imdb_id' => $this->_imdb_id,
             'title' => $this->_tmdb_title,
             'year' => $this->_tmdb_release_date?->year,
-            'num_votes' => $this->_imdb_num_votes,
-            'average_rating' => $this->_imdb_average_rating,
+            'num_votes' => $this->_imdb_numVotes,
+            'average_rating' => $this->_imdb_averageRating,
         ];
     }
 
@@ -54,8 +54,13 @@ class Movie extends Model
     protected function casts(): array
     {
         return [
-            '_imdb_num_votes' => 'integer',
-            '_imdb_average_rating' => 'float',
+            '_imdb_numVotes' => 'integer',
+            '_imdb_averageRating' => 'float',
+            '_imdb_startYear' => 'integer',
+            '_imdb_endYear' => 'integer',
+            '_imdb_runtimeMinutes' => 'integer',
+            '_imdb_genres' => 'array',
+            '_imdb_akas' => 'array',
             '_tmdb_id' => 'integer',
             '_tmdb_release_date' => NullableDate::class,
             '_tmdb_runtime' => 'integer',

@@ -27,6 +27,14 @@ beforeEach(function (): void {
 | tests/Fixtures/Catalog/imdb/title.ratings.tsv.gz — tt0133093 8.7/2252453,
 |   tt0137523 8.8/2615814, tt0816692 8.7/2541567, tt0000001 5.7/2211
 |   (no tt0903747 row, so Breaking Bad never gets ranked).
+| tests/Fixtures/Catalog/imdb/title.basics.tsv.gz — 6 rows incl. tt0133093
+|   (movie / The Matrix / 1999 / 136 / Action,Sci-Fi) and tt0903747 (tvSeries /
+|   Breaking Bad).
+| tests/Fixtures/Catalog/imdb/title.akas.tsv.gz — 5 titles' contiguous aka rows,
+|   incl. tt0133093 (67 rows).
+| The three IMDb fixtures deliberately overlap on tt0133093 — the movie TMDB
+| creates — so one default run proves all three enrichment steps landed on the
+| same row.
 | tests/Fixtures/Catalog/tmdb/movie_ids.json.gz — daily export incl. id 603
 |   (The Matrix).
 | tests/Fixtures/Catalog/tmdb/movie.json — /movie/603 (imdb_id tt0133093);
@@ -38,16 +46,16 @@ beforeEach(function (): void {
 |   drives via catalog:seed-shows-tvdb, faked in fakeCatalogSyncFreshAndUpdates().
 |
 | A default catalog:sync dispatches catalog:sync-movies → catalog:sync-shows-tvdb →
-| catalog:sync-shows-tmdb → catalog:sync-ratings (the updates feed). Under --fresh the TVDB
-| step swaps to the full crawl (catalog:seed-shows-tvdb) and --fresh is forwarded to both
-| TMDB syncs: catalog:sync-movies --fresh → catalog:seed-shows-tvdb → catalog:sync-shows-tmdb --fresh
-| → catalog:sync-ratings. There is no title.basics import in either flow, so
-| title.basics is never requested and is not faked.
+| catalog:sync-shows-tmdb → the three IMDb enrichment steps (catalog:sync-ratings,
+| catalog:sync-titles, catalog:sync-akas). Under --fresh the TVDB step swaps to the full
+| crawl (catalog:seed-shows-tvdb) and --fresh is forwarded to both TMDB syncs:
+| catalog:sync-movies --fresh → catalog:seed-shows-tvdb → catalog:sync-shows-tmdb --fresh
+| → the same three IMDb steps.
 */
 
 /**
  * Fake every host the catalog:sync flow touches with happy-path fixtures:
- * the IMDb ratings dataset, the TMDB movie + tv exports, the shared TMDB API
+ * the three IMDb datasets, the TMDB movie + tv exports, the shared TMDB API
  * (The Matrix for id 603, Game of Thrones for id 1399, 404 else), and TheTVDB's
  * /updates path (login JWT, the chained updates feed, Breaking Bad's extended
  * payload for the one discovered recordId 434847).
@@ -56,6 +64,8 @@ function fakeCatalogSync(): void
 {
     Http::fake([
         '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
+        '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),
+        '*title.akas*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
         // Both TMDB commands hit their changes feed after the insert phase on a
         // default run; empty-results pages drive the update phase through its
@@ -96,6 +106,8 @@ function fakeCatalogSyncFreshAndUpdates(): void
 {
     Http::fake([
         '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
+        '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),
+        '*title.akas*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
         // Both TMDB commands hit their changes feed after the insert phase on a
         // default run; empty-results pages drive the update phase through its
@@ -171,14 +183,14 @@ it('applies IMDb ratings last by _imdb_id', function (): void {
 
     // Assert
     $matrix = Movie::where('_imdb_id', 'tt0133093')->firstOrFail();
-    expect($matrix->_imdb_num_votes)->toBe(2252453);
-    expect($matrix->_imdb_average_rating)->toBe(8.7);
+    expect($matrix->_imdb_numVotes)->toBe(2252453);
+    expect($matrix->_imdb_averageRating)->toBe(8.7);
 
     $breakingBad = Show::where('_imdb_id', 'tt0903747')->firstOrFail();
-    expect($breakingBad->_imdb_num_votes)->toBeNull();
+    expect($breakingBad->_imdb_numVotes)->toBeNull();
 });
 
-it('never runs the removed import-titles command', function (): void {
+it('fetches the basics and akas datasets on a default run', function (): void {
     // Arrange
     fakeCatalogSync();
 
@@ -186,7 +198,54 @@ it('never runs the removed import-titles command', function (): void {
     $this->artisan('catalog:sync');
 
     // Assert
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
+});
+
+it('applies IMDb basics and akas last by _imdb_id', function (): void {
+    // Arrange
+    fakeCatalogSync();
+
+    // Act
+    $this->artisan('catalog:sync');
+
+    // Assert
+    // The Matrix is created by the TMDB step, so its basics columns and aka list
+    // can only be populated if the IMDb steps ran after it against _imdb_id.
+    $matrix = Movie::where('_imdb_id', 'tt0133093')->firstOrFail();
+    expect($matrix->_imdb_titleType)->toBe('movie')
+        ->and($matrix->_imdb_primaryTitle)->toBe('The Matrix')
+        ->and($matrix->_imdb_genres)->toBe(['Action', 'Sci-Fi'])
+        ->and($matrix->_imdb_akas)->toBeArray()->not->toBeEmpty();
+});
+
+it('under --fresh fetches the basics and akas datasets too', function (): void {
+    // Arrange
+    fakeCatalogSyncFreshAndUpdates();
+
+    // Act
+    $this->artisan('catalog:sync', ['--fresh' => true]);
+
+    // Assert
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
+});
+
+it('continues past a failing titles command, exits FAILURE and still runs akas', function (): void {
+    // Arrange
+    Exceptions::fake();
+    // Http::fake merges stubs and the first registered match wins, so this 500
+    // registered ahead of the happy-path helper overrides only the basics fetch.
+    Http::fake(['*title.basics*' => Http::response('', 500)]);
+    fakeCatalogSync();
+
+    // Act & Assert
+    $this->artisan('catalog:sync')->assertExitCode(Command::FAILURE);
+
+    // Assert
+    Exceptions::assertReported(fn (RequestException $e): bool => true);
+    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
+    expect(Movie::where('_imdb_id', 'tt0133093')->firstOrFail()->_imdb_akas)->toBeArray()->not->toBeEmpty();
 });
 
 it('exits SUCCESS when every command succeeds', function (): void {

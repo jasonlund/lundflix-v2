@@ -19,9 +19,26 @@ final class RawSourceColumns
         $columns = [];
 
         foreach ($keys as $key) {
-            $columns["_{$source}_{$key}"] = $payload[$key] ?? null;
+            $columns[self::name($source, $key)] = $payload[$key] ?? null;
         }
 
         return $columns;
+    }
+
+    /**
+     * The column names {@see map()} writes, in the same order — for callers that
+     * need the column list without a payload (e.g. a bulk update's SET clause).
+     *
+     * @param  list<string>  $keys
+     * @return list<string>
+     */
+    public static function names(string $source, array $keys): array
+    {
+        return array_map(fn (string $key): string => self::name($source, $key), $keys);
+    }
+
+    private static function name(string $source, string $key): string
+    {
+        return "_{$source}_{$key}";
     }
 }

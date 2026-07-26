@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 
 it('updates the ratings of an existing movie', function (): void {
     // Arrange
-    $movie = Movie::factory()->create(['_imdb_num_votes' => 100, '_imdb_average_rating' => 1.0]);
+    $movie = Movie::factory()->create(['_imdb_numVotes' => 100, '_imdb_averageRating' => 1.0]);
 
     // Act
     $result = resolve(UpdateImdbRatings::class)->handle([
@@ -18,14 +18,14 @@ it('updates the ratings of an existing movie', function (): void {
 
     // Assert
     $fresh = Movie::query()->find($movie->id);
-    expect($fresh->_imdb_num_votes)->toBe(2252453)
-        ->and($fresh->_imdb_average_rating)->toBe(8.7)
+    expect($fresh->_imdb_numVotes)->toBe(2252453)
+        ->and($fresh->_imdb_averageRating)->toBe(8.7)
         ->and($result)->toBe(['movies' => 1, 'shows' => 0]);
 });
 
 it('updates the ratings of an existing show', function (): void {
     // Arrange
-    $show = Show::factory()->create(['_imdb_num_votes' => 100, '_imdb_average_rating' => 1.0]);
+    $show = Show::factory()->create(['_imdb_numVotes' => 100, '_imdb_averageRating' => 1.0]);
 
     // Act
     $result = resolve(UpdateImdbRatings::class)->handle([
@@ -34,14 +34,14 @@ it('updates the ratings of an existing show', function (): void {
 
     // Assert
     $fresh = Show::query()->find($show->id);
-    expect($fresh->_imdb_num_votes)->toBe(987654)
-        ->and($fresh->_imdb_average_rating)->toBe(9.2)
+    expect($fresh->_imdb_numVotes)->toBe(987654)
+        ->and($fresh->_imdb_averageRating)->toBe(9.2)
         ->and($result)->toBe(['movies' => 0, 'shows' => 1]);
 });
 
 it('skips an imdb_id with no matching title', function (): void {
     // Arrange
-    $movie = Movie::factory()->create(['_imdb_num_votes' => 100, '_imdb_average_rating' => 1.0]);
+    $movie = Movie::factory()->create(['_imdb_numVotes' => 100, '_imdb_averageRating' => 1.0]);
 
     // Act
     $result = resolve(UpdateImdbRatings::class)->handle([
@@ -63,9 +63,9 @@ it('appends CASE bindings to pre-existing join bindings instead of replacing the
     // entirely; a future join/global-scope on Movie would then have its binding
     // silently swallowed. The fix must keep the existing join binding.
     // Arrange
-    $movie = Movie::factory()->create(['_imdb_num_votes' => 100, '_imdb_average_rating' => 1.0]);
+    $movie = Movie::factory()->create(['_imdb_numVotes' => 100, '_imdb_averageRating' => 1.0]);
     $scopedQuery = Movie::query()->joinSub(
-        DB::table('movies')->select('id as scoped_id')->where('_imdb_num_votes', '>', -98765),
+        DB::table('movies')->select('id as scoped_id')->where('_imdb_numVotes', '>', -98765),
         'scoped',
         'movies.id',
         '=',
@@ -88,8 +88,8 @@ it('appends CASE bindings to pre-existing join bindings instead of replacing the
 
 it('updates a mixed batch across both tables in one call', function (): void {
     // Arrange
-    $movie = Movie::factory()->create(['_imdb_num_votes' => 100, '_imdb_average_rating' => 1.0]);
-    $show = Show::factory()->create(['_imdb_num_votes' => 200, '_imdb_average_rating' => 2.0]);
+    $movie = Movie::factory()->create(['_imdb_numVotes' => 100, '_imdb_averageRating' => 1.0]);
+    $show = Show::factory()->create(['_imdb_numVotes' => 200, '_imdb_averageRating' => 2.0]);
 
     // Act
     $result = resolve(UpdateImdbRatings::class)->handle([
@@ -100,9 +100,9 @@ it('updates a mixed batch across both tables in one call', function (): void {
     // Assert
     $freshMovie = Movie::query()->find($movie->id);
     $freshShow = Show::query()->find($show->id);
-    expect($freshMovie->_imdb_num_votes)->toBe(2252453)
-        ->and($freshMovie->_imdb_average_rating)->toBe(8.7)
-        ->and($freshShow->_imdb_num_votes)->toBe(987654)
-        ->and($freshShow->_imdb_average_rating)->toBe(9.2)
+    expect($freshMovie->_imdb_numVotes)->toBe(2252453)
+        ->and($freshMovie->_imdb_averageRating)->toBe(8.7)
+        ->and($freshShow->_imdb_numVotes)->toBe(987654)
+        ->and($freshShow->_imdb_averageRating)->toBe(9.2)
         ->and($result)->toBe(['movies' => 1, 'shows' => 1]);
 });

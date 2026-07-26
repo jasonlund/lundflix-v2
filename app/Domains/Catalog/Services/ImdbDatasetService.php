@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services;
 
+use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Exceptions\CannotOpenImdbDatasetArchive;
 use App\Domains\Catalog\Exceptions\CorruptImdbDatasetArchive;
 use Illuminate\Support\Facades\Http;
@@ -15,16 +16,7 @@ final class ImdbDatasetService
 {
     private const string BASE_URL = 'https://datasets.imdbws.com';
 
-    private const string FILENAME = 'title.ratings.tsv.gz';
-
-    /**
-     * Columns needing a cast; everything else stays string|null.
-     *
-     * @var array<string, string>
-     */
-    private const array CASTS = ['averageRating' => 'float', 'numVotes' => 'int'];
-
-    public function download(): string
+    public function download(ImdbDataset $dataset): string
     {
         $path = tempnam(sys_get_temp_dir(), 'imdb_');
 
@@ -33,7 +25,7 @@ final class ImdbDatasetService
                 ->timeout(600)
                 ->withOptions(['retry_enabled' => false])
                 ->retry(3, 1000)
-                ->get(self::BASE_URL.'/'.self::FILENAME)
+                ->get(self::BASE_URL.'/'.$dataset->filename())
                 ->throw();
         } catch (Throwable $e) {
             @unlink($path);
@@ -82,9 +74,9 @@ final class ImdbDatasetService
      * consume the returned collection (e.g. ->all(), or a foreach to the end);
      * abandoning it part-way leaves the gz handle open until GC reclaims it.
      */
-    public function rows(string $path): LazyCollection
+    public function rows(string $path, ImdbDataset $dataset): LazyCollection
     {
-        return LazyCollection::make(function () use ($path) {
+        return LazyCollection::make(function () use ($path, $dataset) {
             $handle = $this->open($path);
 
             try {
@@ -97,7 +89,7 @@ final class ImdbDatasetService
 
                     $raw = $this->mapRow($header, $this->fields($line));
 
-                    yield $this->cast($raw, self::CASTS);
+                    yield $this->cast($raw, $dataset->casts());
                 }
             } finally {
                 gzclose($handle);
@@ -165,6 +157,9 @@ final class ImdbDatasetService
                 'float' => (float) $value,
                 'bool' => $value === '1',
                 'array' => explode(',', $value),
+                // IMDb packs repeated values inside one akas column with \x02,
+                // not the comma it uses elsewhere.
+                'multi' => explode(chr(2), $value),
                 default => $value,
             };
         }

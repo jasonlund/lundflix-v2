@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpdateImdbRatings;
+use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Services\ImdbDatasetService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -33,7 +34,7 @@ class SyncImdbRatings extends Command
 
     public function handle(): int
     {
-        $path = $this->datasets->download();
+        $path = $this->datasets->download(ImdbDataset::TitleRatings);
 
         // Plain writeln progress, not a progress bar: bars render nothing
         // under catalog:sync's nested Artisan::call, so a per-flush heartbeat
@@ -44,7 +45,7 @@ class SyncImdbRatings extends Command
             /** @var array<string, array{num_votes: int, average_rating: float}> $batch */
             $batch = [];
 
-            foreach ($this->datasets->rows($path) as $row) {
+            foreach ($this->datasets->rows($path, ImdbDataset::TitleRatings) as $row) {
                 $batch[$row['tconst']] = [
                     'num_votes' => $row['numVotes'],
                     'average_rating' => $row['averageRating'],

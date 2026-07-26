@@ -19,6 +19,11 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
 
 ## IMDb dataset streaming (`ImdbDatasetService`)
 
+- **`ImdbDataset` (enum) owns each dataset's filename and cast map**; the service
+  is dataset-agnostic — `download()`/`rows()` take the case. Cast types: `int`,
+  `float`, `bool`, `array` (comma-split, e.g. basics `genres`), and `multi`
+  (split on `\x02`, which is how akas `types`/`attributes` pack multiple values
+  upstream).
 - `rows()` returns a `LazyCollection` over a gzip stream. The gz handle is closed
   in a `finally` that runs **only** when the generator completes or is GC'd —
   callers **MUST fully consume** the collection (`->all()`, or foreach to the
@@ -27,6 +32,37 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
   progress total matches the rows `rows()` actually yields.
 - An empty gz body (valid magic, no content) surfaces a domain exception, not a
   raw `ValueError`.
+
+## IMDb dataset ingest (`catalog:sync-ratings` / `-titles` / `-akas`)
+
+Three commands, one per title-level dataset, all keyed `tconst` → `_imdb_id` and
+all last in the `catalog:sync` order (TMDB/TVDB create the rows; IMDb enriches).
+
+- **Only rows already in the catalog are written** — `Support\CatalogImdbIds`
+  preloads every `_imdb_id` as a hash set once per run, and rows outside it are
+  skipped without buffering. At 52M akas rows, a query per row is not an option.
+- **`isAdult=1` basics rows are dropped entirely** — no `_imdb_isAdult` column
+  exists. TMDB's export already filters adult/softcore, but the TVDB show path
+  has no adult filter, so the skip count is reported to measure what gets through.
+- **akas group per title** — the file is sorted contiguously by `titleId`, so
+  rows accumulate until it changes. The last group never sees a change: closing
+  it after the loop only *buffers* it, so the trailing `flush()` is what writes
+  it. Neither is redundant.
+- **Batch sizes differ per dataset and are load-bearing.** `BulkCaseUpdate` binds
+  2 placeholders per column per row plus the `WHERE IN` id, so titles' 7 columns
+  cost 15/row — a 5000 batch would exceed MySQL's 65,535 cap (ceiling ≈ 4369),
+  hence 2000. Akas' single column is cheap in placeholders but each value is an
+  unbounded json blob, so its 1000 is a `max_allowed_packet` bound, not a
+  placeholder one. Both commands take `--batch=` to override.
+
+## Bulk CASE updates (`Support\BulkCaseUpdate`)
+
+All three IMDb ingest actions write via one bulk `CASE _imdb_id WHEN … END`
+update per table, returning the matched ids (the caller then `->searchable()`s
+them). CASE bindings live in the query's **join**-binding slot and are appended,
+never replaced — see the in-code comment for the ordering mechanics before
+touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
+(`_imdb_genres`, `_imdb_akas`) must be json-encoded on the way in.
 
 ## TMDB API (`TmdbApiService`)
 
@@ -120,8 +156,3 @@ window.
   whole gap (idempotent upserts make that safe). A cache flush just drops to the
   24h fallback, not data loss.
 
-## Ratings update (`UpdateImdbRatings`)
-
-Ratings apply as a **single bulk CASE update per table** (Movie, Show), returning
-the matched count. CASE bindings live in the query's join-binding slot — see the
-in-code comment for the binding-order mechanics before touching it.
