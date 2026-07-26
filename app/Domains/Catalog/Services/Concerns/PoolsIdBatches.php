@@ -18,9 +18,6 @@ use Throwable;
  * decode in input order with per-id failure aggregation. The per-service
  * differences are injected via the abstract hooks below; the invariant
  * order/404/aggregate-failure contract lives here.
- *
- * Not used by Common's PlexApiService, whose `poolByServer()` is a deliberately
- * different contract (per-server tolerance, no chunk/dedupe/aggregate-report).
  */
 trait PoolsIdBatches
 {

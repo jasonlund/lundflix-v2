@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         __DIR__.'/../app/Domains/Catalog/Console/Commands',
         __DIR__.'/../app/Domains/Download/Console/Commands',
         __DIR__.'/../app/Domains/Local/Console/Commands',
+        __DIR__.'/../app/Domains/PlexLibrary/Console/Commands',
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Support;
 
+use App\Domains\Common\Support\SourceId;
+
 final class TvdbCrosswalk
 {
     /**
