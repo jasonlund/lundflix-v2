@@ -27,8 +27,8 @@ it('keeps the IMDb ranking crosswalk fields when indexing a movie', function ():
     // Arrange
     $movie = Movie::factory()->withTmdb()->create([
         '_imdb_id' => 'tt0133093',
-        '_imdb_num_votes' => 1_900_000,
-        '_imdb_average_rating' => 8.7,
+        '_imdb_numVotes' => 1_900_000,
+        '_imdb_averageRating' => 8.7,
     ]);
 
     // Act
@@ -59,8 +59,8 @@ it('keeps the IMDb ranking crosswalk fields when indexing a show', function (): 
     // Arrange
     $show = Show::factory()->withTvdb()->create([
         '_imdb_id' => 'tt0903747',
-        '_imdb_num_votes' => 2_100_000,
-        '_imdb_average_rating' => 9.5,
+        '_imdb_numVotes' => 2_100_000,
+        '_imdb_averageRating' => 9.5,
     ]);
 
     // Act

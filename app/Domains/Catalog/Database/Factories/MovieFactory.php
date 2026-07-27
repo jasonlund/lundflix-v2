@@ -21,8 +21,8 @@ class MovieFactory extends Factory
     {
         return [
             '_imdb_id' => 'tt'.fake()->unique()->numerify('#######'),
-            '_imdb_num_votes' => fake()->numberBetween(100, 1_000_000),
-            '_imdb_average_rating' => fake()->randomFloat(1, 1, 10),
+            '_imdb_numVotes' => fake()->numberBetween(100, 1_000_000),
+            '_imdb_averageRating' => fake()->randomFloat(1, 1, 10),
         ];
     }
 
