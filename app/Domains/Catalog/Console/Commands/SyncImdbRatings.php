@@ -42,13 +42,15 @@ class SyncImdbRatings extends Command
         $this->output->writeln('Importing IMDb ratings…');
 
         try {
-            /** @var array<string, array{num_votes: int, average_rating: float}> $batch */
+            /** @var array<string, array{numVotes: int, averageRating: float}> $batch */
             $batch = [];
 
             foreach ($this->datasets->rows($path, ImdbDataset::TitleRatings) as $row) {
+                // `tconst` is the batch key, so it is dropped from the buffered
+                // row rather than repeated on every one of millions of entries.
                 $batch[$row['tconst']] = [
-                    'num_votes' => $row['numVotes'],
-                    'average_rating' => $row['averageRating'],
+                    'numVotes' => $row['numVotes'],
+                    'averageRating' => $row['averageRating'],
                 ];
 
                 if (count($batch) >= self::BATCH_SIZE) {
@@ -67,7 +69,7 @@ class SyncImdbRatings extends Command
     /**
      * Persist the accumulated ratings buffer, emit a progress heartbeat, and reset it.
      *
-     * @param  array<string, array{num_votes: int, average_rating: float}>  $batch
+     * @param  array<string, array{numVotes: int, averageRating: float}>  $batch
      */
     private function flush(array &$batch): void
     {

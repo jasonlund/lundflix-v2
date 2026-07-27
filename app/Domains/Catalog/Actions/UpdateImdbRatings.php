@@ -7,14 +7,27 @@ namespace App\Domains\Catalog\Actions;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\BulkCaseUpdate;
+use App\Domains\Catalog\Support\RawSourceColumns;
 use Illuminate\Database\Eloquent\Builder;
 
 final readonly class UpdateImdbRatings
 {
+    private const string SOURCE = 'imdb';
+
+    /**
+     * Raw `title.ratings` keys mapped 1:1 onto `_imdb_*` columns, value taken raw.
+     *
+     * @var list<string>
+     */
+    private const array RAW_COLUMNS = [
+        'numVotes',
+        'averageRating',
+    ];
+
     public function __construct(private BulkCaseUpdate $bulkCaseUpdate) {}
 
     /**
-     * @param  array<string, array{num_votes: int, average_rating: float}>  $ratings
+     * @param  array<string, array{numVotes: int, averageRating: float}>  $ratings
      * @return array{movies: int, shows: int}
      */
     public function handle(array $ratings): array
@@ -30,23 +43,19 @@ final readonly class UpdateImdbRatings
      * returning the number of titles matched (and updated).
      *
      * @param  Builder<Movie>|Builder<Show>  $query
-     * @param  array<string, array{num_votes: int, average_rating: float}>  $ratings
+     * @param  array<string, array{numVotes: int, averageRating: float}>  $ratings
      */
     private function updateTable(Builder $query, array $ratings): int
     {
-        $valuesById = [];
-
-        foreach ($ratings as $imdbId => $rating) {
-            $valuesById[$imdbId] = [
-                '_imdb_numVotes' => $rating['num_votes'],
-                '_imdb_averageRating' => $rating['average_rating'],
-            ];
-        }
+        $valuesById = array_map(
+            fn (array $rating): array => RawSourceColumns::map(self::SOURCE, self::RAW_COLUMNS, $rating),
+            $ratings,
+        );
 
         $matchedIds = $this->bulkCaseUpdate->handle(
             $query,
             $valuesById,
-            ['_imdb_numVotes', '_imdb_averageRating'],
+            RawSourceColumns::names(self::SOURCE, self::RAW_COLUMNS),
         );
 
         if ($matchedIds === []) {

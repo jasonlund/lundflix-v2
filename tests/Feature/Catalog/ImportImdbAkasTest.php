@@ -112,6 +112,37 @@ it('preserves the multi-value fields as lists and the numeric fields as raw stri
         ]);
 });
 
+/**
+ * Synthetic input, per the fixture convention: the committed capture is valid
+ * UTF-8 throughout, so a malformed byte sequence can only be hand-constructed.
+ * `"\xE9"` is a bare Latin-1 e-acute — a valid byte on its own in Latin-1, but
+ * an orphaned continuation byte as UTF-8, which is what a mis-encoded upstream
+ * row ships. Unlike the other ingests, akas arrive as raw bytes split out of a
+ * gzip TSV stream, never round-tripped through a json decode, so nothing
+ * upstream has already vouched for their encoding.
+ */
+it('substitutes invalid utf-8 bytes instead of writing an empty column', function (): void {
+    // Arrange
+    $movie = Movie::factory()->create();
+
+    // Act
+    resolve(ImportImdbAkas::class)->handle([
+        $movie->_imdb_id => [
+            ['titleId' => $movie->_imdb_id, 'ordering' => '1', 'title' => "Cr\xE9puscule", 'region' => 'FR', 'language' => null, 'types' => ['imdbDisplay'], 'attributes' => null, 'isOriginalTitle' => '0'],
+        ],
+    ]);
+
+    // An unguarded json_encode returns false on invalid UTF-8, and `(string) false`
+    // is '' — which a native MySQL json column rejects (error 3140), failing the
+    // one CASE update that carries the whole batch. The test DB is sqlite and
+    // accepts '', so the observable guard is the stored value's well-formedness.
+    // Assert
+    $raw = (string) DB::table('movies')->where('id', $movie->id)->value('_imdb_akas');
+    expect($raw)->not->toBe('')
+        ->and(json_decode($raw, true))->toBeArray()->toHaveCount(1)
+        ->and(Movie::query()->find($movie->id)->_imdb_akas[0]['title'])->toBe("Cr\u{FFFD}puscule");
+});
+
 it('inserts nothing for a titleId with no matching title', function (): void {
     // Arrange
     $movie = Movie::factory()->create();

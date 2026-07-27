@@ -38,9 +38,13 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
 Three commands, one per title-level dataset, all keyed `tconst` → `_imdb_id` and
 all last in the `catalog:sync` order (TMDB/TVDB create the rows; IMDb enriches).
 
-- **Only rows already in the catalog are written** — `Support\CatalogImdbIds`
+- **Titles and akas write only rows already in the catalog** — `Support\CatalogImdbIds`
   preloads every `_imdb_id` as a hash set once per run, and rows outside it are
   skipped without buffering. At 52M akas rows, a query per row is not an option.
+- **Ratings has no such filter** — it buffers every streamed row and leans on
+  `BulkCaseUpdate`'s `WHERE IN` to no-op the unmatched ids per batch. title.ratings
+  carries only rated titles, a small fraction of the other two files, so the id set
+  would buy nothing the 5000-row flush cap doesn't already bound.
 - **`isAdult=1` basics rows are dropped entirely** — no `_imdb_isAdult` column
   exists. TMDB's export already filters adult/softcore, but the TVDB show path
   has no adult filter, so the skip count is reported to measure what gets through.

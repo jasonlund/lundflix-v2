@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Support\BulkCaseUpdate;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 /**
@@ -97,6 +98,32 @@ it('appends CASE bindings to pre-existing join bindings instead of replacing the
     $updateLog = collect(DB::getQueryLog())
         ->firstWhere(fn (array $entry): bool => Str::startsWith((string) $entry['query'], 'update'));
     expect($updateLog['bindings'] ?? [])->toContain(-98765);
+});
+
+it('applies a global scope on the query to the update itself', function (): void {
+    // A scope registered on the builder constrains which ids are selected, so it
+    // must constrain the write too — `getQuery()` skips applyScopes() and would
+    // drop the scope's WHERE (and its binding) from the executed update.
+    // Arrange
+    $movie = Movie::factory()->create(['_imdb_numVotes' => 100]);
+    $scopedQuery = Movie::query()->withGlobalScope(
+        'positive_votes',
+        fn (Builder $query): Builder => $query->where('_imdb_numVotes', '>', -98765),
+    );
+    DB::enableQueryLog();
+
+    // Act
+    resolve(BulkCaseUpdate::class)->handle(
+        $scopedQuery,
+        [$movie->_imdb_id => ['_imdb_numVotes' => 2252453]],
+        ['_imdb_numVotes'],
+    );
+
+    // Assert
+    $updateLog = collect(DB::getQueryLog())
+        ->firstWhere(fn (array $entry): bool => Str::startsWith((string) $entry['query'], 'update'));
+    expect($updateLog['bindings'] ?? [])->toContain(-98765)
+        ->and(Movie::query()->find($movie->id)->_imdb_numVotes)->toBe(2252453);
 });
 
 it('returns the matched imdb ids', function (): void {

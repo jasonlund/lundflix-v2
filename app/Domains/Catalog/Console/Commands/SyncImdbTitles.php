@@ -54,8 +54,8 @@ class SyncImdbTitles extends Command
         // is the only visible movement.
         $this->output->writeln('Importing IMDb titles…');
 
-        // The whole catalog's ids up front: title.basics is ~52M rows, so a
-        // membership query per row is not an option.
+        // The whole catalog's ids up front: title.basics is millions of rows,
+        // so a membership query per row is not an option.
         $ids = $this->catalogIds->all();
         $size = $this->batchSize();
 

@@ -77,12 +77,22 @@ final readonly class ImportImdbAkas
     /**
      * The bulk CASE update's single-column value set for one title.
      *
+     * Aka values reach here as raw bytes split off a gzip TSV stream, never
+     * round-tripped through a json decode that would have vouched for their
+     * encoding. Unguarded, one mis-encoded byte makes json_encode return false,
+     * whose `(string)` cast is '' — a value the native json column rejects,
+     * taking down every title in the batch's single CASE update. Substituting
+     * U+FFFD keeps the junk row importable, as elsewhere with junk upstream data.
+     *
      * @param  list<array<string, mixed>>  $rows
      * @return array<string, string>
      */
     private function akasColumn(array $rows): array
     {
-        return [self::COLUMN => (string) json_encode(array_map($this->storedRow(...), $rows))];
+        return [self::COLUMN => (string) json_encode(
+            array_map($this->storedRow(...), $rows),
+            JSON_INVALID_UTF8_SUBSTITUTE,
+        )];
     }
 
     /**

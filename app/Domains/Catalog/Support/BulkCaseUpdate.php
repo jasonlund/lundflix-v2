@@ -38,7 +38,7 @@ final class BulkCaseUpdate
             $caseBindings = array_merge($caseBindings, $case['bindings']);
         }
 
-        $update = (clone $query)->getQuery()->whereIn('_imdb_id', $matchedIds);
+        $update = (clone $query)->toBase()->whereIn('_imdb_id', $matchedIds);
 
         // The CASE placeholders sit in the SET clause, which the grammar renders
         // *before* the WHERE clause; Expression SET values carry no bindings of
