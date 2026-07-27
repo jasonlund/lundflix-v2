@@ -12,7 +12,8 @@ verbatim; derive/normalize downstream, not on ingest.
 
 **Exception — crosswalk ids SQL keys on** (`_imdb_id`, `_tmdb_id`): the raw stays
 (e.g. `_tvdb_remoteIds`), but the queryable id is **normalized at write time**
-through `Support\SourceId` (an upsert/`whereIn`/join key can't be a read accessor).
+through `Common\Support\SourceId` (an upsert/`whereIn`/join key can't be a read
+accessor).
 Malformed upstream → null. `Support\TvdbCrosswalk::normalize()` is the shared
 remoteIds → `{_imdb_id, _tmdb_id}` derivation used by `UpsertTvdbShows`. See the
 raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.

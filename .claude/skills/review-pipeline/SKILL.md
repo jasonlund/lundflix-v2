@@ -169,6 +169,12 @@ positives, never at the author's judgment.
   one Act per test), not duplication to be merged.
 - Domain calling another domain only through a `Contracts/` interface — intended
   boundary, not indirection to remove.
+- An ingest/mirror domain's Models declaring `belongsTo` **directly** onto
+  `Catalog\Models\*` via a crosswalk id (`_imdb_id`/`_tmdb_id`/`_tvdb_id`) — the
+  Download→Catalog precedent, endorsed per-ticket. `PlexLibrary`'s `PlexMovie`,
+  `PlexShow`, `PlexSeason`, and `PlexEpisode` are the current instances. This is a
+  deliberate exception to the "only through `Contracts/`" rule above, not a
+  boundary violation to route through a contract.
 - Feature tests with no per-file `uses(RefreshDatabase::class)` or
   `Http::preventStrayRequests()` — **both** are applied **globally** to the Feature
   suite in `tests/Pest.php` via `pest()->extend(TestCase::class)

@@ -1,0 +1,85 @@
+{
+    "MediaContainer": {
+        "size": 1,
+        "allowSync": true,
+        "art": "\/library\/metadata\/34112\/art\/1782985591",
+        "identifier": "com.plexapp.plugins.library",
+        "key": "34112",
+        "librarySectionID": 2,
+        "librarySectionTitle": "TV Shows",
+        "librarySectionUUID": "0be8114b-46ad-4ca1-872d-bb587e638350",
+        "mediaTagPrefix": "\/system\/bundle\/media\/flags\/",
+        "mediaTagVersion": 1777730215,
+        "nocache": true,
+        "parentIndex": 1,
+        "parentTitle": "24",
+        "parentYear": 2001,
+        "summary": "In this concept drama, each season takes place within one 24 hour period. Day 1: Jack Bauer is the head of field ops for an elite team of CTU agents who uncover an assassination plot targeting Presidential nominee David Palmer. Meanwhile, Jack's strained marriage to his wife, Teri, is pushed to the brink by the sudden disappearance of their troubled teenage daughter. What will the next 24 hours hold?",
+        "theme": "\/library\/metadata\/34112\/theme\/1782985591",
+        "thumb": "\/library\/metadata\/34112\/thumb\/1782985591",
+        "title1": "TV Shows",
+        "title2": "24",
+        "viewGroup": "season",
+        "viewMode": 65593,
+        "Metadata": [
+            {
+                "ratingKey": "34424",
+                "key": "\/library\/metadata\/34424\/children",
+                "parentRatingKey": "34112",
+                "guid": "plex:\/\/season\/602e68f2d17ae1002dc13d5e",
+                "parentGuid": "plex:\/\/show\/5d9c08713c3f87001f3505b6",
+                "parentSlug": "24",
+                "parentStudio": "Imagine Television Studios",
+                "type": "season",
+                "title": "Season 2",
+                "parentKey": "\/library\/metadata\/34112",
+                "parentTitle": "24",
+                "summary": "Who do you trust when the people who are sworn to protect you, conspire against you? Eighteen months after the assassination attempt on the presidential candidate, the White House face a new threat. The Counter Terrorist Unit (CTU) have been tipped off that a nuclear bomb is set to detonate somewhere in Los Angeles within the next 24 hours. The countdown has begun...",
+                "index": 2,
+                "parentIndex": 1,
+                "parentYear": 2001,
+                "thumb": "\/library\/metadata\/34424\/thumb\/1776560524",
+                "art": "\/library\/metadata\/34112\/art\/1782985591",
+                "parentThumb": "\/library\/metadata\/34112\/thumb\/1782985591",
+                "parentTheme": "\/library\/metadata\/34112\/theme\/1782985591",
+                "leafCount": 24,
+                "viewedLeafCount": 0,
+                "addedAt": 1776560519,
+                "updatedAt": 1776560524,
+                "Image": [
+                    {
+                        "alt": "Season 2",
+                        "type": "coverPoster",
+                        "url": "\/library\/metadata\/34424\/thumb\/1776560524"
+                    },
+                    {
+                        "alt": "Season 2",
+                        "type": "background",
+                        "url": "\/library\/metadata\/34112\/art\/1782985591"
+                    },
+                    {
+                        "alt": "Season 2",
+                        "type": "clearLogo",
+                        "url": "\/library\/metadata\/34112\/clearLogo\/1782985591"
+                    },
+                    {
+                        "alt": "Season 2",
+                        "type": "backgroundSquare",
+                        "url": "\/library\/metadata\/34112\/squareArt\/1782985591"
+                    }
+                ],
+                "UltraBlurColors": {
+                    "topLeft": "43260a",
+                    "topRight": "245f9f",
+                    "bottomRight": "092e59",
+                    "bottomLeft": "0d263a"
+                },
+                "Guid": [
+                    {
+                        "id": "tvdb:\/\/10064"
+                    }
+                ]
+            }
+        ]
+    }
+}

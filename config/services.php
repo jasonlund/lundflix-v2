@@ -48,6 +48,7 @@ return [
     ],
 
     'plex' => [
+        'token' => env('PLEX_TOKEN'),
         'client_identifier' => env('PLEX_CLIENT_IDENTIFIER', 'lundflix'),
         'server_identifier' => env('PLEX_SERVER_IDENTIFIER'),
     ],
