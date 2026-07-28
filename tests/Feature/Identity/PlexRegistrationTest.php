@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Identity\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /*
@@ -80,6 +81,22 @@ it('creates the plex user, logs them in, and sends them home', function () use (
         '_plex_thumb' => 'https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1',
     ]);
     $this->assertAuthenticatedAs(User::query()->where('email', 'user1@example.com')->sole());
+});
+
+it('logs the new user in for the session only, issuing no remember-me cookie', function () use ($verifiedPlexAccount): void {
+    // Arrange
+    $plex = $verifiedPlexAccount();
+
+    // Act
+    $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
+        'name' => 'Jason',
+        'password' => 'correct-horse-battery-staple',
+        'password_confirmation' => 'correct-horse-battery-staple',
+    ]);
+
+    // Assert
+    $response->assertCookieMissing(Auth::guard()->getRecallerName());
+    $this->assertAuthenticated();
 });
 
 it('clears the stashed plex identity once the account is created', function () use ($verifiedPlexAccount): void {

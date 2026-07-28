@@ -16,7 +16,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table): void {
             $plex = fn (string $column): string => "_plex_{$column}";
 
-            $table->string($plex('id'))->nullable()->unique();
+            $table->unsignedBigInteger($plex('id'))->nullable()->unique();
             $table->string($plex('uuid'))->nullable();
             $table->string($plex('username'))->nullable();
             $table->string($plex('thumb'))->nullable();

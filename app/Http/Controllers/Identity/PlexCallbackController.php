@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Identity;
 
+use App\Domains\Common\Exceptions\PlexAuthenticationFailed;
+use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\Common\Services\PlexApiService;
 use App\Domains\Identity\Exceptions\PlexAccountAlreadyRegistered;
 use App\Domains\Identity\Exceptions\PlexAccountLacksServerAccess;
+use App\Domains\Identity\Exceptions\PlexAccountMissingId;
 use App\Domains\Identity\Exceptions\PlexPinMissingFromSession;
 use App\Domains\Identity\Exceptions\PlexPinNotClaimed;
 use App\Domains\Identity\Models\User;
@@ -32,25 +35,41 @@ final readonly class PlexCallbackController
             return $this->refuse('plex.auth_failed');
         }
 
-        $token = $this->plex->getTokenFromPin($pinId);
+        // One try spans every Plex call: a transport failure or a token revoked
+        // mid-flow is the same story to the guest, and wrapping each call
+        // separately would repeat this catch three times.
+        try {
+            $token = $this->plex->getTokenFromPin($pinId);
 
-        if ($token === null) {
-            report(PlexPinNotClaimed::for($pinId));
+            if ($token === null) {
+                report(PlexPinNotClaimed::for($pinId));
+
+                return $this->refuse('plex.auth_failed');
+            }
+
+            $plexUser = $this->plex->getUserInfo($token);
+            $hasServerAccess = $this->plex->hasServerAccess($token);
+        } catch (PlexAuthenticationFailed|PlexRequestFailed $e) {
+            report($e);
 
             return $this->refuse('plex.auth_failed');
         }
 
-        $plexUser = $this->plex->getUserInfo($token);
+        // users._plex_id is a nullable integer column, so a null id would turn the
+        // lookup below into an IS NULL that matches any password-registered account.
+        if ($plexUser['id'] === null) {
+            report(PlexAccountMissingId::for($pinId));
 
-        if (! $this->plex->hasServerAccess($token)) {
+            return $this->refuse('plex.auth_failed');
+        }
+
+        if (! $hasServerAccess) {
             report(PlexAccountLacksServerAccess::for($plexUser));
 
             return $this->refuse('plex.no_access');
         }
 
-        // users._plex_id is a string column, so the int Plex id has to be cast
-        // or the lookup silently misses on a strict-typed driver.
-        $existing = User::query()->where('_plex_id', (string) $plexUser['id'])->first();
+        $existing = User::query()->where('_plex_id', $plexUser['id'])->first();
 
         if ($existing !== null) {
             report(PlexAccountAlreadyRegistered::for($plexUser, $existing->getKey()));

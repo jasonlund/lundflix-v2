@@ -34,7 +34,13 @@ class RegisterPlexUser
             'password_confirmation' => $input['password_confirmation'] ?? null,
         ], [
             'name' => ['required', 'string', 'max:255'],
-            'email' => [Rule::unique(User::class)],
+            'email' => [
+                'required',
+                'string',
+                'email',
+                'max:255',
+                Rule::unique(User::class),
+            ],
             'password' => $this->passwordRules(),
         ])->validate();
 

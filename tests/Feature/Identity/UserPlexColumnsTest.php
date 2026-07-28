@@ -5,11 +5,23 @@ declare(strict_types=1);
 use App\Domains\Identity\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+it('stores the numeric Plex account id in an integer column', function (): void {
+    // Arrange
+    // the migrated users table is what is under test, no state to set up
+
+    // Act
+    $type = Schema::getColumnType('users', '_plex_id');
+
+    // Assert
+    expect($type)->toBe('integer');
+});
 
 it('persists every _plex_* column on a user', function (): void {
     // Arrange
     $user = User::factory()->make([
-        '_plex_id' => '12345678',
+        '_plex_id' => 12345678,
         '_plex_uuid' => 'a1b2c3d4e5f60718',
         '_plex_username' => 'plexowner',
         '_plex_thumb' => 'https://plex.tv/users/a1b2c3d4e5f60718/avatar?c=1750000000',
@@ -22,7 +34,7 @@ it('persists every _plex_* column on a user', function (): void {
     // Assert
     $this->assertDatabaseHas('users', [
         'id' => $user->id,
-        '_plex_id' => '12345678',
+        '_plex_id' => 12345678,
         '_plex_uuid' => 'a1b2c3d4e5f60718',
         '_plex_username' => 'plexowner',
         '_plex_thumb' => 'https://plex.tv/users/a1b2c3d4e5f60718/avatar?c=1750000000',
@@ -59,10 +71,10 @@ it('omits _plex_token from a serialized user', function (): void {
 
 it('rejects a second user with the same _plex_id', function (): void {
     // Arrange
-    User::factory()->create(['_plex_id' => '12345678']);
+    User::factory()->create(['_plex_id' => 12345678]);
 
     // Act & Assert
-    expect(fn () => User::factory()->create(['_plex_id' => '12345678']))
+    expect(fn () => User::factory()->create(['_plex_id' => 12345678]))
         ->toThrow(QueryException::class);
 });
 

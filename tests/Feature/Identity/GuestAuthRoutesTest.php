@@ -55,3 +55,21 @@ it('redirects authenticated users from the login page to home', function (): voi
     // Assert
     $response->assertRedirect(route('home'));
 });
+
+// A guest who navigates straight to /login has no intended URL saved, so the
+// login response falls through to config('fortify.home') — that fallback has to
+// be the home route this app actually serves.
+it('redirects guests to home after a successful login', function (): void {
+    // Arrange
+    $user = User::factory()->create();
+
+    // Act
+    $response = $this->post('/login', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    // Assert
+    $response->assertRedirect(route('home'));
+    $this->assertAuthenticatedAs($user);
+});

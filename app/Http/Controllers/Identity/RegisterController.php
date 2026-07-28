@@ -49,7 +49,7 @@ final readonly class RegisterController
 
         PlexSession::forgetVerifiedIdentity();
 
-        Auth::login($user, remember: true);
+        Auth::login($user);
 
         return to_route('home');
     }

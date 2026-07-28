@@ -49,6 +49,8 @@ class FortifyServiceProvider extends ServiceProvider
 
         RateLimiter::for('two-factor', fn (Request $request) => Limit::perMinute(5)->by($request->session()->get('login.id')));
 
+        RateLimiter::for('plex-auth', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
+
         RateLimiter::for('passkeys', function (Request $request) {
             $credentialId = $request->input('credential.id');
 

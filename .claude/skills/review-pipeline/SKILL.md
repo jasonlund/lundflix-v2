@@ -180,6 +180,15 @@ positives, never at the author's judgment.
   suite in `tests/Pest.php` via `pest()->extend(TestCase::class)
   ->use(RefreshDatabase::class)->beforeEach(fn () => Http::preventStrayRequests())
   ->in('Feature')`. Declaring either per-file is redundant, not a missing safeguard.
+- A `// Act & Assert` label — the ` & ` collapse is the **sanctioned** AAA form
+  when the act and the assertion are one expression (typically
+  `expect(fn () => ...)->toThrow(...)`), guarded by
+  `tests/Unit/TestCommentStandardTest.php`. Splitting the block is a regression.
+- Third-party account identifiers (ids, usernames, emails) inside an **exception
+  message** — those exceptions are `report()`ed and never thrown, so the message
+  reaches the operator's log only while the user sees generic lang-file copy.
+  Carrying the detail that says which account failed and why is the design, not
+  PII leakage.
 
 ## Consensus Rules (Used by Orchestrator, Not Agents)
 

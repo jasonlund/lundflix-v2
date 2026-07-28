@@ -87,6 +87,22 @@ it('rejects a registration whose password is too weak and unconfirmed', function
     expect(User::query()->count())->toBe(0);
 });
 
+// Plex Home managed/restricted profiles can hold server access with no email at
+// all, so getUserInfo() types it string|null — it must fail validation rather
+// than reach the NOT NULL users.email column as an uncaught QueryException.
+it('rejects a plex account with no email', function () use ($verifiedPlexAccount): void {
+    // Arrange
+    $plex = [...$verifiedPlexAccount(), 'email' => null];
+
+    // Act & Assert
+    expect(fn (): User => resolve(RegisterPlexUser::class)->handle($plex, [
+        'name' => 'Jason',
+        'password' => 'correct-horse-battery-staple',
+        'password_confirmation' => 'correct-horse-battery-staple',
+    ]))->toThrow(ValidationException::class);
+    expect(User::query()->count())->toBe(0);
+});
+
 it('rejects a plex account whose email is already registered', function () use ($verifiedPlexAccount): void {
     // Arrange
     User::factory()->create(['email' => 'user1@example.com']);
