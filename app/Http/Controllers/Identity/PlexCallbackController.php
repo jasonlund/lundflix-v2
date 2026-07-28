@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domains\Identity\Http\Controllers;
+namespace App\Http\Controllers\Identity;
 
 use App\Domains\Common\Services\PlexApiService;
 use App\Domains\Identity\Exceptions\PlexAccountAlreadyRegistered;

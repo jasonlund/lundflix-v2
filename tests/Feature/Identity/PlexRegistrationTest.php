@@ -52,7 +52,7 @@ it('renders the registration form with the verified plex username and email', fu
 
     // Assert
     $response->assertInertia(fn (Assert $page): Assert => $page
-        ->component('auth/Register')
+        ->component('identity/Register')
         ->where('plexUsername', 'plexuser1')
         ->where('plexEmail', 'user1@example.com')
     );

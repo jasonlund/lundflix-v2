@@ -33,7 +33,7 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Fortify::loginView(fn () => Inertia::render('auth/Login'));
+        Fortify::loginView(fn () => Inertia::render('identity/Login'));
 
         Fortify::createUsersUsing(CreateUser::class);
         Fortify::updateUserProfileInformationUsing(UpdateUserProfile::class);

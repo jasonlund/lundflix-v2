@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use App\Domains\Identity\Http\Controllers\PlexAuthorizationController;
-use App\Domains\Identity\Http\Controllers\PlexCallbackController;
-use App\Domains\Identity\Http\Controllers\RegisterController;
+use App\Http\Controllers\Identity\PlexAuthorizationController;
+use App\Http\Controllers\Identity\PlexCallbackController;
+use App\Http\Controllers\Identity\RegisterController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 

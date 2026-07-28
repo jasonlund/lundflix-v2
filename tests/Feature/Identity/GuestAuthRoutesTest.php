@@ -41,7 +41,7 @@ it('renders the login page for guests', function (): void {
 
     // Assert
     $response->assertInertia(fn (Assert $page): Assert => $page
-        ->component('auth/Login')
+        ->component('identity/Login')
     );
 });
 

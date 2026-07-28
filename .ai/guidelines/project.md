@@ -45,11 +45,13 @@ app/Domains/
 - Folders use default Laravel names (`Models`, `Actions`, `Services`, `Events`,
   `Jobs`, `Policies`, `Enums`, `Exceptions`, `Data`, …). Create a subfolder only
   when you have something to put in it — no empty scaffolding.
-- **A domain owns its HTTP layer.** A feature's controllers live in
-  `App\Domains\{Domain}\Http\Controllers` (see `Identity`), and `routes/web.php`
-  points at them. Keep them thin — guard, call an Action or Service, respond.
-- Only *app-wide* infra/UI stays at `app/` root and *calls into* domains:
-  `app/Http/Middleware`, `app/Filament`, `app/Providers`.
+- **A domain owns business logic, not the HTTP layer.** Never create
+  `app/Domains/{Domain}/Http`. Infra/UI stays at `app/` root and *calls into*
+  domains: `app/Http`, `app/Filament`, `app/Providers`.
+- **Controllers live in `app/Http/Controllers/{Domain}`** — PascalCase folder per
+  bounded context, namespace `App\Http\Controllers\{Domain}` (see `Identity`),
+  and `routes/web.php` points at them. Keep them thin — guard, call an Action or
+  Service, respond.
 
 ### Action classes
 
@@ -97,9 +99,14 @@ namespace). Rule: *"Does it relate to a business domain/feature?"*
 resources/js/
 ├── common/            # generic, reusable, no domain knowledge (mirrors Domains\Common)
 ├── modules/{domain}/  # reusable domain UI/logic across pages (mirrors Domains\{Domain})
-└── pages/             # Inertia entry points by URL; page-local components only
+└── pages/{domain}/    # Inertia entry points by domain; page-local components only
 ```
 
+- Pages group by **domain**, not by URL — `pages/identity/Login.tsx`, lowercase
+  folder matching `modules/{domain}`. The render key is the path, so the
+  controller calls `Inertia::render('identity/Login')`. App-wide pages that
+  belong to no domain (e.g. `Welcome`) sit at the `pages/` root, mirroring
+  app-wide infra staying at `app/` root.
 - `pages/{x}/components/` = that page only. Shared domain UI → `modules/`.
 - PascalCase components, camelCase other files, kebab-case dirs, `Page`/`Layout`
   suffixes.

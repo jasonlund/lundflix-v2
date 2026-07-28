@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domains\Identity\Http\Controllers;
+namespace App\Http\Controllers\Identity;
 
 use App\Domains\Identity\Actions\RegisterPlexUser;
 use App\Domains\Identity\Support\PlexSession;
@@ -28,7 +28,7 @@ final readonly class RegisterController
             return to_route('login');
         }
 
-        return Inertia::render('auth/Register', [
+        return Inertia::render('identity/Register', [
             'plexUsername' => $plex['username'],
             'plexEmail' => $plex['email'],
         ]);
