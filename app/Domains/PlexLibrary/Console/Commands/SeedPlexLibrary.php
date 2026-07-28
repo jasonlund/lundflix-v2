@@ -27,4 +27,9 @@ final class SeedPlexLibrary extends PlexLibraryCommand
             ->whereIn('plex_library_id', $showLibraries->pluck('id'))
             ->get();
     }
+
+    protected function notifiesRecentlyAdded(): bool
+    {
+        return false;
+    }
 }

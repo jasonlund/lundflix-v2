@@ -172,17 +172,17 @@ it('upserts episode rows mapping raw plex facts and the guid crosswalk', functio
         ->and($episode->_tvdb_id)->toBe(189279);
 });
 
-it('returns the number of episodes it reconciled for the show', function (): void {
+it('reports the number of episodes it reconciled for the show', function (): void {
     // Arrange
     $show = PlexShow::factory()->create();
     $seasons = fixtureSeasonMetadata();
     $episodes = fixtureEpisodeMetadata();
 
     // Act
-    $count = resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
+    $total = resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
 
     // Assert
-    expect($count)->toBe(24);
+    expect($total)->toBe(24);
 });
 
 it('updates episodes in place on a second run without duplicating', function (): void {

@@ -41,4 +41,9 @@ final class SyncPlexLibrary extends PlexLibraryCommand
             })
             ->get();
     }
+
+    protected function notifiesRecentlyAdded(): bool
+    {
+        return true;
+    }
 }

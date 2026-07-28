@@ -11,6 +11,7 @@ use App\Domains\PlexLibrary\Models\PlexShow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Command\Command;
 
@@ -154,6 +155,39 @@ it('emits heartbeat output for each phase', function (): void {
         ->expectsOutputToContain('[episodes 72]')
         ->expectsOutputToContain('Done.')
         ->run();
+});
+
+// The channel IS configured, so the silence is the seed's own policy rather
+// than an unroutable notification: a first-time seed imports the entire library
+// and would otherwise announce every row in it.
+it('announces nothing even though it imports the whole library', function (): void {
+    // Arrange
+    Notification::fake();
+    config()->set('services.slack.notifications.channel', '#lundflix');
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:seed')->run();
+
+    // Assert
+    Notification::assertNothingSent();
+});
+
+// The row counts are what keep this honest: "no pending rows" is vacuously true
+// on an empty table, so the seed has to be proven to have inserted the rows it
+// then declared already-announced.
+it('leaves nothing pending for a later run to announce', function (): void {
+    // Arrange
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:seed')->run();
+
+    // Assert
+    expect(PlexMovie::query()->count())->toBe(3);
+    expect(PlexEpisode::query()->count())->toBeGreaterThan(0);
+    expect(PlexMovie::query()->whereNull('announced_at')->count())->toBe(0);
+    expect(PlexEpisode::query()->whereNull('announced_at')->count())->toBe(0);
 });
 
 it('emits an episode-count heartbeat every 100 episodes', function (): void {
