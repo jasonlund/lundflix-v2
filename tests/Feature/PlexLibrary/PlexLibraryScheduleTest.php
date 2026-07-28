@@ -17,7 +17,7 @@ it('registers the plex:sync command', function (): void {
     expect($hasCommand)->toBeTrue();
 });
 
-it('schedules plex:sync every five minutes without overlapping', function (): void {
+it('schedules plex:sync every minute without overlapping', function (): void {
     // Arrange
     $schedule = resolve(Schedule::class);
 
@@ -28,7 +28,7 @@ it('schedules plex:sync every five minutes without overlapping', function (): vo
 
     // Assert
     expect($event)->not->toBeNull();
-    expect($event->expression)->toBe('*/5 * * * *');
+    expect($event->expression)->toBe('* * * * *');
     expect($event->withoutOverlapping)->toBeTrue();
 });
 
