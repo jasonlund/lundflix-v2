@@ -55,8 +55,11 @@ app/Domains/
 - Folders use default Laravel names (`Models`, `Actions`, `Services`, `Events`,
   `Jobs`, `Policies`, `Enums`, `Exceptions`, `Data`, …). Create a subfolder only
   when you have something to put in it — no empty scaffolding.
-- Non-domain infra/UI (`app/Http`, `app/Filament`, `app/Providers`) stays at
-  `app/` root and *calls into* domains.
+- **A domain owns its HTTP layer.** A feature's controllers live in
+  `App\Domains\{Domain}\Http\Controllers` (see `Identity`), and `routes/web.php`
+  points at them. Keep them thin — guard, call an Action or Service, respond.
+- Only *app-wide* infra/UI stays at `app/` root and *calls into* domains:
+  `app/Http/Middleware`, `app/Filament`, `app/Providers`.
 
 ### Action classes
 
@@ -113,6 +116,27 @@ resources/js/
 - `pages/{x}/components/` = that page only. Shared domain UI → `modules/`.
 - PascalCase components, camelCase other files, kebab-case dirs, `Page`/`Layout`
   suffixes.
+
+#### No styling until the design phase (current standing rule)
+
+**Build every UI as bare, functional HTML — no `className`, no Tailwind utilities,
+no inline styles, no component library.** Native `<input>`, `<button>`, `<label>`,
+`<h1>`, `<p>`. Semantics and behavior only; the browser's default appearance is
+the intended appearance.
+
+- Applies to **all** new UI, not just auth. The design pass happens later as
+  deliberate work — styling written now is throwaway that biases it.
+- Attributes that carry **behavior or accessibility** stay: `htmlFor`/`id`,
+  `type`, `name`, `required`, `readOnly`, `autoComplete`, `role`, `aria-*`.
+- **Tailwind's stylesheet is not imported** during this phase (`resources/css/app.css`
+  keeps it commented out with the restore block). Its Preflight reset strips the
+  border and background off `<input>`/`<button>`, which renders bare HTML forms
+  invisible — so "no classes" and "Tailwind loaded" can't coexist. The package
+  stays installed and configured; don't add a UI dependency to fill the gap either.
+- Tests assert semantics (roles, labels, values, form `action`/`method`) — never
+  classes — so the eventual design pass won't break them.
+- Lift this rule only when the front-end design work starts in earnest; then
+  delete this block rather than letting it rot.
 
 ### Testing (DDD + TDD)
 

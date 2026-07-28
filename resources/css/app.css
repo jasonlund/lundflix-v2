@@ -1,11 +1,19 @@
-@import 'tailwindcss';
-
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
-
-@theme {
-    --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
-        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-        'Noto Color Emoji';
-}
+/*
+ * No styling until the design phase — see .ai/guidelines/project.md.
+ *
+ * Tailwind is deliberately NOT imported: its Preflight reset strips the border
+ * and background off <input>/<button>, so bare HTML forms render invisible.
+ * Restore the block below when the front-end design work starts in earnest.
+ *
+ * @import 'tailwindcss';
+ *
+ * @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+ * @source '../../storage/framework/views/*.php';
+ *
+ * @theme {
+ *     --font-sans:
+ *         'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+ *         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+ *         'Noto Color Emoji';
+ * }
+ */

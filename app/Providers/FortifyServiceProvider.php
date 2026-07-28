@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
 use Laravel\Fortify\Actions\RedirectIfTwoFactorAuthenticatable;
 use Laravel\Fortify\Fortify;
 
@@ -32,6 +33,8 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Fortify::loginView(fn () => Inertia::render('auth/Login'));
+
         Fortify::createUsersUsing(CreateUser::class);
         Fortify::updateUserProfileInformationUsing(UpdateUserProfile::class);
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
