@@ -14,7 +14,7 @@ it('shares a null user for guests', function (): void {
     // no authenticated user
 
     // Act
-    $response = $this->get('/');
+    $response = $this->get('/login');
 
     // Assert
     $response->assertInertia(fn (Assert $page): AssertableInertia => $page

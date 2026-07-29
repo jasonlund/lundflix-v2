@@ -31,6 +31,21 @@ reviews:
         `pest()->extend(TestCase::class)->use(RefreshDatabase::class)
         ->beforeEach(fn () => Http::preventStrayRequests())->in('Feature')`.
         Per-file declaration is redundant, not a missing safeguard.
+    - path: "tests/**"
+      instructions: >-
+        Do not flag a `// Act & Assert` label as a missing AAA separation. The
+        ` & ` collapse is the sanctioned form of this project's AAA standard for
+        cases where the act and the assertion are one expression — typically
+        `expect(fn () => ...)->toThrow(...)`. The standard is machine-guarded by
+        tests/Unit/TestCommentStandardTest.php; splitting these blocks is a
+        regression, not an improvement.
+    - path: "app/Domains/**/Exceptions/**"
+      instructions: >-
+        Do not flag third-party account identifiers (ids, usernames, emails)
+        embedded in an exception message as PII leakage. These exceptions are
+        `report()`ed and never thrown, so the message reaches the operator's log
+        only — the user sees generic copy from a lang file. Carrying the detail
+        that says which account failed and why is the deliberate design.
   auto_review:
     enabled: true
     # Only auto-review PRs targeting main, so branch-to-branch diffs don't

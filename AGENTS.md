@@ -55,8 +55,13 @@ app/Domains/
 - Folders use default Laravel names (`Models`, `Actions`, `Services`, `Events`,
   `Jobs`, `Policies`, `Enums`, `Exceptions`, `Data`, …). Create a subfolder only
   when you have something to put in it — no empty scaffolding.
-- Non-domain infra/UI (`app/Http`, `app/Filament`, `app/Providers`) stays at
-  `app/` root and *calls into* domains.
+- **A domain owns business logic, not the HTTP layer.** Never create
+  `app/Domains/{Domain}/Http`. Infra/UI stays at `app/` root and *calls into*
+  domains: `app/Http`, `app/Filament`, `app/Providers`.
+- **Controllers live in `app/Http/Controllers/{Domain}`** — PascalCase folder per
+  bounded context, namespace `App\Http\Controllers\{Domain}` (see `Identity`),
+  and `routes/web.php` points at them. Keep them thin — guard, call an Action or
+  Service, respond.
 
 ### Action classes
 
@@ -106,13 +111,39 @@ resources/js/
 
 ├── modules/{domain}/  # reusable domain UI/logic across pages (mirrors Domains\{Domain})
 
-└── pages/             # Inertia entry points by URL; page-local components only
+└── pages/{domain}/    # Inertia entry points by domain; page-local components only
 
 ```
 
+- Pages group by **domain**, not by URL — `pages/identity/Login.tsx`, lowercase
+  folder matching `modules/{domain}`. The render key is the path, so the
+  controller calls `Inertia::render('identity/Login')`. App-wide pages that
+  belong to no domain (e.g. `Welcome`) sit at the `pages/` root, mirroring
+  app-wide infra staying at `app/` root.
 - `pages/{x}/components/` = that page only. Shared domain UI → `modules/`.
 - PascalCase components, camelCase other files, kebab-case dirs, `Page`/`Layout`
   suffixes.
+
+#### No styling until the design phase (current standing rule)
+
+**Build every UI as bare, functional HTML — no `className`, no Tailwind utilities,
+no inline styles, no component library.** Native `<input>`, `<button>`, `<label>`,
+`<h1>`, `<p>`. Semantics and behavior only; the browser's default appearance is
+the intended appearance.
+
+- Applies to **all** new UI, not just auth. The design pass happens later as
+  deliberate work — styling written now is throwaway that biases it.
+- Attributes that carry **behavior or accessibility** stay: `htmlFor`/`id`,
+  `type`, `name`, `required`, `readOnly`, `autoComplete`, `role`, `aria-*`.
+- **Tailwind's stylesheet is not imported** during this phase (`resources/css/app.css`
+  keeps it commented out with the restore block). Its Preflight reset strips the
+  border and background off `<input>`/`<button>`, which renders bare HTML forms
+  invisible — so "no classes" and "Tailwind loaded" can't coexist. The package
+  stays installed and configured; don't add a UI dependency to fill the gap either.
+- Tests assert semantics (roles, labels, values, form `action`/`method`) — never
+  classes — so the eventual design pass won't break them.
+- Lift this rule only when the front-end design work starts in earnest; then
+  delete this block rather than letting it rot.
 
 ### Testing (DDD + TDD)
 
@@ -127,8 +158,9 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
   banners) — see the testing skills; guarded by `tests/Unit/TestCommentStandardTest.php`.
 - **Test behavior through public interfaces**, not implementation — tests survive
   refactoring. A slice = one behavior + its obvious variants.
-- **Tests mirror the domain tree:** `tests/Feature/{Domain}/` and
-  `tests/Unit/{Domain}/` mirror `app/Domains/{Domain}/`.
+- **Tests mirror the domain tree:** `tests/Feature/{Domain}/`,
+  `tests/Unit/{Domain}/`, and `tests/Browser/{Domain}/` mirror
+  `app/Domains/{Domain}/`.
 - **External-HTTP tests use real-data fixtures: byte-exact, in the API's native
   wire format**, committed under `tests/Fixtures/{Domain}/{source}/` in the exact
   extension the API returns (`.tsv.gz`, `.json`). Load via
@@ -144,6 +176,37 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
 - **Full-stack Inertia** → two cycles, backend first (assert component + props),
   then frontend (RTL renders with those props).
 - Detailed conventions: `.claude/skills/tdd-laravel-testing` + `tdd-react-testing`.
+
+#### Browser tests (Pest 4 + Playwright) — the seam the other two suites can't reach
+
+`tests/Browser/{Domain}/` drives real Chromium via `visit()`. It exists for one
+reason: a Feature test posts raw HTTP so React never runs, and a Vitest test
+stubs `@inertiajs/react` so the submit never leaves the component. **Neither
+proves the form a user actually fills reaches the controller.** Write a browser
+test only for that seam — a full-stack flow whose submit/redirect round trip is
+otherwise unproven. Everything a Feature or RTL test can assert stays there;
+they are far faster and browser coverage that duplicates them is pure drag.
+
+- **Same process as the test.** Pest serves the app on an in-process Amp socket
+  through `HttpKernel`, and merges `test()->prepareCookiesForRequest()` into
+  every browser request. So the whole Laravel test API reaches the browser:
+  `RefreshDatabase` on sqlite `:memory:`, `Http::fake()`,
+  `$this->withSession([...])`, `actingAs`, `assertAuthenticated`. Arrange
+  session/DB state in PHP exactly as in a Feature test — no UI setup walk.
+- **Never let a browser test reach a third party.** A leg that redirects
+  off-site (the Plex hand-off → `app.plex.tv`) is out of scope by rule: following
+  it hits a real host on every CI run. Cover that redirect with a Feature-test
+  header assertion and start the browser test at the first page we serve.
+- **Assert `assertNoJavaScriptErrors()`** on every page driven — it's the one
+  check no other suite can make. Avoid `assertNoSmoke()`/`assertNoConsoleLogs()`
+  unless the page is genuinely log-free.
+- **Locate by `#id`, not text**, for form fields — the no-styling phase means
+  bare HTML with stable ids, and text lookups break on the design pass.
+- **Requires built assets.** `npm run build` must have run, or Inertia 500s on
+  the Vite manifest. CI builds before Pest and installs Chromium with
+  `npx playwright install --with-deps chromium`.
+- Registered as its own `Browser` testsuite in `phpunit.xml` and bound in
+  `tests/Pest.php` (`->in('Feature', 'Browser')`). Screenshots are gitignored.
 
 Domain boundaries are enforced by **Pest architecture tests** (a domain's
 `Models` used only within it; `Common` depends on no concrete domain). The arch
