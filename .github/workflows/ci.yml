@@ -41,6 +41,11 @@ jobs:
           npm ci
           npm run build
 
+      # The Browser suite drives real Chromium; only that browser is installed
+      # because Pest defaults to it and nothing here opts into firefox/safari.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
       - name: Prepare application
         run: |
           cp .env.example .env

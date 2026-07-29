@@ -23,7 +23,7 @@ pest()->extend(TestCase::class)
     ->beforeEach(function (): void {
         Http::preventStrayRequests();
     })
-    ->in('Feature');
+    ->in('Feature', 'Browser');
 
 /*
 |--------------------------------------------------------------------------

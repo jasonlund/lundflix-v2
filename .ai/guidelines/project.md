@@ -145,8 +145,9 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
   banners) — see the testing skills; guarded by `tests/Unit/TestCommentStandardTest.php`.
 - **Test behavior through public interfaces**, not implementation — tests survive
   refactoring. A slice = one behavior + its obvious variants.
-- **Tests mirror the domain tree:** `tests/Feature/{Domain}/` and
-  `tests/Unit/{Domain}/` mirror `app/Domains/{Domain}/`.
+- **Tests mirror the domain tree:** `tests/Feature/{Domain}/`,
+  `tests/Unit/{Domain}/`, and `tests/Browser/{Domain}/` mirror
+  `app/Domains/{Domain}/`.
 - **External-HTTP tests use real-data fixtures: byte-exact, in the API's native
   wire format**, committed under `tests/Fixtures/{Domain}/{source}/` in the exact
   extension the API returns (`.tsv.gz`, `.json`). Load via
@@ -162,6 +163,37 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
 - **Full-stack Inertia** → two cycles, backend first (assert component + props),
   then frontend (RTL renders with those props).
 - Detailed conventions: `.claude/skills/tdd-laravel-testing` + `tdd-react-testing`.
+
+#### Browser tests (Pest 4 + Playwright) — the seam the other two suites can't reach
+
+`tests/Browser/{Domain}/` drives real Chromium via `visit()`. It exists for one
+reason: a Feature test posts raw HTTP so React never runs, and a Vitest test
+stubs `@inertiajs/react` so the submit never leaves the component. **Neither
+proves the form a user actually fills reaches the controller.** Write a browser
+test only for that seam — a full-stack flow whose submit/redirect round trip is
+otherwise unproven. Everything a Feature or RTL test can assert stays there;
+they are far faster and browser coverage that duplicates them is pure drag.
+
+- **Same process as the test.** Pest serves the app on an in-process Amp socket
+  through `HttpKernel`, and merges `test()->prepareCookiesForRequest()` into
+  every browser request. So the whole Laravel test API reaches the browser:
+  `RefreshDatabase` on sqlite `:memory:`, `Http::fake()`,
+  `$this->withSession([...])`, `actingAs`, `assertAuthenticated`. Arrange
+  session/DB state in PHP exactly as in a Feature test — no UI setup walk.
+- **Never let a browser test reach a third party.** A leg that redirects
+  off-site (the Plex hand-off → `app.plex.tv`) is out of scope by rule: following
+  it hits a real host on every CI run. Cover that redirect with a Feature-test
+  header assertion and start the browser test at the first page we serve.
+- **Assert `assertNoJavaScriptErrors()`** on every page driven — it's the one
+  check no other suite can make. Avoid `assertNoSmoke()`/`assertNoConsoleLogs()`
+  unless the page is genuinely log-free.
+- **Locate by `#id`, not text**, for form fields — the no-styling phase means
+  bare HTML with stable ids, and text lookups break on the design pass.
+- **Requires built assets.** `npm run build` must have run, or Inertia 500s on
+  the Vite manifest. CI builds before Pest and installs Chromium with
+  `npx playwright install --with-deps chromium`.
+- Registered as its own `Browser` testsuite in `phpunit.xml` and bound in
+  `tests/Pest.php` (`->in('Feature', 'Browser')`). Screenshots are gitignored.
 
 Domain boundaries are enforced by **Pest architecture tests** (a domain's
 `Models` used only within it; `Common` depends on no concrete domain). The arch
