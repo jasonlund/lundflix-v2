@@ -35,6 +35,8 @@ abstract class PlexLibraryCommand extends Command
 
     public function handle(): int
     {
+        $startedAt = now();
+
         $this->output->writeln('Connecting to Plex server…');
         $connection = $this->library->serverConnection();
         $uri = $connection['uri'];
@@ -113,9 +115,24 @@ abstract class PlexLibraryCommand extends Command
         if ($this->notifiesRecentlyAdded()) {
             $this->notifyRecentlyAdded->handle();
         } else {
-            // A seed's rows are backfill, not news.
-            PlexMovie::query()->whereNull('announced_at')->update(['announced_at' => now()]);
-            PlexEpisode::query()->whereNull('announced_at')->update(['announced_at' => now()]);
+            // This run's own rows are backfill, not news — and only its own: the
+            // scope clauses keep the stamp off a sibling server's backlog and off
+            // an arrival a concurrent sync left pending inside its debounce
+            // window. Either would be dropped for good, since ripe-announcement
+            // selection only ever sees announced_at IS NULL. created_at is the
+            // arrival clock (upsert writes it on insert only), so bounding by the
+            // run's start says "what this run inserted" without plumbing ids.
+            PlexMovie::query()
+                ->where('plex_server_id', $server->id)
+                ->where('created_at', '>=', $startedAt)
+                ->whereNull('announced_at')
+                ->update(['announced_at' => now()]);
+
+            PlexEpisode::query()
+                ->where('plex_server_id', $server->id)
+                ->where('created_at', '>=', $startedAt)
+                ->whereNull('announced_at')
+                ->update(['announced_at' => now()]);
         }
 
         $this->output->writeln('Done.');

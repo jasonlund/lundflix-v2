@@ -10,10 +10,13 @@ use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexSeason;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use App\Domains\PlexLibrary\Notifications\RecentlyAddedToPlex;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Notifications\SendQueuedNotifications;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 
 /*
  * The action takes no ids: it asks SelectRipeAnnouncements what is ripe, announces
@@ -67,6 +70,30 @@ it('stamps announced_at on exactly the rows it announced', function (): void {
     // Assert
     expect($plexMovie->fresh()->announced_at)->not->toBeNull();
     expect($plexEpisode->fresh()->announced_at)->not->toBeNull();
+});
+
+// The two stamps cover one digest, so a half-applied pair is unrecoverable: rows left
+// stamped for a send that never happened can never announce again, since selection only
+// ever looks at announced_at IS NULL. The stamps are mass updates, which fire no model
+// events, so a query listener is the only seam that can fail the second one in place.
+it('leaves no movie stamped when the episode stamp fails', function (): void {
+    // Arrange
+    Notification::fake();
+    config()->set('services.slack.notifications.channel', '#lundflix');
+    config()->set('services.plex.announce.movie_debounce_seconds', 120);
+    config()->set('services.plex.announce.episode_debounce_seconds', 300);
+    config()->set('services.plex.announce.hard_deadline_seconds', 900);
+    $plexMovie = movieAddedToPlex(secondsAgo: 300);
+    episodeAddedToPlex(secondsAgo: 600);
+    DB::listen(function (QueryExecuted $query): void {
+        if (Str::startsWith($query->sql, 'update') && Str::contains($query->sql, 'plex_episodes')) {
+            throw new RuntimeException('the episode stamp failed');
+        }
+    });
+
+    // Act & Assert
+    expect(fn () => resolve(NotifyRecentlyAdded::class)->handle())->toThrow(RuntimeException::class);
+    expect($plexMovie->fresh()->announced_at)->toBeNull();
 });
 
 // Movies and episodes ripen on separate clocks, so one run can announce the quiet
@@ -125,6 +152,28 @@ it('sends nothing and stamps nothing when no Slack channel is configured', funct
     // Assert
     Notification::assertNothingSent();
     expect($plexMovie->fresh()->announced_at)->toBeNull();
+});
+
+// The channel is an optional tunable that is unset by default, and the sync runs every
+// minute: a run that can send nothing must also read nothing, or a fresh workspace pays
+// for a full scan of both pending tables ~1,440 times a day for no effect.
+it('reads nothing when no Slack channel is configured', function (): void {
+    // Arrange
+    Notification::fake();
+    config()->set('services.slack.notifications.channel');
+    config()->set('services.plex.announce.movie_debounce_seconds', 120);
+    config()->set('services.plex.announce.hard_deadline_seconds', 900);
+    movieAddedToPlex(secondsAgo: 300);
+    $queries = [];
+    DB::listen(function (QueryExecuted $query) use (&$queries): void {
+        $queries[] = $query->sql;
+    });
+
+    // Act
+    resolve(NotifyRecentlyAdded::class)->handle();
+
+    // Assert
+    expect($queries)->toBeEmpty();
 });
 
 // Queueing is what keeps a Slack outage from failing the sync, and it needs its own

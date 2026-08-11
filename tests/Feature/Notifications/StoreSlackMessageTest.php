@@ -11,7 +11,10 @@ use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 /*
  * Notification::fake() short-circuits the send *before* NotificationSent fires, so
@@ -20,10 +23,11 @@ use Illuminate\Support\Facades\Notification;
  * response — the body is the shape chat.postMessage returns: ok, the resolved
  * channel id, the message ts, and the echoed message.
  *
- * The two rejection cases dispatch NotificationSent directly instead: an ok:false
- * body makes Laravel's own SlackChannel throw before it ever returns a response, and
- * a non-slack channel can't be produced by a Slack send at all, so a crafted event is
- * the only way to put the listener in front of those inputs.
+ * The rejection cases dispatch NotificationSent directly instead: an ok:false body
+ * makes Laravel's own SlackChannel throw before it ever returns a response, a
+ * non-slack channel can't be produced by a Slack send at all, and a well-formed
+ * chat.postMessage reply never carries a non-string channel/ts — so a crafted event
+ * with a synthetic body is the only way to put the listener in front of those inputs.
  */
 
 it('is registered as a listener for sent notifications', function (): void {
@@ -99,6 +103,70 @@ it('logs nothing for a delivery on a channel other than slack', function (): voi
 
     // Assert
     expect(SlackMessage::query()->count())->toBe(0);
+});
+
+it('logs nothing when the confirmed delivery carries a non-string channel or ts', function (array $body): void {
+    // Arrange
+    $delivered = new Response(new Psr7Response(200, [], (string) json_encode($body)));
+
+    // Act
+    event(new NotificationSent(
+        new AnonymousNotifiable,
+        new RecentlyAddedToPlex(['Blade Runner 2049 (2017)']),
+        'slack',
+        $delivered,
+    ));
+
+    // Assert
+    expect(SlackMessage::query()->count())->toBe(0);
+})->with([
+    'non-string channel' => [[
+        'ok' => true,
+        'channel' => 123,
+        'ts' => '1234567890.123456',
+        'message' => ['text' => 'Blade Runner 2049 (2017)'],
+    ]],
+    'non-string ts' => [[
+        'ok' => true,
+        'channel' => 'C123',
+        'ts' => 1234567890,
+        'message' => ['text' => 'Blade Runner 2049 (2017)'],
+    ]],
+]);
+
+it('swallows and logs a storage failure rather than breaking the delivery', function (): void {
+    // Arrange
+    // The message is already delivered, so a write failure must not escape the
+    // listener. Dropping `slack_messages` makes the real updateOrCreate raise a
+    // genuine QueryException; SQLite's transactional DDL rolls the drop back with
+    // RefreshDatabase. A throw here would surface as an errored test.
+    $delivered = new Response(new Psr7Response(200, [], (string) json_encode([
+        'ok' => true,
+        'channel' => 'C123',
+        'ts' => '1234567890.123456',
+        'message' => ['text' => 'Blade Runner 2049 (2017)'],
+    ])));
+    $spy = Log::spy();
+    Schema::drop('slack_messages');
+
+    // Act
+    event(new NotificationSent(
+        new AnonymousNotifiable,
+        new RecentlyAddedToPlex(['Blade Runner 2049 (2017)']),
+        'slack',
+        $delivered,
+    ));
+
+    // Assert
+    $spy->shouldHaveReceived('error')->once()->withArgs(function (string $message, array $context): bool {
+        $values = collect($context)->map(fn ($value): string => (string) $value);
+
+        return $message !== ''
+            && $context['notification'] === RecentlyAddedToPlex::class
+            && $context['channel'] === 'C123'
+            && $context['message_ts'] === '1234567890.123456'
+            && $values->contains(fn (string $value): bool => Str::contains($value, 'slack_messages'));
+    });
 });
 
 it('updates the existing row when the same Slack message is delivered again', function (): void {

@@ -21,8 +21,8 @@ final class RecentlyAddedDigest
         // Each kind is sorted within its own group and the groups are concatenated:
         // one sort over the finished lines would interleave shows among the movies.
         $movieLines = $movies
+            ->sortBy(fn (PlexMovie $plexMovie): string => self::movieTitle($plexMovie))
             ->map(fn (PlexMovie $plexMovie): string => self::movieLine($plexMovie))
-            ->sort()
             ->values();
 
         $showLines = $episodes
@@ -36,12 +36,20 @@ final class RecentlyAddedDigest
 
     private static function movieLine(PlexMovie $plexMovie): string
     {
-        // The catalog match is the curated record; Plex's own values come from
-        // the release filename, so they only stand in when nothing matched.
-        $title = self::escapeSlack($plexMovie->movie?->_tmdb_title ?? $plexMovie->_plex_title);
+        // Escaped here rather than in movieTitle() because lines() also sorts on that
+        // title, and every escape opens with '&', which would file "<Untitled>" ahead
+        // of the digit-led titles it belongs after.
+        $title = self::escapeSlack(self::movieTitle($plexMovie));
         $year = $plexMovie->movie?->_tmdb_release_date?->year ?? $plexMovie->_plex_year;
 
         return $year === null ? $title : "{$title} ({$year})";
+    }
+
+    private static function movieTitle(PlexMovie $plexMovie): string
+    {
+        // The catalog match is the curated record; Plex's own values come from
+        // the release filename, so they only stand in when nothing matched.
+        return $plexMovie->movie?->_tmdb_title ?? $plexMovie->_plex_title;
     }
 
     /**

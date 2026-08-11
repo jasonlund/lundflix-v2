@@ -8,6 +8,7 @@ use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Notifications\RecentlyAddedToPlex;
 use App\Domains\PlexLibrary\Support\RecentlyAddedDigest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
 final readonly class NotifyRecentlyAdded
@@ -16,17 +17,18 @@ final readonly class NotifyRecentlyAdded
 
     public function handle(): void
     {
-        $ripe = $this->selectRipe->handle();
+        $channel = config('services.slack.notifications.channel');
 
-        if ($ripe->movieIds === [] && $ripe->episodeIds === []) {
+        // An unconfigured channel returns before anything is read or stamped: marking
+        // rows announced that nobody was told about would drop them once Slack is wired
+        // up, and a run that can send nothing has no reason to scan for ripeness.
+        if (blank($channel)) {
             return;
         }
 
-        $channel = config('services.slack.notifications.channel');
+        $ripe = $this->selectRipe->handle();
 
-        // An unconfigured channel returns before anything is stamped: marking rows
-        // announced that nobody was told about would drop them once Slack is wired up.
-        if (blank($channel)) {
+        if ($ripe->movieIds === [] && $ripe->episodeIds === []) {
             return;
         }
 
@@ -48,10 +50,16 @@ final readonly class NotifyRecentlyAdded
         $lines = RecentlyAddedDigest::lines($movies, $episodes);
 
         // Stamped before the send, never after: the notification is queued, and a run
-        // 60s later would re-announce every row whose job is still in flight.
-        PlexMovie::query()->whereIn('id', $ripe->movieIds)->update(['announced_at' => now()]);
-        PlexEpisode::query()->whereIn('id', $ripe->episodeIds)->update(['announced_at' => now()]);
+        // 60s later would re-announce every row whose job is still in flight. Both
+        // stamps cover the one digest, so a half-applied pair would strand the stamped
+        // half — selection only ever revisits rows whose announced_at is still null.
+        DB::transaction(function () use ($ripe): void {
+            PlexMovie::query()->whereIn('id', $ripe->movieIds)->update(['announced_at' => now()]);
+            PlexEpisode::query()->whereIn('id', $ripe->episodeIds)->update(['announced_at' => now()]);
+        });
 
+        // The send stays outside the transaction: the default sync queue makes notify()
+        // an inline Slack call, and no rollback can recall a dispatched announcement.
         Notification::route('slack', $channel)->notify(new RecentlyAddedToPlex($lines));
     }
 }

@@ -82,6 +82,48 @@ it('sorts the movie lines alphabetically', function (): void {
     expect($lines)->toBe(['Anora (2024)', 'Manhunter (2024)', 'Zodiac (2024)']);
 });
 
+// Escaping is not order-preserving: raw '<' precedes '>', but their escapes sort
+// on the entity name, where 'gt' precedes 'lt'.
+it('sorts the movie lines on the raw title rather than the escaped one', function (): void {
+    // Arrange
+    foreach (['A>Movie', 'A<Movie'] as $title) {
+        PlexMovie::factory()->create([
+            '_tmdb_id' => null,
+            '_plex_title' => $title,
+            '_plex_year' => 2024,
+        ]);
+    }
+
+    // Act
+    $lines = RecentlyAddedDigest::lines(PlexMovie::query()->with('movie')->get(), collect());
+
+    // Assert
+    expect($lines)->toBe(['A&lt;Movie (2024)', 'A&gt;Movie (2024)']);
+});
+
+// Every escape opens with '&', which sorts ahead of the digits a title can start
+// with, so an escaped title would jump the whole numeric run it belongs after.
+it('keeps an escaped title in the alphabetical place its raw title holds', function (): void {
+    // Arrange
+    foreach (['<Untitled> Project' => 2024, 'Fast & Furious' => 2009, '2 Fast 2 Furious' => 2003] as $title => $year) {
+        PlexMovie::factory()->create([
+            '_tmdb_id' => null,
+            '_plex_title' => $title,
+            '_plex_year' => $year,
+        ]);
+    }
+
+    // Act
+    $lines = RecentlyAddedDigest::lines(PlexMovie::query()->with('movie')->get(), collect());
+
+    // Assert
+    expect($lines)->toBe([
+        '2 Fast 2 Furious (2003)',
+        '&lt;Untitled&gt; Project (2024)',
+        'Fast &amp; Furious (2009)',
+    ]);
+});
+
 it('renders a lone new episode as a single season and episode number', function (): void {
     // Arrange
     $season = matchedShowSeason(

@@ -6,6 +6,7 @@ use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
+use App\Domains\PlexLibrary\Models\PlexSeason;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -188,6 +189,59 @@ it('leaves nothing pending for a later run to announce', function (): void {
     expect(PlexEpisode::query()->count())->toBeGreaterThan(0);
     expect(PlexMovie::query()->whereNull('announced_at')->count())->toBe(0);
     expect(PlexEpisode::query()->whereNull('announced_at')->count())->toBe(0);
+});
+
+// The seed speaks only for the server it just crawled, so a sibling server's
+// backlog is somebody else's news — stamping it would silently drop rows
+// SelectRipeAnnouncements can never reach again (it only ever selects nulls).
+it('leaves another server pending', function (): void {
+    // Arrange
+    $other = PlexServer::factory()->create();
+    $library = PlexLibrary::factory()->create(['plex_server_id' => $other->id]);
+    $show = PlexShow::factory()->create(['plex_server_id' => $other->id, 'plex_library_id' => $library->id]);
+    $season = PlexSeason::factory()->create(['plex_show_id' => $show->id]);
+    $movie = PlexMovie::factory()->create([
+        'plex_server_id' => $other->id,
+        'plex_library_id' => $library->id,
+        'announced_at' => null,
+    ]);
+    $episode = PlexEpisode::factory()->create(['plex_season_id' => $season->id, 'announced_at' => null]);
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:seed')->run();
+
+    // Assert
+    expect($movie->refresh()->announced_at)->toBeNull();
+    expect($episode->refresh()->announced_at)->toBeNull();
+});
+
+// The row is one plex:sync inserted moments before the operator ran the seed,
+// still legitimately waiting out its debounce window. The seed only owns what
+// it inserted itself, so an arrival that predates the run stays pending —
+// arranged by writing created_at directly rather than travelling the clock.
+it('leaves a row that predates the run pending', function (): void {
+    // Arrange
+    $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
+    $library = PlexLibrary::factory()->create([
+        'plex_server_id' => $server->id,
+        '_plex_key' => '1',
+        '_plex_type' => 'movie',
+    ]);
+    $movie = PlexMovie::factory()->create([
+        'plex_server_id' => $server->id,
+        'plex_library_id' => $library->id,
+        '_plex_ratingKey' => '26278',
+        'announced_at' => null,
+        'created_at' => now()->subMinute(),
+    ]);
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:seed')->run();
+
+    // Assert
+    expect($movie->refresh()->announced_at)->toBeNull();
 });
 
 it('emits an episode-count heartbeat every 100 episodes', function (): void {
