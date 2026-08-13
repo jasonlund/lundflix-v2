@@ -8,10 +8,12 @@ use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
+use App\Domains\PlexLibrary\Notifications\RecentlyAddedToPlex;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Command\Command;
 
@@ -65,6 +67,13 @@ uses(RefreshDatabase::class);
 |     Metadata row; reused for every show's /children fetch.
 |   tests/Fixtures/PlexLibrary/plex/show_allLeaves_episodes.json — 24 episode
 |     Metadata rows (show 34112); reused for every show's /allLeaves fetch.
+|
+| The announcement is no longer this command's own output. A sync run leaves what
+| it inserted PENDING and announces nothing: the rows it just wrote are seconds
+| old, so they sit inside the debounce windows until a later run finds them quiet.
+| What ships, and when, belongs to SelectRipeAnnouncements / NotifyRecentlyAdded
+| and is asserted in their own tests — here the crawl only has to stay silent
+| while still proving it really inserted the rows it stayed silent about.
 */
 
 it('reconciles the top level on every run', function (): void {
@@ -180,6 +189,70 @@ it('re-crawls a show whose episode crawl failed even though nothing changed', fu
     // Assert
     Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves'));
     expect(PlexEpisode::query()->where('plex_show_id', showByRatingKey('34112')->id)->count())->toBeGreaterThan(0);
+});
+
+// The pending count is what keeps this honest: silence alone would also pass on a
+// run that inserted nothing at all.
+it('announces nothing for the arrivals it just added, which are still inside the debounce window', function (): void {
+    // Arrange
+    Notification::fake();
+    config()->set('services.slack.notifications.channel', '#lundflix');
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:sync')->run();
+
+    // Assert
+    Notification::assertNothingSent();
+    expect(PlexMovie::query()->whereNull('announced_at')->count())->toBe(3);
+    expect(PlexEpisode::query()->whereNull('announced_at')->count())->toBeGreaterThan(0);
+});
+
+// The channel is configured only for the SECOND run: the queue connection is
+// sync under test, so a first run that announced would deliver to Slack for
+// real instead of being counted by a fake that doesn't exist yet. Faking after
+// it therefore proves the silence belongs to the re-run, which reconciles the
+// identical payload and inserts nothing.
+it('announces nothing on a re-run that added nothing', function (): void {
+    // Arrange
+    fakePlexSeedCrawl();
+    $this->artisan('plex:sync')->run();
+    freshPlexHttpFactory();
+    fakePlexSeedCrawl();
+    Notification::fake();
+    config()->set('services.slack.notifications.channel', '#lundflix');
+
+    // Act
+    $this->artisan('plex:sync')->run();
+
+    // Assert
+    Notification::assertNothingSent();
+});
+
+// The window is passed by ageing the pending rows' created_at directly rather than
+// travelling the clock: the second crawl re-upserts the very same rows, and
+// created_at is insert-only, so the ageing survives the re-run. 1000s clears both
+// quiet windows and the 900s hard deadline, so every pending bucket is ripe.
+//
+// The channel is configured only for the SECOND run, after Notification::fake(),
+// for the same reason as the silent re-run test above: the queue connection is sync
+// under test, so a first run that announced would deliver to Slack for real.
+it('announces the pending arrivals in one message once the window has passed', function (): void {
+    // Arrange
+    fakePlexSeedCrawl();
+    $this->artisan('plex:sync')->run();
+    PlexMovie::query()->update(['created_at' => now()->subSeconds(1000)]);
+    PlexEpisode::query()->update(['created_at' => now()->subSeconds(1000)]);
+    freshPlexHttpFactory();
+    fakePlexSeedCrawl();
+    Notification::fake();
+    config()->set('services.slack.notifications.channel', '#lundflix');
+
+    // Act
+    $this->artisan('plex:sync')->run();
+
+    // Assert
+    Notification::assertSentOnDemandTimes(RecentlyAddedToPlex::class, 1);
 });
 
 /**

@@ -22,4 +22,9 @@ final class SeedPlexLibrary extends PlexLibraryCommand
     {
         // no predicate: the whole show set is the crawl set
     }
+
+    protected function notifiesRecentlyAdded(): bool
+    {
+        return false;
+    }
 }

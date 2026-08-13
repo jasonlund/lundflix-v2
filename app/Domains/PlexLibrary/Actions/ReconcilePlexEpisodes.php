@@ -16,7 +16,6 @@ final class ReconcilePlexEpisodes
     /**
      * @param  array<int, array<string, mixed>>  $children
      * @param  array<int, array<string, mixed>>  $allLeaves
-     * @return int the number of episodes reconciled
      */
     public function handle(PlexShow $show, array $children, array $allLeaves = []): int
     {

@@ -51,6 +51,12 @@ return [
         'token' => env('PLEX_TOKEN'),
         'client_identifier' => env('PLEX_CLIENT_IDENTIFIER', 'lundflix'),
         'server_identifier' => env('PLEX_SERVER_IDENTIFIER'),
+
+        'announce' => [
+            'movie_debounce_seconds' => (int) env('PLEX_ANNOUNCE_MOVIE_DEBOUNCE_SECONDS', 120),
+            'episode_debounce_seconds' => (int) env('PLEX_ANNOUNCE_EPISODE_DEBOUNCE_SECONDS', 300),
+            'hard_deadline_seconds' => (int) env('PLEX_ANNOUNCE_HARD_DEADLINE_SECONDS', 900),
+        ],
     ],
 
     'downloads' => [

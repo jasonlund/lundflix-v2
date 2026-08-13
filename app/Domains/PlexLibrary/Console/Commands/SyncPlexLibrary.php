@@ -33,4 +33,9 @@ final class SyncPlexLibrary extends PlexLibraryCommand
                 ->orWhereColumn('episodes_synced_at', '<', '_plex_updatedAt');
         });
     }
+
+    protected function notifiesRecentlyAdded(): bool
+    {
+        return true;
+    }
 }
