@@ -89,14 +89,13 @@ The skill owns the commit.
 1. Stage everything: `git add -A`.
 2. If nothing is staged (branch already fully committed and lint changed nothing),
    skip to push.
-3. Commit with a ticket-prefixed subject matching the repo convention
-   (`FLIX-XXX: <concise summary>`), and the standard trailer:
+3. Commit with a ticket-prefixed subject matching the repo convention:
    ```
    FLIX-XXX: <concise summary of the change>
-
-   Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
    ```
-   Squash lint fixups into this commit rather than adding a separate "lint" commit.
+   Append the co-author trailer the harness supplies for this session — never
+   hardcode one, it stamps a model version that rots. Squash lint fixups into this
+   commit rather than adding a separate "lint" commit.
 4. Push and set upstream: `git push -u origin HEAD`.
 
 ---
