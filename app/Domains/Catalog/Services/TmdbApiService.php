@@ -8,6 +8,7 @@ use App\Domains\Catalog\Exceptions\PooledIdFailed;
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
+use Generator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -92,17 +93,20 @@ final class TmdbApiService
     }
 
     /**
-     * @return array<int>
+     * @return Generator<int, int>
      */
-    public function changedMovieIds(?string $start = null, ?string $end = null): array
+    public function changedMovieIds(?string $start = null, ?string $end = null): Generator
     {
+        // Returned, not `yield from`-ed: changedIds() is itself a generator
+        // function, so this call builds the generator without running a line of
+        // it — the feed stays untouched until the caller iterates.
         return $this->changedIds('/movie/changes', $start, $end);
     }
 
     /**
-     * @return array<int>
+     * @return Generator<int, int>
      */
-    public function changedTvIds(?string $start = null, ?string $end = null): array
+    public function changedTvIds(?string $start = null, ?string $end = null): Generator
     {
         return $this->changedIds('/tv/changes', $start, $end);
     }
@@ -183,14 +187,19 @@ final class TmdbApiService
     }
 
     /**
-     * Page through a TMDB "changes" feed, collecting every changed id across
-     * all pages into a flat, de-duplicated list of ints.
+     * The next page is fetched only once the current page's ids are consumed, so a
+     * busy window never holds the whole feed in memory.
      *
-     * @return array<int>
+     * De-duplication is carried in a running $seen set rather than applied to a
+     * finished list: callers were written against a de-duplicated feed, and only a
+     * running set preserves that while streaming. The set holds bare ints, so it
+     * stays far cheaper than the page payloads it replaces.
+     *
+     * @return Generator<int, int>
      */
-    private function changedIds(string $path, ?string $start, ?string $end): array
+    private function changedIds(string $path, ?string $start, ?string $end): Generator
     {
-        $ids = [];
+        $seen = [];
         $page = 1;
         $totalPages = 1;
 
@@ -208,14 +217,20 @@ final class TmdbApiService
             $body = $this->decode($response) ?? [];
 
             foreach ($body['results'] ?? [] as $result) {
-                $ids[] = (int) $result['id'];
+                $id = (int) $result['id'];
+
+                if (isset($seen[$id])) {
+                    continue;
+                }
+
+                $seen[$id] = true;
+
+                yield $id;
             }
 
             $totalPages = (int) ($body['total_pages'] ?? 1);
             $page++;
         } while ($page <= $totalPages);
-
-        return array_values(array_unique($ids));
     }
 
     /**

@@ -8,8 +8,10 @@ use App\Domains\Catalog\Exceptions\TmdbShowCrosswalkCollision;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -33,6 +35,16 @@ uses(RefreshDatabase::class);
 | tv.json — the /tv/1399 detail response (Game of Thrones, _tmdb_name
 |   "Game of Thrones") with an images block. Its body is re-keyed onto id 1396
 |   to serve the reconcile hydrate (the only synthetic touch, accepted here).
+|
+| Hand-authored (synthetic) bodies, for inputs no real capture can supply:
+| — the empty single-page /tv/changes results page, which drives the update phase
+|   through its success path so it issues no anti-join query of its own.
+| — the single-page /tv/changes body built by fakeTmdbShowVolumeSync() from an
+|   arbitrary id list — `{"id":N}` results sized to straddle the hydrate batch and
+|   the probe buffer (whose sizes differ), which no committed capture provides.
+| — the images-stripped, per-id re-keyed tv.json detail body those volume runs
+|   serve: real bytes minus the 643-entry images block, which no capture ships
+|   without.
 |
 | The TMDB API host is faked and stray requests are globally prevented.
 */
@@ -95,6 +107,28 @@ function fakeTmdbShowUpdateSync(): void
 }
 
 /*
+| The mid-stream variant of fakeTmdbShowUpdateSync(): page 1 of /tv/changes is
+| served verbatim (tv_changes_page1.json, which declares total_pages:2), then page
+| TWO 404s — so the fatal TmdbRequestFailed lands only AFTER the feed has already
+| yielded page 1's ids, the failure ordering a lazily-paged feed introduces and the
+| page-ONE-404 fake can never produce. Every detail 404s: this fake exists to
+| observe what the update phase does with a half-read feed, not to hydrate.
+*/
+function fakeTmdbShowMidStreamChangesFailure(): void
+{
+    Http::fake([
+        '*/tv/changes*' => function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return (int) ($query['page'] ?? 1) === 2
+                ? Http::response('', 404)
+                : Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'));
+        },
+        '*api.themoviedb.org*' => Http::response('', 404),
+    ]);
+}
+
+/*
 | Shared by the marker-derived window tests: asserts the /tv/changes request
 | carried the given start/end dates, ignoring every non-changes request.
 */
@@ -109,6 +143,84 @@ function assertRequestedShowChangesWindow(string $start, string $end): void
         return ($query['start_date'] ?? null) === $start
             && ($query['end_date'] ?? null) === $end;
     });
+}
+
+/**
+ * Fakes the two endpoints a volume run touches: a single-page /tv/changes body
+ * listing exactly the given ids (empty by default, so the changes phase is a
+ * no-op), and a detail body for every requested id.
+ *
+ * The detail body is the real /tv/1399 capture with its images block dropped and
+ * its id re-keyed per request — the upsert keys on the payload's id, so re-keying
+ * lands each response on its own row. The images block MUST go: tv.json carries
+ * 643 image entries, so serving it across hundreds of rows fires ~643k media
+ * upserts and exhausts memory. These runs measure batch sizing, not artwork.
+ *
+ * @param  list<int>  $changedIds
+ */
+function fakeTmdbShowVolumeSync(array $changedIds = []): void
+{
+    $body = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+    unset($body['images']);
+
+    Http::fake([
+        '*/tv/changes*' => Http::response(json_encode([
+            'results' => array_map(fn (int $id): array => ['id' => $id], $changedIds),
+            'page' => 1,
+            'total_pages' => 1,
+            'total_results' => count($changedIds),
+        ])),
+        '*api.themoviedb.org*' => function (Request $request) use ($body) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+
+            if (preg_match('#/tv/(\d+)$#', $path, $matches) === 1) {
+                $body['id'] = (int) $matches[1];
+
+                return Http::response(json_encode($body));
+            }
+
+            return Http::response('', 404);
+        },
+    ]);
+}
+
+/*
+| Whether a statement is the changes phase's anti-join against our synced rows.
+| `tmdb_synced_at` alone can't say so here: unlike movies, the shows INSERT phase
+| filters on that same column (`whereNull('tmdb_synced_at')`), so the candidate
+| stream's own query names it too. The buffered `in (…)` list is what distinguishes
+| the anti-join — the candidate stream is PK-paginated, never id-listed.
+*/
+function isShowChangesProbe(string $sql): bool
+{
+    return isSyncedProbe($sql, requiresIdList: true);
+}
+
+/**
+ * The changes-phase anti-join statements captured in the query log.
+ *
+ * @return Collection<int, array{query: string, bindings: array<int, mixed>}>
+ */
+function loggedShowChangesProbes(): Collection
+{
+    return loggedStatements(isShowChangesProbe(...));
+}
+
+/**
+ * The narrow selects against `shows`, further confined to an `in (…)` list with no
+ * `_imdb_id`. Every clause earns its place: the candidate stream ALREADY selects a
+ * narrow `id, _tmdb_id, _imdb_id`, so `_tmdb_id` + "no `*`" is satisfied before any
+ * change — `in (…)` and the absent `_imdb_id` are what single out the images
+ * resolve. The changes anti-join is excluded — it plucks one column off an id list
+ * too and would otherwise satisfy the shape on its own.
+ *
+ * @return Collection<int, array{query: string, bindings: array<int, mixed>}>
+ */
+function narrowShowSelects(): Collection
+{
+    return narrowSelects('shows', fn (string $sql): bool => Str::contains($sql, 'in (')
+        && ! Str::contains($sql, '_imdb_id')
+        && ! isShowChangesProbe($sql));
 }
 
 it('hydrates a not-yet-synced show carrying a _tmdb_id directly', function (): void {
@@ -169,6 +281,24 @@ it('persists the hydrated show images into media', function (): void {
     expect($got->media()->where('is_active', true)->count())->toBeGreaterThan(0);
 });
 
+it('selects only id and _tmdb_id when resolving upserted shows for images', function (): void {
+    // Arrange
+    // The empty changes page matters twice over: it keeps the update phase on its
+    // success path, and it stops the changes anti-join — which plucks a single
+    // column off an id list, the very shape under test — from ever being issued.
+    Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+    fakeTmdbShowSync();
+    DB::enableQueryLog();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    // Presence, not absence: the wide Scout select always shares this log, so the
+    // only observable proof is that a narrow one was issued as well.
+    expect(narrowShowSelects()->count())->toBeGreaterThanOrEqual(1);
+});
+
 it('creates no identity-less rows while hydrating existing shows', function (): void {
     // Arrange
     Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
@@ -181,27 +311,6 @@ it('creates no identity-less rows while hydrating existing shows', function (): 
 
     // Assert
     expect(Show::count())->toBe($before);
-});
-
-it('caps hydrated shows with --limit', function (): void {
-    // Arrange
-    Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
-    Show::factory()->withTvdb()->create(['_tmdb_id' => 1396, 'tmdb_synced_at' => null]);
-    fakeTmdbShowSync();
-
-    // Act
-    $this->artisan('catalog:sync-shows-tmdb', ['--limit' => 1]);
-
-    // Assert
-    $hydrateCalls = 0;
-    Http::assertSent(function (Request $request) use (&$hydrateCalls): bool {
-        if (preg_match('#/3/tv/\d+$#', (string) parse_url($request->url(), PHP_URL_PATH))) {
-            $hydrateCalls++;
-        }
-
-        return true;
-    });
-    expect($hydrateCalls)->toBe(1);
 });
 
 it('skips an already-synced show on a default run', function (): void {
@@ -252,6 +361,63 @@ it('ignores a changed tv id not in the local catalog', function (): void {
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/325296'));
 });
 
+it('bounds a changes-phase hydrate batch to HYDRATE_SIZE', function (): void {
+    // Arrange
+    // 251 changed ids we already hold, one over the 250-id hydrate batch, so a
+    // bounded changes phase writes 250 + 1 = two upserts. Sizing its hydrate loop
+    // at the wider probe buffer collapses them into one write holding 251 decoded
+    // payloads at once. Every row is already synced, so the insert phase is a no-op
+    // and the count can only come from the changes phase.
+    $ids = range(700_000, 700_250);
+    $syncedAt = now()->toDateTimeString();
+    Show::insert(array_map(
+        fn (int $id): array => ['_tmdb_id' => $id, 'tmdb_synced_at' => $syncedAt],
+        $ids,
+    ));
+    fakeTmdbShowVolumeSync($ids);
+    // Enabled LAST, after the seeding: Show::insert() is itself an `insert into
+    // shows` and would be counted alongside the upserts under test.
+    DB::enableQueryLog();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    expect(loggedInsertsInto('shows')->count())->toBe(2);
+});
+
+it('buffers the changes anti-join at PROBE_SIZE', function (): void {
+    // Arrange
+    // 1001 changed ids we already hold, one over the 1000-id probe buffer, so the
+    // anti-join resolves in 1000 + 1 = two queries rather than one unbounded
+    // whereIn that risks the packet/placeholder limit.
+    //
+    // This one passes BEFORE the batching rewrite as well — it is a deliberate
+    // regression guard, not a driver: it is what stops the rewrite from collapsing
+    // the probe buffer down onto the narrower hydrate batch, which would quadruple
+    // these queries while saving nothing (a buffer holds bare ints, a hydrate batch
+    // holds decoded payloads).
+    $ids = range(800_000, 801_000);
+    $syncedAt = now()->toDateTimeString();
+    Show::insert(array_map(
+        fn (int $id): array => ['_tmdb_id' => $id, 'tmdb_synced_at' => $syncedAt],
+        $ids,
+    ));
+    fakeTmdbShowVolumeSync($ids);
+    // Enabled LAST, after the seeding: Show::insert() names tmdb_synced_at in its
+    // column list and would otherwise be mistaken for an anti-join.
+    DB::enableQueryLog();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    $probes = loggedShowChangesProbes();
+    expect($probes->count())->toBe(2);
+    expect($probes->map(fn (array $entry): int => count($entry['bindings']))->min())->toBeGreaterThanOrEqual(1);
+    expect($probes->map(fn (array $entry): int => count($entry['bindings']))->max())->toBeLessThanOrEqual(1000);
+});
+
 it('requests the changes window from the cached marker with a 6h overlap', function (): void {
     // Arrange
     Cache::flush();
@@ -296,18 +462,6 @@ it('skips the update phase with --fresh', function (): void {
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
 });
 
-it('skips the update phase with --limit', function (): void {
-    // Arrange
-    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
-    fakeTmdbShowUpdateSync();
-
-    // Act
-    $this->artisan('catalog:sync-shows-tmdb', ['--limit' => 1]);
-
-    // Assert
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
-});
-
 it('reports a persistent changes-feed failure and still exits SUCCESS', function (): void {
     // Arrange
     Exceptions::fake();
@@ -324,6 +478,56 @@ it('reports a persistent changes-feed failure and still exits SUCCESS', function
 
     // Assert
     Exceptions::assertReported(TmdbRequestFailed::class);
+});
+
+it('reports a mid-stream changes-feed failure and still exits SUCCESS', function (): void {
+    // Arrange
+    Exceptions::fake();
+    // The feed fails on page TWO, not page one: it yields page 1's ids first and
+    // only then 404s, so the throw surfaces mid-iteration rather than at the call.
+    // The lone row is already synced, so the insert phase is a no-op and both the
+    // exit code and the report can only come from the update phase.
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
+    fakeTmdbShowMidStreamChangesFailure();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb')->assertExitCode(0);
+
+    // Assert
+    Exceptions::assertReported(TmdbRequestFailed::class);
+});
+
+it('does not hydrate the un-flushed partial buffer when a later feed page fails', function (): void {
+    // Arrange
+    Exceptions::fake();
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
+    fakeTmdbShowMidStreamChangesFailure();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    // Page 1's two ids sit in a buffer far under PROBE_SIZE when page 2 throws, so
+    // they are never flushed — the partial buffer must be DROPPED, not hydrated.
+    // 23310 is the one held id among them, so an implementation that flushed the
+    // remainder from a `finally` would request /tv/23310 and fail this line. Half a
+    // window belongs to the next run (which the untouched marker guarantees), not to
+    // a run that already knows it read the feed incompletely.
+    Http::assertNotSent(fn (Request $request): bool => Str::contains((string) $request->url(), '/tv/23310'));
+});
+
+it('does not advance the shows marker on a mid-stream changes-feed failure', function (): void {
+    // Arrange
+    Cache::flush();
+    Exceptions::fake();
+    Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
+    fakeTmdbShowMidStreamChangesFailure();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
 });
 
 it('leaves the imdb-only show TVDB-only when its resolved tmdb id collides', function (): void {
@@ -371,8 +575,8 @@ it('reports the crosswalk collision', function (): void {
 
 it('hydrates every candidate across a set larger than one chunk without skipping rows', function (): void {
     // Arrange
-    // One more candidate than BATCH_SIZE (1000), so the run spans two chunkById
-    // pages. Each row carries a distinct _tmdb_id; hydration stamps
+    // One more candidate than four times HYDRATE_SIZE (250), so the run spans five
+    // chunkById pages. Each row carries a distinct _tmdb_id; hydration stamps
     // tmdb_synced_at, the very column the default run filters on — proving PK
     // pagination doesn't skip rows whose filtered column mutates mid-iteration.
     $rows = [];
@@ -380,25 +584,7 @@ it('hydrates every candidate across a set larger than one chunk without skipping
         $rows[] = ['_tmdb_id' => 500_000 + $i, '_imdb_id' => 'tt'.str_pad((string) (8_000_000 + $i), 7, '0', STR_PAD_LEFT)];
     }
     Show::insert($rows);
-    // Decode the detail fixture once and drop its images block: this test proves
-    // chunkById spans two pages without skipping rows, not image persistence.
-    // Keeping the 643-entry images block would fire ~643k media upserts across
-    // the 1001 rows and exhaust memory.
-    $body = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
-    unset($body['images']);
-    Http::fake([
-        '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
-        '*api.themoviedb.org*' => function (Request $request) use ($body) {
-            $path = (string) parse_url($request->url(), PHP_URL_PATH);
-            if (preg_match('#/tv/(\d+)$#', $path, $matches) === 1) {
-                $body['id'] = (int) $matches[1];
-
-                return Http::response(json_encode($body));
-            }
-
-            return Http::response('', 404);
-        },
-    ]);
+    fakeTmdbShowVolumeSync();
 
     // Act
     $this->artisan('catalog:sync-shows-tmdb');
@@ -406,6 +592,31 @@ it('hydrates every candidate across a set larger than one chunk without skipping
     // Assert
     expect(Show::whereNull('tmdb_synced_at')->count())->toBe(0);
     expect(Show::count())->toBe(1001);
+});
+
+it('hydrates the insert phase in HYDRATE_SIZE batches', function (): void {
+    // Arrange
+    // 501 hydratable candidates all fit inside ONE probe buffer, so the number of
+    // upserts can only be decided by the hydrate batch size: 250 + 250 + 1 = three
+    // writes. A hydrate batch as wide as the buffer collapses them into a single
+    // upsert holding all 501 decoded payloads at once. Distinct _tmdb_id per row:
+    // the column is uniquely indexed.
+    $rows = [];
+    for ($i = 0; $i < 501; $i++) {
+        $rows[] = ['_tmdb_id' => 600_000 + $i];
+    }
+    Show::insert($rows);
+    fakeTmdbShowVolumeSync();
+    // Enabled LAST, after the seeding: Show::insert() is itself an `insert into
+    // shows` and would be counted alongside the upserts under test.
+    DB::enableQueryLog();
+
+    // Act
+    $this->artisan('catalog:sync-shows-tmdb');
+
+    // Assert
+    expect(loggedInsertsInto('shows')->count())->toBe(3);
+    expect(Show::whereNotNull('tmdb_synced_at')->count())->toBe(501);
 });
 
 it('stamps one of two shows sharing an imdb id and never aborts the chunk', function (): void {
@@ -454,18 +665,6 @@ it('advances the shows marker on a --fresh run', function (): void {
 
     // Assert
     expect(Cache::get(SyncFeed::TmdbShows->cacheKey())->equalTo(now()))->toBeTrue();
-});
-
-it('does not advance the shows marker on a --limit run', function (): void {
-    // Arrange
-    Cache::flush();
-    fakeTmdbShowSync();
-
-    // Act
-    $this->artisan('catalog:sync-shows-tmdb', ['--limit' => 1]);
-
-    // Assert
-    expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
 });
 
 it('does not advance the shows marker when an insert-phase per-id hydrate fails', function (): void {

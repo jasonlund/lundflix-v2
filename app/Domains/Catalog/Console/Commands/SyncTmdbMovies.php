@@ -10,31 +10,22 @@ use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Services\TmdbExportService;
+use App\Domains\Catalog\Support\Batches;
 use App\Domains\Catalog\Support\SyncMarker;
+use App\Domains\Catalog\Support\SyncWindow;
 use Carbon\CarbonImmutable;
+use Generator;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
-use Illuminate\Console\Command;
-use Illuminate\Support\LazyCollection;
+use Illuminate\Database\Eloquent\Builder;
 
 #[Description('Two-phase TMDB movie sync: insert-new from the ids export, then update-changed from the marker-derived changes window')]
-#[Signature('catalog:sync-movies {--fresh} {--limit=}')]
-class SyncTmdbMovies extends Command
+#[Signature('catalog:sync-movies {--fresh}')]
+class SyncTmdbMovies extends TmdbSyncCommand
 {
-    /**
-     * Hydrate and upsert exported ids in chunks of this size.
-     */
-    private const int BATCH_SIZE = 1000;
-
-    /**
-     * TMDB daily export name for movies.
-     */
     private const string EXPORT = 'movie_ids';
 
-    /**
-     * Running count of hydrated movies, for the every-1000th progress heartbeat.
-     */
-    private int $processed = 0;
+    private UpsertTmdbMovies $upsertMovies;
 
     public function handle(
         TmdbExportService $export,
@@ -43,236 +34,161 @@ class SyncTmdbMovies extends Command
         UpsertTmdbImages $upsertImages,
         SyncMarker $marker,
     ): int {
-        // Capture the run-start before the export download so the marker advances to
-        // when this run began, not when it finished — updates landing mid-run are
-        // then re-covered by the next run's overlap window.
+        $this->api = $api;
+        $this->upsertMovies = $upsertMovies;
+        $this->upsertImages = $upsertImages;
+
+        // Run-start, not run-end: updates landing mid-run stay inside the next run's
+        // overlap window rather than falling in the gap.
         $startedAt = CarbonImmutable::now();
 
-        // Plain writeln progress, not spin()/progress(): those fork a renderer
-        // that overwrites the terminal (and render nothing under catalog:sync's
-        // nested Artisan::call), which swallowed the per-batch heartbeat below.
         $this->output->writeln('Downloading movie-ids export…');
         $file = $export->download(self::EXPORT);
 
         try {
             $this->output->writeln('Syncing movies…');
-            $insertFailed = $this->syncRows($export, $file, $api, $upsertMovies, $upsertImages);
+            $insertFailed = $this->syncRows($export, $file);
         } finally {
             @unlink($file);
         }
 
-        // The changes pass only makes sense for a full default run: --fresh already
-        // re-hydrates every exported id above (a changes pass would be redundant),
-        // and --limit is a bounded partial run that a full changes sweep would blow
-        // past.
+        // --fresh already re-hydrated every exported id, so a changes pass is redundant.
         $changesFailed = false;
 
-        if (! $this->option('fresh') && $this->option('limit') === null) {
-            $changesFailed = $this->updateChanged($marker, $api, $upsertMovies, $upsertImages);
+        if (! $this->option('fresh')) {
+            $changesFailed = $this->updateChanged($marker);
         }
 
-        // Advance only on a clean, unbounded run: a per-id or changes-feed failure
-        // means this run didn't fully cover its window, and --limit is a partial run,
-        // so the marker must not move past the span still owed to the next run.
-        if (! $insertFailed && ! $changesFailed && $this->option('limit') === null) {
-            $marker->advance(SyncFeed::TmdbMovies, $startedAt);
+        // A failure means the window wasn't fully covered — the marker must not move
+        // past a span still owed to the next run.
+        if (! $insertFailed && ! $changesFailed) {
+            $marker->advance($this->feed(), $startedAt);
         }
 
         return self::SUCCESS;
     }
 
-    /**
-     * Update-changed phase: refresh locally held movies that TMDB reports as
-     * changed within the marker-derived window, hydrating the intersection of the
-     * changes feed and our synced rows through the shared insert-phase plumbing.
-     *
-     * Returns true if the changes-feed fetch failed or any re-hydrate chunk failed,
-     * so the caller can leave the marker where it is and re-cover this window later.
-     */
-    private function updateChanged(
-        SyncMarker $marker,
-        TmdbApiService $api,
-        UpsertTmdbMovies $upsertMovies,
-        UpsertTmdbImages $upsertImages,
-    ): bool {
-        $this->output->writeln('Updating changed movies…');
-
-        $window = $marker->window(SyncFeed::TmdbMovies);
-
-        // Report rather than propagate a changes-feed or id-resolution failure so a
-        // transient error — paging the feed or querying our rows — can't abort the
-        // whole command; the insert phase already ran, so we exit SUCCESS with what
-        // we have.
-        try {
-            $changedIds = $api->changedMovieIds($window->startDate(), $window->endDate());
-
-            // Only refresh ids we already hold — a changed id we've never synced is an
-            // insert candidate the export phase owns, not an update. The changes feed
-            // is unbounded, so resolve the intersection in BATCH_SIZE slices: a single
-            // whereIn over a busy window risks the packet/placeholder limit.
-            $ids = [];
-
-            foreach (array_chunk($changedIds, self::BATCH_SIZE) as $chunk) {
-                $resolved = Movie::query()
-                    ->whereNotNull('tmdb_synced_at')
-                    ->whereIn('_tmdb_id', $chunk)
-                    ->pluck('_tmdb_id')
-                    ->all();
-
-                $ids = array_merge($ids, $resolved);
-            }
-        } catch (\Throwable $e) {
-            report($e);
-
-            return true;
-        }
-
-        $failed = false;
-
-        foreach (array_chunk($ids, self::BATCH_SIZE) as $chunk) {
-            $failed = $this->syncChunkSafely($chunk, $api, $upsertMovies, $upsertImages) || $failed;
-        }
-
-        return $failed;
-    }
-
-    /**
-     * Stream the kept rows, hydrating and upserting in BATCH_SIZE chunks.
-     *
-     * Returns true if any chunk failed, so the caller can leave the marker untouched.
-     */
-    private function syncRows(
-        TmdbExportService $export,
-        string $file,
-        TmdbApiService $api,
-        UpsertTmdbMovies $upsertMovies,
-        UpsertTmdbImages $upsertImages,
-    ): bool {
-        $ids = [];
-        $failed = false;
-
-        foreach ($this->keptRows($export, $file) as $row) {
-            $ids[] = (int) $row['id'];
-
-            if (count($ids) >= self::BATCH_SIZE) {
-                $failed = $this->syncChunkSafely($ids, $api, $upsertMovies, $upsertImages) || $failed;
-                $ids = [];
-            }
-        }
-
-        if ($ids !== []) {
-            $failed = $this->syncChunkSafely($ids, $api, $upsertMovies, $upsertImages) || $failed;
-        }
-
-        return $failed;
-    }
-
-    /**
-     * Run one chunk, reporting rather than propagating a failure so one bad batch
-     * (a transient API failure or a single malformed row) can't abort the entire
-     * ingest and silently truncate the catalog — the loop moves on to the next.
-     *
-     * Returns true if the chunk failed (a per-id pool miss, or a thrown error), so
-     * the failure gates the run's marker advance.
-     *
-     * @param  array<int, int>  $ids
-     */
-    private function syncChunkSafely(
-        array $ids,
-        TmdbApiService $api,
-        UpsertTmdbMovies $upsertMovies,
-        UpsertTmdbImages $upsertImages,
-    ): bool {
-        try {
-            return $this->syncChunk($ids, $api, $upsertMovies, $upsertImages);
-        } catch (\Throwable $e) {
-            report($e);
-
-            return true;
-        }
-    }
-
-    /**
-     * Stream the exported rows to process: skip movies already synced (unless
-     * `--fresh` reprocesses everything) and cap the result at `--limit`.
-     *
-     * @return LazyCollection<int, array{id: int|string}>
-     */
-    private function keptRows(TmdbExportService $export, string $file): LazyCollection
+    protected function feed(): SyncFeed
     {
-        $skip = $this->option('fresh')
-            ? []
-            : array_flip(Movie::query()->whereNotNull('tmdb_synced_at')->pluck('_tmdb_id')->filter()->all());
-
-        $rows = $export->rows($file)
-            ->reject(fn (array $row): bool => isset($skip[(int) $row['id']]));
-
-        $limit = $this->option('limit');
-
-        return $limit === null ? $rows : $rows->take((int) $limit);
+        return SyncFeed::TmdbMovies;
     }
 
     /**
-     * Hydrate one chunk of exported ids, upsert the non-404 movies, then persist
-     * each hydrated payload's images against its freshly upserted movie row.
-     *
-     * Returns true if a per-id fetch failed. The pool reports-not-throws a non-404
-     * per-id failure and drops that id from the keyed result, so a missing key —
-     * a short count against the requested ids — is the only signal it happened. A
-     * 404 stays present-as-null and a video:true entry stays present-as-key, so
-     * neither counts as a failure.
-     *
-     * @param  array<int, int>  $ids
+     * @return Builder<Movie>
      */
-    private function syncChunk(
-        array $ids,
-        TmdbApiService $api,
-        UpsertTmdbMovies $upsertMovies,
-        UpsertTmdbImages $upsertImages,
-    ): bool {
-        $results = $api->movies($ids);
+    protected function query(): Builder
+    {
+        return Movie::query();
+    }
 
-        $failed = count($results) < count(array_unique($ids));
+    protected function entityLabel(): string
+    {
+        return 'movies';
+    }
 
-        // Drop 404 (null) payloads, and video:true entries — a video:true TMDB
-        // record is a promo/trailer, not a real film, so it never gets ingested.
-        $payloads = array_values(array_filter(
+    protected function heartbeatTag(): string
+    {
+        return 'movies';
+    }
+
+    /**
+     * @return iterable<int, int>
+     */
+    protected function changedIds(SyncWindow $window): iterable
+    {
+        return $this->api->changedMovieIds($window->startDate(), $window->endDate());
+    }
+
+    /**
+     * @param  array<int, int>  $ids
+     * @return array<int, array<string, mixed>|null>
+     */
+    protected function hydrate(array $ids): array
+    {
+        return $this->api->movies($ids);
+    }
+
+    /**
+     * A `video:true` TMDB record is a promo/trailer, not a real film. It stays
+     * present-as-key in the results, so dropping it here never reads as a fetch
+     * failure.
+     *
+     * @param  array<int, array<string, mixed>|null>  $results
+     * @return list<array<string, mixed>>
+     */
+    #[\Override]
+    protected function payloads(array $results): array
+    {
+        return array_values(array_filter(
             $results,
             static fn (?array $payload): bool => $payload !== null && empty($payload['video']),
         ));
+    }
 
-        if ($payloads === []) {
-            return $failed;
-        }
+    /**
+     * @param  list<array<string, mixed>>  $payloads
+     */
+    protected function upsertPayloads(array $payloads): void
+    {
+        $this->upsertMovies->handle($payloads);
+    }
 
-        $upsertMovies->handle($payloads);
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function payloadTitle(array $payload): ?string
+    {
+        return $payload['title'] ?? null;
+    }
 
-        // Heartbeat: print every 1000th hydrated title. spin()/progress() render
-        // nothing under catalog:sync's nested Artisan::call, so this plain line
-        // is the only visible movement; the label distinguishes this phase.
-        foreach ($payloads as $payload) {
-            if (++$this->processed % 1000 === 0) {
-                $this->output->writeln("  [movies {$this->processed}] ".($payload['title'] ?? '—'));
-            }
-        }
+    private function syncRows(TmdbExportService $export, string $file): bool
+    {
+        $failed = false;
 
-        $movies = Movie::query()
-            ->whereIn('_tmdb_id', array_column($payloads, 'id'))
-            ->get()
-            ->keyBy('_tmdb_id');
+        foreach (Batches::of($this->keptRows($export, $file), self::HYDRATE_SIZE) as $rows) {
+            $ids = array_map(static fn (array $row): int => (int) $row['id'], $rows);
 
-        foreach ($payloads as $payload) {
-            if (! isset($payload['images'])) {
-                continue;
-            }
-
-            $movie = $movies->get($payload['id']);
-
-            if ($movie instanceof Movie) {
-                $upsertImages->handle($movie, $payload['images']);
-            }
+            $failed = $this->syncChunkSafely($ids) || $failed;
         }
 
         return $failed;
+    }
+
+    /**
+     * The exported rows not already synced (all of them under `--fresh`).
+     *
+     * Yields row by row rather than returning a set, so a batch hydrates before the
+     * next buffer is probed — the interleave is what keeps the resident set bounded.
+     *
+     * @return Generator<int, array{id: int|string}>
+     */
+    private function keptRows(TmdbExportService $export, string $file): Generator
+    {
+        if ($this->option('fresh')) {
+            yield from $export->rows($file);
+
+            return;
+        }
+
+        foreach (Batches::of($export->rows($file), self::PROBE_SIZE) as $buffer) {
+            yield from $this->unsyncedRows($buffer);
+        }
+    }
+
+    /**
+     * @param  array<int, array{id: int|string}>  $buffer
+     * @return Generator<int, array{id: int|string}>
+     */
+    private function unsyncedRows(array $buffer): Generator
+    {
+        $syncedIds = $this->syncedIdsAmong(
+            collect($buffer)->map(static fn (array $row): int => (int) $row['id'])
+        )->flip();
+
+        foreach ($buffer as $row) {
+            if (! $syncedIds->has((int) $row['id'])) {
+                yield $row;
+            }
+        }
     }
 }

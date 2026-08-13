@@ -10,27 +10,29 @@ use App\Domains\Catalog\Models\Show;
 final class CatalogImdbIds
 {
     /**
-     * Built once per ingest run over the whole catalog (~157k ids) and then probed
-     * once per streamed dataset row, so the shape is a hash set for O(1) `isset`
-     * lookups. Read-only walk: stream the single column with `cursor()` rather than
-     * hydrating models. Note `cursor()` still buffers the whole result set under
-     * MySQL PDO (no true server-side streaming) — fine at this scale, revisit if
-     * the catalog grows an order of magnitude.
+     * Probed once per flush with just that batch's ids, so nothing about the
+     * catalog's size is ever held in memory — two bounded `in (…)` reads (one per
+     * table) replace preloading the whole catalog up front.
      *
-     * @return array<string, true> every catalog _imdb_id, as a hash set
+     * @param  list<string>  $ids
+     * @return array<string, true> the probed ids the catalog holds, as a hash set
      */
-    public function all(): array
+    public function existing(array $ids): array
     {
-        $ids = [];
+        if ($ids === []) {
+            return [];
+        }
+
+        $existing = [];
 
         foreach ([Movie::query(), Show::query()] as $query) {
-            $rows = $query->select('_imdb_id')->whereNotNull('_imdb_id')->toBase()->cursor();
+            $found = $query->select('_imdb_id')->whereIn('_imdb_id', $ids)->toBase()->pluck('_imdb_id');
 
-            foreach ($rows as $row) {
-                $ids[(string) $row->_imdb_id] = true;
+            foreach ($found as $id) {
+                $existing[(string) $id] = true;
             }
         }
 
-        return $ids;
+        return $existing;
     }
 }

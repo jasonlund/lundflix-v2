@@ -9,6 +9,7 @@ use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
 use App\Domains\Catalog\Support\PooledResult;
+use Generator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -109,24 +110,29 @@ final class TvdbApiService
     }
 
     /**
-     * List TheTVDB EntityUpdate records since a timestamp for an entity type,
-     * walking the top-level `links.next` cursor until null and flattening every
-     * page's `data` records in page order — full record shape preserved.
+     * Streams TheTVDB EntityUpdate records as the `links.next` cursor advances:
+     * nothing is fetched until the caller iterates, one page is held at a time, and
+     * no further page is fetched once the caller stops.
      *
-     * @return array<int, array<string, mixed>>
+     * Records are yielded one at a time rather than `yield from $page['data']`,
+     * which would replay the inner array's own 0,1,2 keys on every page and let a
+     * key-preserving `iterator_to_array()` collapse the feed to one page.
+     *
+     * @return Generator<int, array<string, mixed>>
      */
-    public function updates(int $since, string $type): array
+    public function updates(int $since, string $type): Generator
     {
-        $updates = [];
         $next = "/updates?since={$since}&type={$type}";
 
         while ($next !== null) {
             $page = $this->decode($this->get($next)) ?? [];
-            $updates = [...$updates, ...($page['data'] ?? [])];
+
+            foreach ($page['data'] ?? [] as $record) {
+                yield $record;
+            }
+
             $next = $page['links']['next'] ?? null;
         }
-
-        return $updates;
     }
 
     /**

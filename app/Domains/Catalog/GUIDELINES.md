@@ -39,13 +39,19 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
 Three commands, one per title-level dataset, all keyed `tconst` → `_imdb_id` and
 all last in the `catalog:sync` order (TMDB/TVDB create the rows; IMDb enriches).
 
-- **Titles and akas write only rows already in the catalog** — `Support\CatalogImdbIds`
-  preloads every `_imdb_id` as a hash set once per run, and rows outside it are
-  skipped without buffering. At 52M akas rows, a query per row is not an option.
-- **Ratings has no such filter** — it buffers every streamed row and leans on
-  `BulkCaseUpdate`'s `WHERE IN` to no-op the unmatched ids per batch. title.ratings
-  carries only rated titles, a small fraction of the other two files, so the id set
-  would buy nothing the 5000-row flush cap doesn't already bound.
+- **Titles and akas write only rows already in the catalog, and decide that per
+  batch** — every streamed row/group is buffered, and `flush()` resolves membership
+  against just that batch's ids via `Support\CatalogImdbIds::existing()`: two
+  bounded `in (…)` reads (movies + shows) per flush, so nothing about the catalog's
+  size is ever held in memory. Unmatched entries are dropped before the importer
+  builds any values, and a batch left with nothing to write returns silently — no
+  importer call, no heartbeat (a real run flushes thousands of zero-match batches).
+- **Why the explicit probe, when ratings gets by without one?** Ratings buffers every
+  streamed row and lets `BulkCaseUpdate`'s own `WHERE IN` be the membership check.
+  Mirroring that here would make `ImportImdbAkas::akasColumn()` json-encode ~10M title
+  groups instead of ~265k, because title.akas covers far more titles than the catalog
+  holds. The cheap id probe keeps the CASE batches dense and the encode work
+  proportional to matches, at the cost of two extra bounded queries per flush.
 - **`isAdult=1` basics rows are dropped entirely** — no `_imdb_isAdult` column
   exists. TMDB's export already filters adult/softcore, but the TVDB show path
   has no adult filter, so the skip count is reported to measure what gets through.
@@ -53,12 +59,15 @@ all last in the `catalog:sync` order (TMDB/TVDB create the rows; IMDb enriches).
   rows accumulate until it changes. The last group never sees a change: closing
   it after the loop only *buffers* it, so the trailing `flush()` is what writes
   it. Neither is redundant.
-- **Batch sizes differ per dataset and are load-bearing.** `BulkCaseUpdate` binds
-  2 placeholders per column per row plus the `WHERE IN` id, so titles' 7 columns
-  cost 15/row — a 5000 batch would exceed MySQL's 65,535 cap (ceiling ≈ 4369),
-  hence 2000. Akas' single column is cheap in placeholders but each value is an
-  unbounded json blob, so its 1000 is a `max_allowed_packet` bound, not a
-  placeholder one. Both commands take `--batch=` to override.
+- **Batch sizes differ per dataset and bound the buffer, not the write.** Both
+  buffers hold **raw dataset rows/groups** — matched or not — and `BulkCaseUpdate`
+  re-narrows to the probed ids before building any CASE, so the write side only ever
+  sees the catalog's share of a batch. Titles' 2000 still respects the placeholder
+  ceiling it was picked for (2 bindings per column per row plus the `WHERE IN` id =
+  15/row over 7 columns, against MySQL's 65,535 cap ≈ 4369 rows). Akas' 1000 is now a
+  **memory** bound: one entry is a whole title's aka group and a popular title carries
+  100+ rows, so raising it is the risk, not lowering it. Both commands take `--batch=`
+  to override.
 
 ## Bulk CASE updates (`Support\BulkCaseUpdate`)
 
@@ -90,13 +99,13 @@ touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
   `catalog:sync-shows-tvdb` must have run first, or there is nothing to hydrate.
 - Hydrate phase — walks **our own** shows missing `tmdb_synced_at`, matched by
   `_tmdb_id`, and merges `_tmdb_*` metadata + artwork onto them. `--fresh`
-  reprocesses every candidate; `--limit` caps the set.
+  reprocesses every candidate.
 - imdb-only rows (have `_imdb_id`, no `_tmdb_id`) are reconciled best-effort via
   TMDB `/find`, stamping the resolved `_tmdb_id` onto the row before hydrating. A
   resolved id already claimed by another row can't be re-pointed (UNIQUE
   `_tmdb_id`) — the row stays TVDB-only and the collision is reported, same as an
   empty `/find` result.
-- Update-changed phase (default full run only, skipped under `--fresh`/`--limit`)
+- Update-changed phase (default full run only, skipped under `--fresh`)
   — re-hydrates the intersection of the marker-derived changes window (see
   **Incremental sync markers** below) and rows we've already synced.
 
@@ -113,7 +122,7 @@ touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
     so the next default `catalog:sync-shows-tmdb` hydrates them.
 - `catalog:sync-shows-tvdb` — the incremental `/updates`-feed sync, wired into
   `catalog:sync`. Reads the `tvdb_shows` marker (see **Incremental sync markers**)
-  for `since`, and advances it only on a clean, unbounded run; idempotent upserts
+  for `since`, and advances it only on a clean run; idempotent upserts
   make the overlap re-processing harmless.
 - `seriesMany(array $ids)` returns a `PooledResult` — the input-ordered id →
   raw body map (`null` on 404) plus `failedIds` (non-404 http/connection
@@ -123,7 +132,7 @@ touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
 
 - The incremental `/updates?type=episodes` sync. Reads the `tvdb_episodes` marker
   (see **Incremental sync markers**) for `since` — a 6h overlap, 24h first-run
-  fallback, capped at 14 days — and advances it only on a clean, unbounded run;
+  fallback, capped at 14 days — and advances it only on a clean run;
   idempotent upserts make the overlap re-processing harmless. The `catch` is
   narrowed to `TvdbRequestFailed`/`TvdbAuthenticationFailed` so a real bug (e.g. a
   `QueryException`) surfaces instead of being swallowed as a fetch failure.
@@ -139,6 +148,37 @@ touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
   episodes were fetched under). Custom orderings (DVD/absolute/alternate) are
   deferred to FLIX-225.
 
+## Shared sync-command mechanics
+
+Conventions every `catalog:sync-*` command follows, so the per-command classes
+don't restate them:
+
+- **Probe wide, hydrate narrow.** `PROBE_SIZE` (1000) bounds an id buffer of bare
+  ints; `HYDRATE_SIZE` (250) bounds a batch of decoded payloads (~100–400 KB each,
+  ~150 KB for TVDB `/series/{id}/extended`). They are separate numbers on purpose —
+  one hydrate batch as wide as a probe buffer is what puts hundreds of MB live at
+  once, and narrowing the probe to match would multiply cheap queries for nothing.
+  Neither bounds query size.
+- **Never read a whole id column.** Membership is resolved per buffer via a bounded
+  `in (…)` probe, so resident memory is independent of catalog size.
+- **One bad chunk never aborts a run.** Chunk work is wrapped, the failure is
+  `report()`ed, the loop moves on, and the chunk counts as failed — a throw would
+  silently truncate the catalog. TVDB narrows its `catch` to
+  `TvdbRequestFailed`/`TvdbAuthenticationFailed` so a real bug (`QueryException`)
+  still surfaces. Any chunk failure gates the marker advance (see below).
+- **Per-id failures are reported, not thrown — but the two APIs signal them
+  differently.** TMDB's `movies()`/`tvShows()` hand back only the results map and
+  drop a failed id's key, so a short count
+  (`count($results) < count(array_unique($ids))`) is the only way to detect one —
+  what `TmdbSyncCommand::syncChunk()` relies on. TVDB's `seriesMany()` returns a
+  `PooledResult` and names the failures in `PooledResult::failedIds`, which
+  `TvdbShowsCommand::chunkResult()` reads; never infer them from a short result
+  count. A 404 stays present-as-null either way and is not a failure.
+- **Heartbeats are plain `writeln`, never `spin()`/`progress()`** — those fork a
+  renderer that overwrites the terminal and renders nothing at all under
+  `catalog:sync`'s nested `Artisan::call`, which swallows the per-batch line. (The
+  line-by-line output rule itself is in `.ai/guidelines/project.md`.)
+
 ## Incremental sync markers (`SyncMarker` / `SyncFeed`)
 
 All four catalog syncs (`catalog:sync-movies`, `catalog:sync-shows-tmdb`,
@@ -153,11 +193,11 @@ window.
   `Cache::forever` — one key per `SyncFeed` case (`TvdbShows`/`TvdbEpisodes`/
   `TmdbShows`/`TmdbMovies`), so the four feeds advance independently.
 - **Zero-failure gate:** a run advances its marker only if it finished with **no**
-  failed ids/chunks **and** no `--limit`; `--fresh` still advances (clean
-  baseline). A per-id hydrate failure counts — the pooled `movies()`/`tvShows()`/
-  `seriesMany()` results **drop a failed id's key** (report-not-throw), so a short
-  result count (`count($results) < count(array_unique($ids))`) flags the failure
-  and holds the marker. Any failure → marker unchanged → the next run re-covers the
+  failed ids/chunks; `--fresh` still advances (clean baseline). A per-id hydrate
+  failure counts, detected per the failure-signal rule above — a short
+  `movies()`/`tvShows()` result count, or a non-empty `seriesMany()`
+  `PooledResult::failedIds` — and holds the marker. Any failure → marker
+  unchanged → the next run re-covers the
   whole gap (idempotent upserts make that safe). A cache flush just drops to the
   24h fallback, not data loss.
 

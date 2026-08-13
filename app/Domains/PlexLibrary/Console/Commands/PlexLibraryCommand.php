@@ -13,10 +13,13 @@ use App\Domains\PlexLibrary\Actions\UpsertPlexServer;
 use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
+use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use App\Domains\PlexLibrary\Services\PlexLibraryService;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Enumerable;
 use Throwable;
 
 abstract class PlexLibraryCommand extends Command
@@ -51,35 +54,11 @@ abstract class PlexLibraryCommand extends Command
             ->get()
             ->groupBy('_plex_type');
 
-        $movieTotal = 0;
-        $lastBeat = -1;
-
-        foreach ($libraries->get('movie', collect()) as $library) {
-            $before = $movieTotal;
-            $items = $this->library->fetchSectionItems($uri, $token, $library->_plex_key);
-            $movieTotal += $this->reconcileMovies->handle($server, $library, $items);
-
-            $lastBeat = $this->hundredBeat('movies', $before, $movieTotal, $lastBeat);
-        }
-
-        $this->flushTotal('movies', $movieTotal, $lastBeat);
+        $this->reconcileTopLevel($server, $uri, $token, $libraries->get('movie', collect()), $this->reconcileMovies, 'movies');
 
         $showLibraries = $libraries->get('show', collect());
 
-        $changed = [];
-        $showTotal = 0;
-        $lastBeat = -1;
-
-        foreach ($showLibraries as $library) {
-            $before = $showTotal;
-            $items = $this->library->fetchSectionItems($uri, $token, $library->_plex_key);
-            $showTotal += count($items);
-            $changed = [...$changed, ...$this->reconcileShows->handle($server, $library, $items)];
-
-            $lastBeat = $this->hundredBeat('shows', $before, $showTotal, $lastBeat);
-        }
-
-        $this->flushTotal('shows', $showTotal, $lastBeat);
+        $this->reconcileTopLevel($server, $uri, $token, $showLibraries, $this->reconcileShows, 'shows');
 
         $failed = false;
         $episodeTotal = 0;
@@ -87,7 +66,7 @@ abstract class PlexLibraryCommand extends Command
 
         // A single show's fetch failure is tolerated so one bad show doesn't sink
         // the whole crawl — mirrors SyncCatalog's report-and-continue posture.
-        foreach ($this->showsToCrawl($showLibraries, $changed) as $show) {
+        foreach ($this->showsToCrawl($showLibraries) as $show) {
             $before = $episodeTotal;
 
             try {
@@ -141,6 +120,48 @@ abstract class PlexLibraryCommand extends Command
     }
 
     /**
+     * Walk one library type's sections page by page — upsert each page, then
+     * sweep the library — heartbeating the running total as it goes.
+     *
+     * The sweep sits outside any catch by design: a page fetch that throws
+     * propagates, so a half-read library never authorizes it.
+     *
+     * @param  Collection<int, PlexLibrary>  $libraries
+     */
+    private function reconcileTopLevel(
+        PlexServer $server,
+        string $uri,
+        string $token,
+        Collection $libraries,
+        ReconcilePlexMovies|ReconcilePlexShows $reconciler,
+        string $label,
+    ): void {
+        $total = 0;
+        $lastBeat = -1;
+
+        foreach ($libraries as $library) {
+            // One clock per library, shared by every page: the sweep below deletes
+            // whatever this pass didn't stamp, so a per-page $now would leave page
+            // 1 behind its own library's watermark and delete it.
+            $now = now();
+
+            foreach ($this->library->fetchSectionItems($uri, $token, $library->_plex_key) as $page) {
+                $before = $total;
+                $total += $reconciler->upsertPage($server, $library, $page, $now);
+
+                // Beats per page, not per library: a production section walks for
+                // hours, and a beat deferred to the end of the library is silence
+                // followed by one burst.
+                $lastBeat = $this->hundredBeat($label, $before, $total, $lastBeat);
+            }
+
+            $reconciler->prune($server, $library, $now);
+        }
+
+        $this->flushTotal($label, $total, $lastBeat);
+    }
+
+    /**
      * Emit a heartbeat at every multiple-of-100 the running total crosses in
      * this step (a single batch can cross several), printing the clean
      * boundary. Returns the last multiple emitted, or $lastBeat if none.
@@ -166,15 +187,35 @@ abstract class PlexLibraryCommand extends Command
     }
 
     /**
-     * Select the shows whose episodes this command crawls — the single point of
-     * variation between the full seed (every show in the show libraries) and the
-     * incremental sync (only the changed set ReconcilePlexShows returned).
+     * The shows whose episodes this command crawls: narrow rows carrying only the
+     * columns the crawl reads and writes, drawn from the show libraries and
+     * narrowed by the subclass's {@see constrainCrawl()} predicate.
      *
      * @param  Collection<int, PlexLibrary>  $showLibraries
-     * @param  list<array{_plex_ratingKey: string, id: int}>  $changed
-     * @return Collection<int, PlexShow>
+     * @return Enumerable<int, PlexShow>
      */
-    abstract protected function showsToCrawl(Collection $showLibraries, array $changed): Collection;
+    private function showsToCrawl(Collection $showLibraries): Enumerable
+    {
+        $query = PlexShow::query()
+            ->whereIn('plex_library_id', $showLibraries->pluck('id'))
+            ->select(['id', '_plex_ratingKey', 'plex_server_id']);
+
+        $this->constrainCrawl($query);
+
+        // lazyById, never cursor()/lazy(): the crawl writes episodes_synced_at
+        // to the very rows it walks, and only PK pagination cannot skip or
+        // double-process a row when a non-key column mutates mid-iteration.
+        return $query->lazyById(500);
+    }
+
+    /**
+     * Narrow the crawl set — the single point of variation between the full seed
+     * (every show in the show libraries) and the incremental sync (only the shows
+     * whose episode watermark is behind).
+     *
+     * @param  Builder<PlexShow>  $query
+     */
+    abstract protected function constrainCrawl(Builder $query): void;
 
     /**
      * Whether this command announces the arrivals still awaiting announcement.

@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
 #[Description('Crawl every TheTVDB series and upsert shows with their artworks and seasons (one-time bootstrap); pass --ids-file (a CSV file of series ids) to re-hydrate specific series instead of crawling')]
-#[Signature('catalog:seed-shows-tvdb {--limit=} {--ids-file=}')]
+#[Signature('catalog:seed-shows-tvdb {--ids-file=}')]
 class SeedTvdbShows extends TvdbShowsCommand
 {
     public function handle(
@@ -53,13 +53,15 @@ class SeedTvdbShows extends TvdbShowsCommand
         }
 
         $this->output->writeln('Syncing shows…');
-        $failed = $this->syncIds($this->limited($ids), $api, $upsertShows, $upsertArtworks, $upsertSeasons);
+        $failedIds = $this->syncIds($ids, $api, $upsertShows, $upsertArtworks, $upsertSeasons)->failedIds;
 
         // TheTVDB offers no re-download list, so a dropped id has to heal within the
         // same run: one retry pass over the crawl's failures, then report the remainder.
-        $stillFailing = $failed === [] ? [] : $this->syncIds($failed, $api, $upsertShows, $upsertArtworks, $upsertSeasons);
+        $stillFailing = $failedIds === []
+            ? []
+            : $this->syncIds($failedIds, $api, $upsertShows, $upsertArtworks, $upsertSeasons)->failedIds;
 
-        $recovered = count($failed) - count($stillFailing);
+        $recovered = count($failedIds) - count($stillFailing);
         $this->output->writeln("catalog:seed-shows-tvdb retry: {$recovered} recovered, ".count($stillFailing).' still failing');
 
         if ($stillFailing !== []) {
@@ -68,6 +70,16 @@ class SeedTvdbShows extends TvdbShowsCommand
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * This command retries its own failures in-run (see handle()), so it needs the
+     * ids themselves.
+     */
+    #[\Override]
+    protected function collectsFailedIds(): bool
+    {
+        return true;
     }
 
     /**

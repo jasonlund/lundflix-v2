@@ -2,9 +2,16 @@
 
 declare(strict_types=1);
 
+use App\Domains\PlexLibrary\Models\PlexLibrary;
+use App\Domains\PlexLibrary\Models\PlexMovie;
+use App\Domains\PlexLibrary\Models\PlexServer;
+use App\Domains\PlexLibrary\Models\PlexShow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /*
@@ -81,10 +88,27 @@ function fixtureBytes(string $path): string
  * so a test can swap the default 3-show capture for the 12-show one without
  * touching production code. Defaults to the 3-show fixture every existing
  * caller relies on.
+ *
+ * $movieSectionPages replaces the movie section's single-capture sequence with an
+ * ordered list of pages, so a test can drive a genuinely multi-page section. Each
+ * entry is either a fixture path (served as a 200) or a closure invoked in its
+ * place, which returns the page's response and may run a side effect at the page
+ * boundary first (e.g. advancing the clock). Requests past the end of the list
+ * answer with the empty terminator page.
+ *
+ * $failMoviePage makes the nth (1-based) movie-section page fetch throw a
+ * ConnectionException instead of answering — the same synthesized transport
+ * failure as $failLeavesForRatingKey, here mid-walk. It latches on the page
+ * rather than on the request count, so a retried fetch fails on the same page
+ * instead of silently skipping ahead to the next one.
+ *
+ * @param  list<string|Closure>|null  $movieSectionPages
  */
 function fakePlexSeedCrawl(
     ?string $failLeavesForRatingKey = null,
     string $showSection = 'PlexLibrary/plex/section_show_all_includeGuids.json',
+    ?array $movieSectionPages = null,
+    ?int $failMoviePage = null,
 ): void {
     config([
         'services.plex.token' => 'owner-token-xyz',
@@ -105,6 +129,26 @@ function fakePlexSeedCrawl(
         '*/children*' => Http::response(fixtureBytes('PlexLibrary/plex/show_children_seasons.json')),
     ];
 
+    if ($movieSectionPages !== null || $failMoviePage !== null) {
+        $pages = $movieSectionPages ?? [];
+        $served = 0;
+
+        $fakes['*/library/sections/1/all*'] = function () use ($pages, $failMoviePage, $emptyPage, &$served) {
+            if ($served + 1 === $failMoviePage) {
+                throw new ConnectionException('Connection timed out');
+            }
+
+            $page = $pages[$served] ?? null;
+            $served++;
+
+            if ($page === null) {
+                return $emptyPage;
+            }
+
+            return is_string($page) ? Http::response(fixtureBytes($page)) : $page();
+        };
+    }
+
     if ($failLeavesForRatingKey !== null) {
         $fakes["*/library/metadata/{$failLeavesForRatingKey}/allLeaves*"] = fn () => throw new ConnectionException('Connection timed out');
     }
@@ -112,4 +156,109 @@ function fakePlexSeedCrawl(
     $fakes['*/allLeaves*'] = Http::response(fixtureBytes('PlexLibrary/plex/show_allLeaves_episodes.json'));
 
     Http::fake($fakes);
+}
+
+/**
+ * The query-log entries whose SQL satisfies $matches.
+ *
+ * The predicate always receives LOWERCASED SQL, and every matcher must stick to
+ * dialect-stable lowercase substrings — the suite runs sqlite while prod is MySQL —
+ * so no upsert conflict tail and no identifier quoting is ever asserted.
+ *
+ * @param  Closure(string): bool  $matches
+ * @return Collection<int, array{query: string, bindings: array<int, mixed>}>
+ */
+function loggedStatements(Closure $matches): Collection
+{
+    return collect(DB::getQueryLog())
+        ->filter(fn (array $entry): bool => $matches(Str::lower((string) $entry['query'])))
+        ->values();
+}
+
+/**
+ * The logged `insert into` statements naming one table. Scoping to the ingested
+ * table is the point: UpsertTmdbImages writes `insert into … media` on the very
+ * same path, and counting those would measure artwork, not batch size.
+ *
+ * @return Collection<int, array{query: string, bindings: array<int, mixed>}>
+ */
+function loggedInsertsInto(string $table): Collection
+{
+    return loggedStatements(fn (string $sql): bool => Str::startsWith($sql, 'insert into')
+        && Str::contains($sql, $table));
+}
+
+/**
+ * Whether a statement is a probe of our already-synced rows — SQL naming the
+ * `tmdb_synced_at` predicate, minus the upsert, whose `insert into` column list
+ * names that column too. Deliberately NOT "a select against the table": every
+ * upsert is trailed by Scout's SearchableScope chunkById, so counting those
+ * selects would measure Scout, not the probe. Lowercases its own input, since it
+ * is also called directly on raw QueryExecuted SQL.
+ *
+ * $requiresIdList additionally demands a buffered `in (…)` list, for the ingests
+ * whose own candidate stream filters on `tmdb_synced_at` too — see
+ * isShowChangesProbe().
+ */
+function isSyncedProbe(string $sql, bool $requiresIdList = false): bool
+{
+    $sql = Str::lower($sql);
+
+    return Str::contains($sql, 'tmdb_synced_at')
+        && (! $requiresIdList || Str::contains($sql, 'in ('))
+        && ! Str::startsWith($sql, 'insert into');
+}
+
+/**
+ * The logged narrow `select`s against one table: naming `_tmdb_id`, mentioning no
+ * `*`, and satisfying the caller's $alsoNarrow clauses (which exclude the probe
+ * shapes that would otherwise answer to the same description).
+ *
+ * Only ever asserted as a PRESENCE, never as "no `select *` against the table":
+ * every upsert is trailed by Scout's SearchableScope chunkById, which always
+ * issues a wide `select * … where _tmdb_id in (…)`, so the negative form could
+ * never go green.
+ *
+ * @param  Closure(string): bool  $alsoNarrow
+ * @return Collection<int, array{query: string, bindings: array<int, mixed>}>
+ */
+function narrowSelects(string $table, Closure $alsoNarrow): Collection
+{
+    return loggedStatements(fn (string $sql): bool => Str::startsWith($sql, 'select')
+        && Str::contains($sql, $table)
+        && Str::contains($sql, '_tmdb_id')
+        && ! Str::contains($sql, '*')
+        && $alsoNarrow($sql));
+}
+
+/**
+ * A saved plex_shows row scoped to the given server + library.
+ *
+ * The stamp defaults a minute back because `synced_at` is second-precision: a
+ * factory default of now() would NOT be `< $now` within the same wall-clock
+ * second and a prune assertion over it would pass vacuously. Pass $syncedAt to
+ * stamp a row AT the pass clock instead — the shape a prune must spare.
+ */
+function staleShow(PlexServer $server, PlexLibrary $library, string $ratingKey, ?DateTimeInterface $syncedAt = null): PlexShow
+{
+    return PlexShow::factory()->create([
+        'plex_server_id' => $server->id,
+        'plex_library_id' => $library->id,
+        '_plex_ratingKey' => $ratingKey,
+        'synced_at' => $syncedAt ?? now()->subMinute(),
+    ]);
+}
+
+/**
+ * A saved plex_movies row scoped to the given server + library, stamped by the
+ * same second-precision rule as staleShow().
+ */
+function staleMovie(PlexServer $server, PlexLibrary $library, string $ratingKey, ?DateTimeInterface $syncedAt = null): PlexMovie
+{
+    return PlexMovie::factory()->create([
+        'plex_server_id' => $server->id,
+        'plex_library_id' => $library->id,
+        '_plex_ratingKey' => $ratingKey,
+        'synced_at' => $syncedAt ?? now()->subMinute(),
+    ]);
 }

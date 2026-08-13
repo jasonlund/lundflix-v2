@@ -18,12 +18,12 @@ use Illuminate\Console\Attributes\Signature;
 /**
  * Incremental TheTVDB show sync. The /updates `since` is derived from the feed's
  * persisted marker: a 6h overlap re-fetches behind the marker, a first run with no
- * marker reaches back 24h, and the reach is capped at 14 days. A clean, unbounded
- * run advances the marker to its start time; a run with any failure or `--limit`
- * leaves the marker untouched so the missed span is re-covered next run.
+ * marker reaches back 24h, and the reach is capped at 14 days. A clean run advances
+ * the marker to its start time; a run that reports any failure leaves the marker
+ * untouched so the missed span is re-covered next run.
  */
 #[Description('Sync TheTVDB shows incrementally from the /updates feed since the last run marker')]
-#[Signature('catalog:sync-shows-tvdb {--limit=}')]
+#[Signature('catalog:sync-shows-tvdb')]
 class SyncTvdbShows extends TvdbShowsCommand
 {
     /**
@@ -44,11 +44,11 @@ class SyncTvdbShows extends TvdbShowsCommand
         $this->since = $marker->window(SyncFeed::TvdbShows)->sinceTimestamp();
 
         $this->output->writeln('Syncing shows…');
-        $failed = $this->syncIds($this->limited($this->ids($api)), $api, $upsertShows, $upsertArtworks, $upsertSeasons);
+        $result = $this->syncIds($this->ids($api), $api, $upsertShows, $upsertArtworks, $upsertSeasons);
 
-        // Advance only on a clean, unbounded run: a failed id or a --limit cap means
-        // this run didn't cover the whole window, so the marker must not move past it.
-        if ($failed === [] && $this->option('limit') === null) {
+        // Any failure means this run didn't cover the whole window, so the marker
+        // must not move past it.
+        if (! $result->failed) {
             $marker->advance(SyncFeed::TvdbShows, $startedAt);
         }
 

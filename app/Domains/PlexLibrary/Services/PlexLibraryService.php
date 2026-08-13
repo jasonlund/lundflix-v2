@@ -8,6 +8,7 @@ use App\Domains\Common\Exceptions\PlexAuthenticationFailed;
 use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\Common\Services\PlexApiService;
 use App\Domains\PlexLibrary\Exceptions\ConfiguredPlexServerUnavailable;
+use Generator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -54,11 +55,11 @@ final readonly class PlexLibraryService
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @return Generator<int, list<array<string, mixed>>>
      */
-    public function fetchSectionItems(string $uri, string $token, string $sectionKey): array
+    public function fetchSectionItems(string $uri, string $token, string $sectionKey): Generator
     {
-        return $this->fetchPagedMetadata($uri, $token, "/library/sections/{$sectionKey}/all");
+        yield from $this->fetchPagedMetadata($uri, $token, "/library/sections/{$sectionKey}/all");
     }
 
     /**
@@ -82,21 +83,19 @@ final readonly class PlexLibraryService
      */
     private function fetchMetadataRelation(string $uri, string $token, string $ratingKey, string $relation): array
     {
-        return $this->fetchPagedMetadata($uri, $token, "/library/metadata/{$ratingKey}/{$relation}");
+        return $this->materializePagedMetadata($uri, $token, "/library/metadata/{$ratingKey}/{$relation}");
     }
 
     /**
-     * Walk a MediaContainer endpoint in X-Plex-Container-Start/Size pages,
-     * concatenating every page's Metadata. Shared by the section walk and the
-     * per-show children/leaves walks: a show with more episodes than one
-     * container would otherwise come back truncated, and the reconcilers read a
-     * truncated list as "everything else is gone" and hard-delete the remainder.
+     * One X-Plex-Container-Start/Size page per yield, nothing requested until the
+     * consumer pulls. The walk MUST run to the end of the container: a truncated
+     * list reads to the reconcilers as "everything else is gone" and authorizes a
+     * hard delete. An empty page ends the walk without being yielded.
      *
-     * @return list<array<string, mixed>>
+     * @return Generator<int, list<array<string, mixed>>>
      */
-    private function fetchPagedMetadata(string $uri, string $token, string $path): array
+    private function fetchPagedMetadata(string $uri, string $token, string $path): Generator
     {
-        $members = [];
         $start = 0;
 
         do {
@@ -107,14 +106,27 @@ final readonly class PlexLibraryService
 
             $page = data_get($body, 'MediaContainer.Metadata', []);
             $totalSize = (int) data_get($body, 'MediaContainer.totalSize', 0);
-            $members = array_merge($members, $page);
+
+            if ($page === []) {
+                return;
+            }
+
+            yield $page;
 
             // Advance by the count actually returned, not the page size — a page
-            // can come back short, and the empty-page guard below then stops us.
+            // can come back short, and the empty-page guard above then stops us.
             $start += count($page);
-        } while ($start < $totalSize && $page !== []);
+        } while ($start < $totalSize);
+    }
 
-        return $members;
+    /**
+     * The bounded path: a single show's children/leaves fit in memory whole.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function materializePagedMetadata(string $uri, string $token, string $path): array
+    {
+        return collect($this->fetchPagedMetadata($uri, $token, $path))->flatten(1)->all();
     }
 
     /**

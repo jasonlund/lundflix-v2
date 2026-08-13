@@ -7,6 +7,7 @@ use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -89,6 +90,45 @@ it('reports how many adult rows it skipped', function (): void {
 
     // Act & Assert
     $this->artisan('catalog:sync-titles')->expectsOutputToContain('1 adult');
+});
+
+// The adult tally is catalog-scoped, not dataset-scoped: the fixture's one
+// adult row (tt0064057) is left unseeded, so a run that reports it would be
+// counting rows it was never going to write. This pins the adult check as
+// downstream of the catalog-membership decision, wherever that decision moves.
+it('counts only catalog-matched adult rows', function (): void {
+    // Arrange
+    Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
+
+    // Act & Assert
+    $this->artisan('catalog:sync-titles')->expectsOutputToContain('0 adult');
+});
+
+// The dataset is millions of rows, so the run must never hold the catalog's
+// whole _imdb_id column in memory: every id read is a bounded `in (…)` probe of
+// the ids currently in hand. The non-empty check keeps the guard from passing
+// for a run that read nothing at all.
+it('never reads the catalog ids unbounded', function (): void {
+    // Arrange
+    Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
+    $idColumnSelects = fn (): array => collect(DB::getQueryLog())
+        ->pluck('query')
+        ->map(fn (mixed $query): string => (string) $query)
+        ->filter(fn (string $query): bool => Str::startsWith($query, 'select') && Str::contains($query, '_imdb_id'))
+        ->values()
+        ->all();
+    DB::enableQueryLog();
+
+    // Act
+    $this->artisan('catalog:sync-titles');
+
+    // Assert
+    expect($idColumnSelects())->not->toBeEmpty();
+    foreach ($idColumnSelects() as $query) {
+        expect($query)->toContain('in (');
+    }
 });
 
 // Asserting the fetch alongside the cleanup keeps "no leftover temp file" from

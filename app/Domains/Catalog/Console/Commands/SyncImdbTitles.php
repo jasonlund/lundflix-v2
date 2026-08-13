@@ -10,27 +10,20 @@ use App\Domains\Catalog\Services\ImdbDatasetService;
 use App\Domains\Catalog\Support\CatalogImdbIds;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
-use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
 #[Description('Sync IMDb titles: re-download the title.basics dataset and refresh the basics columns on every matching catalog title')]
 #[Signature('catalog:sync-titles {--batch=}')]
-class SyncImdbTitles extends Command
+class SyncImdbTitles extends ImdbSyncCommand
 {
     /**
      * Default flush size for the accumulated basics buffer; --batch overrides it.
      *
-     * Lower than the ratings sync's 5000 because the bulk CASE update binds 15
-     * placeholders per row here — id + value for each of the 7 basics columns,
-     * plus the id again in the WHERE IN — against ratings' 5. That caps a safe
-     * batch at ~4300 rows before MySQL's 65,535 placeholder limit.
+     * Bounds both the raw dataset rows held in memory and the ids each flush's
+     * catalog-membership probe binds into its `in (…)` — not the bulk CASE update,
+     * which only ever writes the catalog's share of a batch.
      */
     private const int BATCH_SIZE = 2000;
-
-    /**
-     * Running count of titles applied, for the per-flush progress heartbeat.
-     */
-    private int $processed = 0;
 
     /**
      * Adult rows matched in the catalog but deliberately never written.
@@ -38,11 +31,11 @@ class SyncImdbTitles extends Command
     private int $adultSkipped = 0;
 
     public function __construct(
-        private readonly ImdbDatasetService $datasets,
-        private readonly CatalogImdbIds $catalogIds,
+        ImdbDatasetService $datasets,
+        CatalogImdbIds $catalogIds,
         private readonly ImportImdbTitles $importer,
     ) {
-        parent::__construct();
+        parent::__construct($datasets, $catalogIds);
     }
 
     public function handle(): int
@@ -54,9 +47,6 @@ class SyncImdbTitles extends Command
         // is the only visible movement.
         $this->output->writeln('Importing IMDb titles…');
 
-        // The whole catalog's ids up front: title.basics is millions of rows,
-        // so a membership query per row is not an option.
-        $ids = $this->catalogIds->all();
         $size = $this->batchSize();
 
         try {
@@ -64,16 +54,6 @@ class SyncImdbTitles extends Command
             $batch = [];
 
             foreach ($this->datasets->rows($path, ImdbDataset::TitleBasics) as $row) {
-                if (! isset($ids[$row['tconst']])) {
-                    continue;
-                }
-
-                if ($row['isAdult'] === true) {
-                    $this->adultSkipped++;
-
-                    continue;
-                }
-
                 $batch[$row['tconst']] = $row;
 
                 if (count($batch) >= $size) {
@@ -91,27 +71,41 @@ class SyncImdbTitles extends Command
         return self::SUCCESS;
     }
 
-    private function batchSize(): int
+    protected function defaultBatchSize(): int
     {
-        $batch = (int) $this->option('batch');
+        return self::BATCH_SIZE;
+    }
 
-        return $batch > 0 ? $batch : self::BATCH_SIZE;
+    protected function heartbeatTag(): string
+    {
+        return 'imdb titles';
     }
 
     /**
-     * Persist the accumulated basics buffer, emit a progress heartbeat, and reset it.
+     * Drop the adult rows, adding them to the run's skip tally.
      *
-     * @param  array<string, array<string, mixed>>  $batch
+     * Runs after the catalog-membership probe, so the tally stays catalog-scoped.
+     *
+     * @param  array<string, array<string, mixed>>  $rows
+     * @return array<string, array<string, mixed>>
      */
-    private function flush(array &$batch): void
+    #[\Override]
+    protected function writable(array $rows): array
     {
-        if ($batch === []) {
-            return;
-        }
+        $writable = collect($rows)
+            ->reject(fn (array $row): bool => $row['isAdult'] === true)
+            ->all();
 
-        $this->importer->handle($batch);
-        $this->processed += count($batch);
-        $this->output->writeln("  [imdb titles {$this->processed}]");
-        $batch = [];
+        $this->adultSkipped += count($rows) - count($writable);
+
+        return $writable;
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $rows
+     */
+    protected function import(array $rows): void
+    {
+        $this->importer->handle($rows);
     }
 }
