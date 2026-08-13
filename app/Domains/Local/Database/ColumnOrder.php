@@ -28,8 +28,12 @@ final class ColumnOrder
         $missing = $definitions->keys()->diff($targetOrder)->values()->all();
         $unknown = collect($targetOrder)->diff($definitions->keys())->values()->all();
 
-        if ($missing !== [] || $unknown !== []) {
-            throw ColumnOrderMismatch::for($table, $missing, $unknown);
+        // A repeat still covers every column, so the set diffs above both come back
+        // empty — yet it would anchor a column after itself, which MySQL rejects.
+        $repeated = collect($targetOrder)->duplicates()->unique()->values()->all();
+
+        if ($missing !== [] || $unknown !== [] || $repeated !== []) {
+            throw ColumnOrderMismatch::for($table, $missing, $unknown, $repeated);
         }
 
         $clauses = collect($targetOrder)

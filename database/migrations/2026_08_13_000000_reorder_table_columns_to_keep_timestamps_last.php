@@ -202,6 +202,10 @@ return new class extends Migration
             return;
         }
 
+        // MySQL auto-commits DDL and its grammar reports no schema transactions, so the
+        // migrator cannot roll the loop back — a failure part-way leaves earlier tables
+        // reordered and this migration unlogged. Re-running `migrate` is safe: reordering
+        // an already-correct table is a no-op, so the retry just finishes the remainder.
         foreach (self::TARGET as $table => $order) {
             $columns = array_map(
                 fn (object $column): array => (array) $column,

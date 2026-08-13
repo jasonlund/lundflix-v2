@@ -412,7 +412,10 @@ checkout/workspace has a usable dataset with no third-party API calls (FLIX-194)
   tooling) — `App\Domains\Local\Console\Commands` (registered in `bootstrap/app.php`
   `withCommands`), with `mysqldump`/`mysql` shelled through the `Process` facade
   (fakeable) and the pure helpers in `App\Domains\Local\Database` (`DumpFit`
-  fitting, `DumpSelection` coherence, `MysqlConnection` args).
+  fitting, `DumpSelection` coherence, `MysqlConnection` args). "Local-development
+  tooling" names the *commands* only — `App\Domains\Local\Database` also holds pure
+  schema helpers called from **migrations** (`ColumnOrder`), which run in every
+  environment, so the domain must ship to production.
 - **`database/dumps/*.sql.gz`** are generated blobs: **one file per table**
   (`movies`, `shows`, `seasons`, `media`, `downloads` — never `settings`, which is
   secret + `APP_KEY`-encrypted), each capped under 50 MB. `movies`/`shows` are the

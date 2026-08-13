@@ -16,14 +16,16 @@ final class ColumnOrderMismatch extends Exception
     /**
      * @param  list<string>  $missing  columns the table has that the target order omits
      * @param  list<string>  $unknown  columns the target order names that the table lacks
+     * @param  list<string>  $repeated  columns the target order names more than once
      */
-    public static function for(string $table, array $missing, array $unknown): self
+    public static function for(string $table, array $missing, array $unknown, array $repeated): self
     {
         return new self(sprintf(
-            'The target column order for [%s] is not a permutation of its columns (missing: [%s], unknown: [%s]).',
+            'The target column order for [%s] is not a permutation of its columns (missing: [%s], unknown: [%s], repeated: [%s]).',
             $table,
             implode(', ', $missing),
             implode(', ', $unknown),
+            implode(', ', $repeated),
         ));
     }
 }

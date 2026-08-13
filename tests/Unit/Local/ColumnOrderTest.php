@@ -86,6 +86,17 @@ it('rejects a target order omitting a column the table does have', function (): 
         ->toThrow(ColumnOrderMismatch::class);
 });
 
+it('rejects a target order naming a column twice even though every column is covered', function (): void {
+    // Arrange
+    // a repeat anchors a column after itself (`AFTER `title``), which MySQL rejects
+    $columns = showFullColumns();
+    $targetOrder = ['id', 'title', 'title', 'created_at', 'updated_at'];
+
+    // Act & Assert
+    expect(fn (): string => ColumnOrder::alterStatement('movies', $columns, $targetOrder))
+        ->toThrow(ColumnOrderMismatch::class);
+});
+
 it('rebuilds a nullable column with its exact type text and keeps it nullable', function (): void {
     // Arrange
     $columns = [
