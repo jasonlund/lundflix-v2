@@ -24,6 +24,22 @@ class PlexEpisode extends Model
         return $this->belongsTo(Episode::class, '_tvdb_id', '_tvdb_id');
     }
 
+    /**
+     * @return BelongsTo<PlexShow, $this>
+     */
+    public function plexShow(): BelongsTo
+    {
+        return $this->belongsTo(PlexShow::class);
+    }
+
+    /**
+     * @return BelongsTo<PlexSeason, $this>
+     */
+    public function plexSeason(): BelongsTo
+    {
+        return $this->belongsTo(PlexSeason::class);
+    }
+
     protected static function newFactory(): Factory
     {
         return PlexEpisodeFactory::new();

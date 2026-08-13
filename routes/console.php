@@ -12,4 +12,4 @@ Artisan::command('inspire', function (): void {
 
 Schedule::command('catalog:sync')->twiceDaily(0, 12)->timezone('America/Los_Angeles')->withoutOverlapping();
 
-Schedule::command('plex:sync')->everyFiveMinutes()->withoutOverlapping(30);
+Schedule::command('plex:sync')->everyMinute()->withoutOverlapping(30);

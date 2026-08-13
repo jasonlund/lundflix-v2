@@ -6,11 +6,13 @@ use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
+use App\Domains\PlexLibrary\Models\PlexSeason;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Command\Command;
 
@@ -154,6 +156,93 @@ it('emits heartbeat output for each phase', function (): void {
         ->expectsOutputToContain('[episodes 72]')
         ->expectsOutputToContain('Done.')
         ->run();
+});
+
+// The channel IS configured, so the silence is the seed's own policy rather
+// than an unroutable notification: a first-time seed imports the entire library
+// and would otherwise announce every row in it.
+it('announces nothing even though it imports the whole library', function (): void {
+    // Arrange
+    Notification::fake();
+    config()->set('services.slack.notifications.channel', '#lundflix');
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:seed')->run();
+
+    // Assert
+    Notification::assertNothingSent();
+});
+
+// The row counts are what keep this honest: "no pending rows" is vacuously true
+// on an empty table, so the seed has to be proven to have inserted the rows it
+// then declared already-announced.
+it('leaves nothing pending for a later run to announce', function (): void {
+    // Arrange
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:seed')->run();
+
+    // Assert
+    expect(PlexMovie::query()->count())->toBe(3);
+    expect(PlexEpisode::query()->count())->toBeGreaterThan(0);
+    expect(PlexMovie::query()->whereNull('announced_at')->count())->toBe(0);
+    expect(PlexEpisode::query()->whereNull('announced_at')->count())->toBe(0);
+});
+
+// The seed speaks only for the server it just crawled, so a sibling server's
+// backlog is somebody else's news — stamping it would silently drop rows
+// SelectRipeAnnouncements can never reach again (it only ever selects nulls).
+it('leaves another server pending', function (): void {
+    // Arrange
+    $other = PlexServer::factory()->create();
+    $library = PlexLibrary::factory()->create(['plex_server_id' => $other->id]);
+    $show = PlexShow::factory()->create(['plex_server_id' => $other->id, 'plex_library_id' => $library->id]);
+    $season = PlexSeason::factory()->create(['plex_show_id' => $show->id]);
+    $movie = PlexMovie::factory()->create([
+        'plex_server_id' => $other->id,
+        'plex_library_id' => $library->id,
+        'announced_at' => null,
+    ]);
+    $episode = PlexEpisode::factory()->create(['plex_season_id' => $season->id, 'announced_at' => null]);
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:seed')->run();
+
+    // Assert
+    expect($movie->refresh()->announced_at)->toBeNull();
+    expect($episode->refresh()->announced_at)->toBeNull();
+});
+
+// A seed that crashed mid-crawl leaves its own rows pending with an arrival time
+// older than the retry, and the retry's upsert only updates them, so created_at
+// still predates it. Those rows are the seed's own backlog: leaving them pending
+// hands the whole stranded batch to the next sync as news. Arranged by writing
+// created_at directly rather than travelling the clock.
+it('stamps a row on its own server that predates the run', function (): void {
+    // Arrange
+    $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
+    $library = PlexLibrary::factory()->create([
+        'plex_server_id' => $server->id,
+        '_plex_key' => '1',
+        '_plex_type' => 'movie',
+    ]);
+    $movie = PlexMovie::factory()->create([
+        'plex_server_id' => $server->id,
+        'plex_library_id' => $library->id,
+        '_plex_ratingKey' => '26278',
+        'announced_at' => null,
+        'created_at' => now()->subMinute(),
+    ]);
+    fakePlexSeedCrawl();
+
+    // Act
+    $this->artisan('plex:seed')->run();
+
+    // Assert
+    expect($movie->refresh()->announced_at)->not->toBeNull();
 });
 
 it('emits an episode-count heartbeat every 100 episodes', function (): void {

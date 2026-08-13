@@ -25,6 +25,16 @@ final class ReconcilePlexMovies
             $items,
         );
 
+        $this->upsertAndPrune($server, $library, $rows);
+
+        return count($rows);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function upsertAndPrune(PlexServer $server, PlexLibrary $library, array $rows): void
+    {
         if ($rows !== []) {
             $updateColumns = array_values(array_diff(
                 array_keys($rows[0]),
@@ -34,16 +44,15 @@ final class ReconcilePlexMovies
             PlexMovie::upsert($rows, ['plex_server_id', '_plex_ratingKey'], $updateColumns);
         }
 
-        // Prune this library's rows that were absent from the payload. Reuse the
-        // ratingKeys the upsert rows already cast rather than re-deriving them; an
-        // empty payload leaves whereNotIn([]), a full-clear reconcile of the scope.
+        // The payload only speaks for this server's library, so the prune is scoped
+        // to both: server because `_plex_ratingKey` is unique only within a server,
+        // and library so reconciling one never deletes a sibling library's movies.
+        // An empty payload leaves whereNotIn([]) — a full clear of that scope.
         PlexMovie::query()
             ->where('plex_server_id', $server->id)
             ->where('plex_library_id', $library->id)
             ->whereNotIn('_plex_ratingKey', array_column($rows, '_plex_ratingKey'))
             ->delete();
-
-        return count($rows);
     }
 
     /**

@@ -23,16 +23,16 @@ uses(RefreshDatabase::class);
 |--------------------------------------------------------------------------
 */
 
-it('inserts one plex_movies row per Metadata item and returns the count', function (): void {
+it('inserts one plex_movies row per Metadata item and reports the reconciled total', function (): void {
     // Arrange
     [$server, $library] = serverWithLibrary();
     $items = fixtureMovieItems();
 
     // Act
-    $count = resolve(ReconcilePlexMovies::class)->handle($server, $library, $items);
+    $total = resolve(ReconcilePlexMovies::class)->handle($server, $library, $items);
 
     // Assert
-    expect($count)->toBe(3)
+    expect($total)->toBe(3)
         ->and(PlexMovie::query()->where('plex_server_id', $server->id)->count())->toBe(3);
 });
 

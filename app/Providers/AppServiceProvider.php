@@ -7,8 +7,11 @@ namespace App\Providers;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Identity\Models\User;
+use App\Domains\Notifications\Listeners\StoreSlackMessage;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Notifications\Events\NotificationSent;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -34,5 +37,7 @@ class AppServiceProvider extends ServiceProvider
             'show' => Show::class,
             'user' => User::class,
         ]);
+
+        Event::listen(NotificationSent::class, StoreSlackMessage::class);
     }
 }

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Domains\PlexLibrary\Console\Commands;
 
+use App\Domains\PlexLibrary\Actions\NotifyRecentlyAdded;
 use App\Domains\PlexLibrary\Actions\ReconcilePlexEpisodes;
 use App\Domains\PlexLibrary\Actions\ReconcilePlexLibraries;
 use App\Domains\PlexLibrary\Actions\ReconcilePlexMovies;
 use App\Domains\PlexLibrary\Actions\ReconcilePlexShows;
 use App\Domains\PlexLibrary\Actions\UpsertPlexServer;
+use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
+use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use App\Domains\PlexLibrary\Services\PlexLibraryService;
 use Illuminate\Console\Command;
@@ -25,6 +28,7 @@ abstract class PlexLibraryCommand extends Command
         private readonly ReconcilePlexMovies $reconcileMovies,
         private readonly ReconcilePlexShows $reconcileShows,
         private readonly ReconcilePlexEpisodes $reconcileEpisodes,
+        private readonly NotifyRecentlyAdded $notifyRecentlyAdded,
     ) {
         parent::__construct();
     }
@@ -106,6 +110,31 @@ abstract class PlexLibraryCommand extends Command
 
         $this->flushTotal('episodes', $episodeTotal, $lastBeat);
 
+        if ($this->notifiesRecentlyAdded()) {
+            $this->notifyRecentlyAdded->handle();
+        } else {
+            // This server's backlog is backfill, not news, and the server scope is
+            // the whole guard: handle() reconciles one server, so a sibling's
+            // pending rows are somebody else's news and stamping them would drop
+            // them for good (ripe-announcement selection only ever sees
+            // announced_at IS NULL). Deliberately not bounded to the rows this run
+            // inserted: a seed that crashed mid-crawl and was retried leaves its
+            // own rows with an older arrival time, and any such bound strands them
+            // pending for the next sync to announce as the whole back catalogue.
+            // Accepted in exchange: a seed run against a live mirror can stamp a
+            // row a concurrent sync left inside its debounce window — the seed is
+            // premised on running once against a fresh mirror.
+            PlexMovie::query()
+                ->where('plex_server_id', $server->id)
+                ->whereNull('announced_at')
+                ->update(['announced_at' => now()]);
+
+            PlexEpisode::query()
+                ->where('plex_server_id', $server->id)
+                ->whereNull('announced_at')
+                ->update(['announced_at' => now()]);
+        }
+
         $this->output->writeln('Done.');
 
         return $failed ? self::FAILURE : self::SUCCESS;
@@ -146,4 +175,21 @@ abstract class PlexLibraryCommand extends Command
      * @return Collection<int, PlexShow>
      */
     abstract protected function showsToCrawl(Collection $showLibraries, array $changed): Collection;
+
+    /**
+     * Whether this command announces the arrivals still awaiting announcement.
+     * Only a run that discovers arrivals may say yes: the incremental sync inserts
+     * what just landed, while a
+     * full seed inserts the entire existing library — announcing there would blast
+     * the whole mirror into Slack, and against an empty database that is every
+     * title Plex holds.
+     *
+     * Answering no is not passive silence: the run stamps every still-pending row
+     * as announced, so the backlog it wrote can never surface as a later sync's
+     * news.
+     *
+     * Abstract rather than a defaulted hook so a future subcommand has to state its
+     * own answer instead of silently inheriting one.
+     */
+    abstract protected function notifiesRecentlyAdded(): bool;
 }
