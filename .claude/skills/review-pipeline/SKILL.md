@@ -184,6 +184,11 @@ positives, never at the author's judgment.
   when the act and the assertion are one expression (typically
   `expect(fn () => ...)->toThrow(...)`), guarded by
   `tests/Unit/TestCommentStandardTest.php`. Splitting the block is a regression.
+- A non-domain `tests/Feature/{Category}/` directory (`Architecture/`, `Database/`,
+  `Hooks/`, `Http/`) — "tests mirror the domain tree" governs tests **of domain
+  code**. A test whose subject is infra (a migration, a hook, framework behavior)
+  has no domain owner; a migration spanning several domains has no non-arbitrary
+  one. Filing it under a domain would be the violation.
 - Third-party account identifiers (ids, usernames, emails) inside an **exception
   message** — those exceptions are `report()`ed and never thrown, so the message
   reaches the operator's log only while the user sees generic lang-file copy.
