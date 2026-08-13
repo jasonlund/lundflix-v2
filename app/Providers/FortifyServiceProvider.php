@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
 use Laravel\Fortify\Actions\RedirectIfTwoFactorAuthenticatable;
 use Laravel\Fortify\Fortify;
 
@@ -32,6 +33,8 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Fortify::loginView(fn () => Inertia::render('identity/Login'));
+
         Fortify::createUsersUsing(CreateUser::class);
         Fortify::updateUserProfileInformationUsing(UpdateUserProfile::class);
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
@@ -45,6 +48,8 @@ class FortifyServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('two-factor', fn (Request $request) => Limit::perMinute(5)->by($request->session()->get('login.id')));
+
+        RateLimiter::for('plex-auth', fn (Request $request) => Limit::perMinute(10)->by($request->ip()));
 
         RateLimiter::for('passkeys', function (Request $request) {
             $credentialId = $request->input('credential.id');
