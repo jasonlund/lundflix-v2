@@ -387,8 +387,6 @@ enough that materializing is provably fine — say why in a comment).
 
 - Read-only iteration with no writes → `lazy()`/`cursor()` is fine (streams
   without the PK-pagination overhead).
-- `--limit`-style caps don't compose with `chunkById` directly — track a
-  processed count and `return false` from the closure to halt early.
 
 ## Persistence: version-controlled database seed
 
