@@ -20,10 +20,9 @@ class SyncImdbTitles extends Command
     /**
      * Default flush size for the accumulated basics buffer; --batch overrides it.
      *
-     * Lower than the ratings sync's 5000 because the bulk CASE update binds 15
-     * placeholders per row here — id + value for each of the 7 basics columns,
-     * plus the id again in the WHERE IN — against ratings' 5. That caps a safe
-     * batch at ~4300 rows before MySQL's 65,535 placeholder limit.
+     * Bounds both the raw dataset rows held in memory and the ids each flush's
+     * catalog-membership probe binds into its `in (…)` — not the bulk CASE update,
+     * which only ever writes the catalog's share of a batch.
      */
     private const int BATCH_SIZE = 2000;
 
@@ -54,9 +53,6 @@ class SyncImdbTitles extends Command
         // is the only visible movement.
         $this->output->writeln('Importing IMDb titles…');
 
-        // The whole catalog's ids up front: title.basics is millions of rows,
-        // so a membership query per row is not an option.
-        $ids = $this->catalogIds->all();
         $size = $this->batchSize();
 
         try {
@@ -64,16 +60,6 @@ class SyncImdbTitles extends Command
             $batch = [];
 
             foreach ($this->datasets->rows($path, ImdbDataset::TitleBasics) as $row) {
-                if (! isset($ids[$row['tconst']])) {
-                    continue;
-                }
-
-                if ($row['isAdult'] === true) {
-                    $this->adultSkipped++;
-
-                    continue;
-                }
-
                 $batch[$row['tconst']] = $row;
 
                 if (count($batch) >= $size) {
@@ -99,19 +85,53 @@ class SyncImdbTitles extends Command
     }
 
     /**
-     * Persist the accumulated basics buffer, emit a progress heartbeat, and reset it.
+     * Narrow the buffered dataset rows to the writable ones, persist them, and
+     * reset the buffer.
+     *
+     * The catalog-membership probe lives here rather than in the streaming loop so
+     * the run never holds the whole catalog's ids in memory, and the adult drop
+     * follows it so that tally stays catalog-scoped. A batch left with nothing to
+     * write stays silent: a real run flushes thousands of zero-match batches, and a
+     * heartbeat for each would bury the signal.
      *
      * @param  array<string, array<string, mixed>>  $batch
      */
     private function flush(array &$batch): void
     {
-        if ($batch === []) {
+        $rows = $batch;
+        $batch = [];
+
+        if ($rows === []) {
             return;
         }
 
-        $this->importer->handle($batch);
-        $this->processed += count($batch);
+        $rows = $this->dropAdultRows(
+            array_intersect_key($rows, $this->catalogIds->existing(array_keys($rows)))
+        );
+
+        if ($rows === []) {
+            return;
+        }
+
+        $this->importer->handle($rows);
+        $this->processed += count($rows);
         $this->output->writeln("  [imdb titles {$this->processed}]");
-        $batch = [];
+    }
+
+    /**
+     * Drop the adult rows, adding them to the run's skip tally.
+     *
+     * @param  array<string, array<string, mixed>>  $rows
+     * @return array<string, array<string, mixed>>
+     */
+    private function dropAdultRows(array $rows): array
+    {
+        $writable = collect($rows)
+            ->reject(fn (array $row): bool => $row['isAdult'] === true)
+            ->all();
+
+        $this->adultSkipped += count($rows) - count($writable);
+
+        return $writable;
     }
 }

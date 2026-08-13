@@ -570,7 +570,7 @@ it('returns the raw configuration payload including images', function (): void {
 | response shape, in the API's JSON wire format, for the two pages of a paged
 | change feed. page1 (page:1, total_pages:2) carries results ids 345, 1648226,
 | 1713517; page2 (page:2, total_pages:2) carries 1713517, 38702, 1712865 — id
-| 1713517 spans both pages so the flattened set must dedupe to exactly 5 ids.
+| 1713517 spans both pages so the yielded stream must dedupe to exactly 5 ids.
 | Representative fixtures, not verbatim live captures. Loaded into Http::fake()
 | as a 2-response sequence to drive pagination.
 */
@@ -581,7 +581,7 @@ it('sends a Bearer-authed GET to /movie/changes with start_date/end_date/page pa
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-    resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
 
     Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/movie/changes')
         && Str::contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
@@ -596,51 +596,81 @@ it('follows pagination across total_pages', function (): void {
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-    resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
 
     Http::assertSentCount(2);
     Http::assertSent(fn ($request): bool => Str::contains(urldecode((string) $request->url()), 'page=2'));
 });
 
-it('flattens the results ids across pages into a flat array of ints', function (): void {
+it('sends no request until the generator is first iterated', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-    $result = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
 
-    expect($result)->toContain(345, 1648226, 1713517, 38702, 1712865)
-        ->and($result)->each->toBeInt();
+    // Deliberately never iterated: the returned generator's body must not have
+    // run at all, so not even page 1 is fetched.
+    Http::assertNothingSent();
 });
 
-it('dedupes an id repeated across pages', function (): void {
+it('fetches page 2 only after page 1\'s ids are consumed', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-    $result = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    $ids = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    foreach ($ids as $id) {
+        break;
+    }
 
-    expect(array_keys($result, 1713517, true))->toHaveCount(1)
+    // This is the assertion that proves per-page streaming rather than mere
+    // deferral: an implementation that materialises every page into an array
+    // and then `yield from`s it still sends nothing until first iteration (so
+    // it passes the test above), but fetches both pages the moment one id is
+    // pulled — only a page-at-a-time generator stops at 1 request here.
+    Http::assertSentCount(1);
+});
+
+it('yields every movie id across pages, deduped, as ints', function (): void {
+    config(['services.tmdb.token' => 'test-token']);
+    Http::fake(['*api.themoviedb.org*' => Http::sequence()
+        ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
+        ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
+
+    // The generator skips ids it has already seen, so its keys are not
+    // guaranteed contiguous — drain with preserve_keys: false to get the list
+    // the array-only expectations below need. (PHP 8.2+ iterator_to_array also
+    // accepts a plain array, so the stream contract needs its own assertion.)
+    $ids = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    $result = iterator_to_array($ids, false);
+
+    expect($ids)->toBeInstanceOf(Generator::class)
+        ->and($result)->toContain(345, 1648226, 1713517, 38702, 1712865)
+        ->and($result)->each->toBeInt()
+        ->and(array_keys($result, 1713517, true))->toHaveCount(1)
         ->and($result)->toHaveCount(5);
 });
 
-it('throws TmdbRequestFailed when /movie/changes returns a 404', function (): void {
+it('surfaces a 404 page as TmdbRequestFailed on first iteration', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::response('', 404)]);
 
-    $call = fn () => resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    // The drain sits inside the closure: a lazy generator raises nothing at
+    // call time, so the failure can only surface once it is iterated.
+    $call = fn (): array => iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
 
     expect($call)->toThrow(TmdbRequestFailed::class);
 });
 
-it('throws TmdbRequestFailed, not a raw ConnectionException, when /movie/changes fails at the transport level past retries', function (): void {
+it('surfaces a post-retry ConnectionException as TmdbRequestFailed on first iteration', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Sleep::fake();
     Http::fake(['*api.themoviedb.org*' => fn () => throw new ConnectionException('Connection timed out')]);
 
-    $call = fn () => resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+    $call = fn (): array => iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
 
     expect($call)->toThrow(TmdbRequestFailed::class);
 });
@@ -653,7 +683,7 @@ it('throws TmdbRequestFailed, not a raw ConnectionException, when /movie/changes
 | shape, in the API's JSON wire format, for the two pages of a paged change
 | feed. page1 (page:1, total_pages:2) carries results ids 23310, 325296; page2
 | (page:2, total_pages:2) carries 325296, 325358, 314402 — id 325296 spans
-| both pages so the flattened set must dedupe to exactly 4 ids. Representative
+| both pages so the yielded stream must dedupe to exactly 4 ids. Representative
 | fixtures, not verbatim live captures. Loaded into Http::fake() as a
 | 2-response sequence to drive pagination.
 */
@@ -664,7 +694,7 @@ it('GETs /tv/changes with date/page params and follows total_pages', function ()
         ->push(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/tv_changes_page2.json'))]);
 
-    resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14');
+    iterator_to_array(resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14'), false);
 
     Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/tv/changes')
         && Str::contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
@@ -675,15 +705,21 @@ it('GETs /tv/changes with date/page params and follows total_pages', function ()
     Http::assertSent(fn ($request): bool => Str::contains(urldecode((string) $request->url()), 'page=2'));
 });
 
-it('flattens and dedupes the tv change ids into a flat array of ints', function (): void {
+it('yields every tv id across pages, deduped, as ints', function (): void {
     config(['services.tmdb.token' => 'test-token']);
     Http::fake(['*api.themoviedb.org*' => Http::sequence()
         ->push(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'))
         ->push(fixtureBytes('Catalog/tmdb/tv_changes_page2.json'))]);
 
-    $result = resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14');
+    // The generator skips ids it has already seen, so its keys are not
+    // guaranteed contiguous — drain with preserve_keys: false to get the list
+    // the array-only expectations below need. (PHP 8.2+ iterator_to_array also
+    // accepts a plain array, so the stream contract needs its own assertion.)
+    $ids = resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14');
+    $result = iterator_to_array($ids, false);
 
-    expect($result)->toContain(23310, 325296, 325358, 314402)
+    expect($ids)->toBeInstanceOf(Generator::class)
+        ->and($result)->toContain(23310, 325296, 325358, 314402)
         ->and($result)->each->toBeInt()
         ->and(array_keys($result, 325296, true))->toHaveCount(1)
         ->and($result)->toHaveCount(4);

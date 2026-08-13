@@ -4,27 +4,22 @@ declare(strict_types=1);
 
 namespace App\Domains\PlexLibrary\Console\Commands;
 
-use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
-use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Builder;
 
 #[Description('Seed the full Plex library depth, crawling episodes for every show')]
 #[Signature('plex:seed')]
 final class SeedPlexLibrary extends PlexLibraryCommand
 {
     /**
-     * Seed crawls every show in the show libraries, ignoring the changed set.
+     * Seed crawls every show in the show libraries, watermark irrelevant.
      *
-     * @param  Collection<int, PlexLibrary>  $showLibraries
-     * @param  list<array{_plex_ratingKey: string, id: int}>  $changed
-     * @return Collection<int, PlexShow>
+     * @param  Builder<PlexShow>  $query
      */
-    protected function showsToCrawl(Collection $showLibraries, array $changed): Collection
+    protected function constrainCrawl(Builder $query): void
     {
-        return PlexShow::query()
-            ->whereIn('plex_library_id', $showLibraries->pluck('id'))
-            ->get();
+        // no predicate: the whole show set is the crawl set
     }
 }

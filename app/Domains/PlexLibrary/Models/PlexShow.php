@@ -58,6 +58,7 @@ class PlexShow extends Model
             '_plex_guids' => 'array',
             '_tmdb_id' => 'integer',
             '_tvdb_id' => 'integer',
+            'synced_at' => 'immutable_datetime',
             'episodes_synced_at' => 'immutable_datetime',
         ];
     }

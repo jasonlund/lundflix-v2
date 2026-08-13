@@ -11,19 +11,15 @@ use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TvdbApiService;
+use App\Domains\Catalog\Support\SyncIdsResult;
 use Generator;
 use Illuminate\Console\Command;
 
 abstract class TvdbShowsCommand extends Command
 {
-    /**
-     * Hydrate and upsert discovered ids in chunks of this size.
-     */
-    private const int BATCH_SIZE = 1000;
+    /** Decoded `/series/{id}/extended` bodies held live at once (~150 KB each) — see GUIDELINES.md. */
+    private const int BATCH_SIZE = 250;
 
-    /**
-     * Running count of hydrated shows, for the every-1000th progress heartbeat.
-     */
     private int $processed = 0;
 
     /**
@@ -34,13 +30,19 @@ abstract class TvdbShowsCommand extends Command
     abstract protected function ids(TvdbApiService $api): iterable;
 
     /**
-     * Hydrate the streamed ids in chunks, upserting each chunk's non-404 shows and
-     * their artworks and seasons. A chunk whose upsert throws is reported and skipped so one bad
-     * batch can't abort the ingest. Returns the ids that failed to sync: each chunk's
-     * pooled `failedIds` unioned with every id in a chunk that threw.
+     * Only a command that retries its own failures in-run needs the id list; gating
+     * on the boolean alone would otherwise hold a whole window's ids nothing reads.
+     */
+    protected function collectsFailedIds(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Chunked lazily, so a full crawl's millions of ids are never materialized —
+     * only the chunk in flight is held.
      *
      * @param  iterable<int, int>  $ids
-     * @return list<int>
      */
     protected function syncIds(
         iterable $ids,
@@ -48,35 +50,50 @@ abstract class TvdbShowsCommand extends Command
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
         UpsertTvdbSeasons $upsertSeasons,
-    ): array {
-        $failed = [];
+    ): SyncIdsResult {
+        $failed = false;
+        $failedIds = [];
+
+        foreach ($this->batches($ids) as $chunk) {
+            $result = $this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks, $upsertSeasons);
+            $failed = $failed || $result->failed;
+            $failedIds = [...$failedIds, ...$result->failedIds];
+        }
+
+        return new SyncIdsResult($failed, $failedIds);
+    }
+
+    /**
+     * Hand-rolled rather than `LazyCollection::chunk()`: callers hand in raw
+     * generators, which `LazyCollection` rejects — it wants a generator *function*.
+     *
+     * @param  iterable<int, int>  $ids
+     * @return Generator<int, list<int>>
+     */
+    private function batches(iterable $ids): Generator
+    {
         $chunk = [];
 
         foreach ($ids as $id) {
             $chunk[] = $id;
 
             if (count($chunk) >= self::BATCH_SIZE) {
-                $failed = [...$failed, ...$this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks, $upsertSeasons)];
+                yield $chunk;
                 $chunk = [];
             }
         }
 
         if ($chunk !== []) {
-            $failed = [...$failed, ...$this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks, $upsertSeasons)];
+            yield $chunk;
         }
-
-        return $failed;
     }
 
     /**
-     * Run one chunk, absorbing only a transient TheTVDB API failure so one bad batch
-     * can't abort the entire ingest and silently truncate the catalog — the loop moves
-     * on and the whole chunk's ids route to the retryable failed set. A non-API
-     * exception (e.g. a DB QueryException — a genuine bug) propagates rather than being
-     * masked as a retryable miss. Otherwise the pooled misses are returned.
+     * The `catch` is narrowed on purpose: any other exception (e.g. a DB
+     * QueryException — a genuine bug) propagates rather than being masked as a
+     * retryable fetch miss.
      *
      * @param  array<int, int>  $ids
-     * @return list<int>
      */
     private function syncChunkSafely(
         array $ids,
@@ -84,23 +101,18 @@ abstract class TvdbShowsCommand extends Command
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
         UpsertTvdbSeasons $upsertSeasons,
-    ): array {
+    ): SyncIdsResult {
         try {
             return $this->syncChunk($ids, $api, $upsertShows, $upsertArtworks, $upsertSeasons);
         } catch (TvdbRequestFailed|TvdbAuthenticationFailed $e) {
             report($e);
 
-            return array_values($ids);
+            return new SyncIdsResult(true, $this->collectsFailedIds() ? array_values($ids) : []);
         }
     }
 
     /**
-     * Hydrate one chunk of ids, upsert the non-404 shows, then persist each hydrated
-     * payload's artworks and seasons against its freshly upserted show row. Returns the
-     * pooled `failedIds` — ids whose hydration request failed outright.
-     *
      * @param  array<int, int>  $ids
-     * @return list<int>
      */
     private function syncChunk(
         array $ids,
@@ -108,9 +120,9 @@ abstract class TvdbShowsCommand extends Command
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
         UpsertTvdbSeasons $upsertSeasons,
-    ): array {
-        // seriesMany() returns the raw TheTVDB `{status, data}` envelope per id (or
-        // null on 404); unwrap to the `data` series payload and drop the misses.
+    ): SyncIdsResult {
+        // seriesMany() returns the raw TheTVDB `{status, data}` envelope per id (null
+        // on 404) — unwrap to the series payload below.
         $pooled = $api->seriesMany($ids);
 
         $payloads = array_values(array_filter(array_map(
@@ -119,21 +131,21 @@ abstract class TvdbShowsCommand extends Command
         )));
 
         if ($payloads === []) {
-            return $this->failedInts($pooled->failedIds);
+            return $this->chunkResult($pooled->failedIds);
         }
 
         $upsertShows->handle($payloads);
 
-        // Heartbeat: print every 1000th hydrated title. spin()/progress() render
-        // nothing under catalog:sync's nested Artisan::call, so this plain line
-        // is the only visible movement; the label distinguishes this phase.
         foreach ($payloads as $payload) {
             if (++$this->processed % 1000 === 0) {
                 $this->output->writeln("  [tvdb shows {$this->processed}] ".($payload['name'] ?? '—'));
             }
         }
 
+        // Downstream reads only the PK (morph relation + season FK) and the keyBy
+        // column, so hydrating whole Show models per batch is dead weight.
         $shows = Show::query()
+            ->select(['id', '_tvdb_id'])
             ->whereIn('_tvdb_id', array_column($payloads, 'id'))
             ->get()
             ->keyBy('_tvdb_id');
@@ -147,44 +159,21 @@ abstract class TvdbShowsCommand extends Command
             }
         }
 
-        return $this->failedInts($pooled->failedIds);
+        return $this->chunkResult($pooled->failedIds);
     }
 
     /**
-     * Cap how many ids are hydrated at `--limit`. For the seed crawl (`ids()`
-     * pages lazily) this also stops fetching mid-crawl; for the updates-feed sync
-     * the feed is walked into an array upstream, so `--limit` bounds hydration
-     * only, not fetch or memory. Null `--limit` yields every id.
-     *
-     * @param  iterable<int, int>  $ids
-     * @return Generator<int, int>
-     */
-    protected function limited(iterable $ids): Generator
-    {
-        $limit = $this->option('limit');
-        $limit = $limit === null ? null : (int) $limit;
-        $yielded = 0;
-
-        foreach ($ids as $id) {
-            if ($limit !== null && $yielded >= $limit) {
-                return;
-            }
-
-            yield $id;
-            $yielded++;
-        }
-    }
-
-    /**
-     * `PooledResult::failedIds` is typed `list<int|string>` because the shared
-     * pooling concern serves string-id sources too, but this pipeline's crawl ids
-     * are ints and the base contract returns `list<int>` — normalize to honor it.
+     * `PooledResult::failedIds` is typed `list<int|string>` because the shared pooling
+     * concern serves string-id sources too, but this pipeline's ids are ints —
+     * normalize to honor `list<int>`.
      *
      * @param  list<int|string>  $failedIds
-     * @return list<int>
      */
-    private function failedInts(array $failedIds): array
+    private function chunkResult(array $failedIds): SyncIdsResult
     {
-        return array_map(intval(...), $failedIds);
+        return new SyncIdsResult(
+            $failedIds !== [],
+            $this->collectsFailedIds() ? array_map(intval(...), $failedIds) : [],
+        );
     }
 }

@@ -19,10 +19,11 @@ class SyncImdbAkas extends Command
     /**
      * Default flush size for the accumulated akas buffer; --batch overrides it.
      *
-     * Lower than the titles sync's 2000 because each buffered value is one large
-     * json blob holding an unbounded number of a title's aka rows (popular titles
-     * carry 100+). The binding cap is therefore MySQL's max_allowed_packet on the
-     * bulk CASE statement's total payload, not the 65,535 placeholder limit.
+     * Bounds both the raw dataset rows held in memory and the ids each flush's
+     * catalog-membership probe binds into its `in (…)` — not the bulk CASE update,
+     * which only ever writes the catalog's share of a batch. Memory is the binding
+     * constraint here: an entry is a whole title's aka group, matched or not, and a
+     * popular title carries 100+ rows — hence a smaller default than the titles sync.
      */
     private const int BATCH_SIZE = 1000;
 
@@ -48,9 +49,6 @@ class SyncImdbAkas extends Command
         // is the only visible movement.
         $this->output->writeln('Importing IMDb akas…');
 
-        // The whole catalog's ids up front: title.akas is tens of millions of
-        // rows, so a membership query per row is not an option.
-        $ids = $this->catalogIds->all();
         $size = $this->batchSize();
 
         try {
@@ -69,16 +67,9 @@ class SyncImdbAkas extends Command
             foreach ($this->datasets->rows($path, ImdbDataset::TitleAkas) as $row) {
                 $titleId = $row['titleId'];
 
-                // Closing runs before the membership skip so $groupId tracks the
-                // stream itself: skipping first would hold a finished group open
-                // across every unmatched title that follows it.
                 if ($titleId !== $groupId) {
                     $this->closeGroup($groupId, $group, $batch, $size);
                     $groupId = $titleId;
-                }
-
-                if (! isset($ids[$titleId])) {
-                    continue;
                 }
 
                 $group[] = $row;
@@ -123,19 +114,34 @@ class SyncImdbAkas extends Command
     }
 
     /**
-     * Persist the accumulated akas buffer, emit a progress heartbeat, and reset it.
+     * Narrow the buffered groups to the ones the catalog holds a title for, persist
+     * them, and reset the buffer.
+     *
+     * The catalog-membership probe lives here rather than in the streaming loop so
+     * the run never holds the whole catalog's ids in memory. A batch left with
+     * nothing to write stays silent: title.akas covers far more titles than the
+     * catalog does, so a real run flushes thousands of zero-match batches and a
+     * heartbeat for each would bury the signal.
      *
      * @param  array<string, list<array<string, mixed>>>  $batch
      */
     private function flush(array &$batch): void
     {
-        if ($batch === []) {
+        $groups = $batch;
+        $batch = [];
+
+        if ($groups === []) {
             return;
         }
 
-        $this->importer->handle($batch);
-        $this->processed += count($batch);
+        $groups = array_intersect_key($groups, $this->catalogIds->existing(array_keys($groups)));
+
+        if ($groups === []) {
+            return;
+        }
+
+        $this->importer->handle($groups);
+        $this->processed += count($groups);
         $this->output->writeln("  [imdb akas {$this->processed}]");
-        $batch = [];
     }
 }

@@ -7,6 +7,7 @@ use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -138,6 +139,54 @@ it('keeps each title\'s group whole across a mid-stream flush', function (): voi
     $interstellar->refresh();
     expect($matrix->_imdb_akas)->toHaveCount(67)
         ->and($interstellar->_imdb_akas)->toHaveCount(66);
+});
+
+// title.akas is tens of millions of rows, so the run must never hold the
+// catalog's whole _imdb_id column in memory: every id read is a bounded `in (…)`
+// probe of the titles currently in hand. The non-empty check keeps the guard
+// from passing for a run that read nothing at all.
+it('never reads the catalog\'s ids unbounded', function (): void {
+    // Arrange
+    Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+    $idColumnSelects = fn (): array => collect(DB::getQueryLog())
+        ->pluck('query')
+        ->map(fn (mixed $query): string => (string) $query)
+        ->filter(fn (string $query): bool => Str::startsWith($query, 'select') && Str::contains($query, '_imdb_id'))
+        ->values()
+        ->all();
+    DB::enableQueryLog();
+
+    // Act
+    $this->artisan('catalog:sync-akas');
+
+    // Assert
+    expect($idColumnSelects())->not->toBeEmpty();
+    foreach ($idColumnSelects() as $query) {
+        expect($query)->toContain('in (');
+    }
+});
+
+// A real run buffers ~10k groups the catalog has no title for, and a heartbeat
+// per zero-match flush would bury the ones that wrote something — so a flush
+// that resolves to nothing stays silent and never reaches the importer. The
+// phase line proves the command really streamed the fixture, so the absent
+// heartbeat can't mean the run never started.
+it('emits no heartbeat and writes nothing when the catalog matches no title in the dataset', function (): void {
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+
+    // Act
+    Artisan::call('catalog:sync-akas', ['--batch' => 2]);
+
+    // Assert
+    $output = Artisan::output();
+    expect($output)->toContain('Importing IMDb akas')
+        ->and($output)->not->toContain('[imdb akas')
+        ->and(Movie::query()->count())->toBe(0)
+        ->and(Show::query()->count())->toBe(0)
+        ->and(Movie::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse()
+        ->and(Show::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse();
 });
 
 // Asserting the fetch alongside the cleanup keeps "no leftover temp file" from

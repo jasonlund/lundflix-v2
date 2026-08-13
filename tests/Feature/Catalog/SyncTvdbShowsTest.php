@@ -19,7 +19,7 @@ uses(RefreshDatabase::class);
 |--------------------------------------------------------------------------
 | catalog:sync-shows-tvdb is updates-only — it hydrates ids from the /updates feed
 | since the feed's persisted marker (6h overlap, 24h no-marker fallback, 14-day cap)
-| and upserts them, advancing the marker after a clean unbounded run. No crawl, no
+| and upserts them, advancing the marker after a clean run. No crawl, no
 | --fresh, no skip-synced.
 |
 | tests/Fixtures/Catalog/tvdb/login.json — POST /login → data.token JWT;
@@ -105,18 +105,6 @@ it('advances the marker to run-start after a clean run', function (): void {
     expect(Cache::get(SyncFeed::TvdbShows->cacheKey())->equalTo(now()))->toBeTrue();
 });
 
-it('does not advance the marker on a --limit run', function (): void {
-    // Arrange
-    Date::setTestNow('2026-07-16 12:00:00');
-    fakeTvdbUpdates();
-
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb', ['--limit' => 1]);
-
-    // Assert
-    expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBeNull();
-});
-
 it('does not advance the marker when a hydrate fails', function (): void {
     // Arrange
     Date::setTestNow('2026-07-16 12:00:00');
@@ -125,6 +113,28 @@ it('does not advance the marker when a hydrate fails', function (): void {
         '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
             ? Http::response('', 500)
             : Http::response('', 404),
+        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+            ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
+            : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
+    ]);
+
+    // Act
+    $this->artisan('catalog:sync-shows-tvdb');
+
+    // Assert
+    expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBeNull();
+});
+
+it('does not advance the marker when a whole chunk fails', function (): void {
+    // Arrange
+    // Deliberate pair with the per-id test above: the marker must hold on BOTH failure
+    // paths. That one covers a pooled per-id miss; this one covers syncChunkSafely()'s
+    // catch — a 401 forgets the JWT and throws out of the pool, failing the whole chunk,
+    // and those chunk-wide ids are exactly the ones the marker gate depends on.
+    Date::setTestNow('2026-07-16 12:00:00');
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series/*/extended*' => Http::response('', 401),
         '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
             ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
             : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
@@ -147,25 +157,6 @@ it('uses the updates feed only and never crawls /series?page', function (): void
     // Assert
     Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
-});
-
-it('caps hydrate calls with --limit', function (): void {
-    // Arrange
-    fakeTvdbUpdates();
-
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb', ['--limit' => 1]);
-
-    // Assert
-    $hydrateCalls = 0;
-    Http::assertSent(function (Request $request) use (&$hydrateCalls): bool {
-        if (Str::contains($request->url(), '/extended')) {
-            $hydrateCalls++;
-        }
-
-        return true;
-    });
-    expect($hydrateCalls)->toBe(1);
 });
 
 it('re-hydrates an already-synced show that appears in the window', function (): void {

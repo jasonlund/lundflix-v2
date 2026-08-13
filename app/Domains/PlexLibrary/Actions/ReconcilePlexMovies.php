@@ -4,46 +4,24 @@ declare(strict_types=1);
 
 namespace App\Domains\PlexLibrary\Actions;
 
+use App\Domains\PlexLibrary\Actions\Concerns\MarksAndSweepsPlexRows;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Support\PlexGuids;
 use App\Domains\PlexLibrary\Support\PlexTimestamp;
-use Illuminate\Support\Carbon;
+use Carbon\CarbonInterface;
 
 final class ReconcilePlexMovies
 {
+    use MarksAndSweepsPlexRows;
+
     /**
-     * @param  array<int, array<string, mixed>>  $items  decoded Plex "section all" Metadata items
+     * @return class-string<PlexMovie>
      */
-    public function handle(PlexServer $server, PlexLibrary $library, array $items): int
+    protected static function model(): string
     {
-        $now = now();
-
-        $rows = array_map(
-            fn (array $item): array => $this->rowFor($server, $library, $item, $now),
-            $items,
-        );
-
-        if ($rows !== []) {
-            $updateColumns = array_values(array_diff(
-                array_keys($rows[0]),
-                ['plex_server_id', '_plex_ratingKey'],
-            ));
-
-            PlexMovie::upsert($rows, ['plex_server_id', '_plex_ratingKey'], $updateColumns);
-        }
-
-        // Prune this library's rows that were absent from the payload. Reuse the
-        // ratingKeys the upsert rows already cast rather than re-deriving them; an
-        // empty payload leaves whereNotIn([]), a full-clear reconcile of the scope.
-        PlexMovie::query()
-            ->where('plex_server_id', $server->id)
-            ->where('plex_library_id', $library->id)
-            ->whereNotIn('_plex_ratingKey', array_column($rows, '_plex_ratingKey'))
-            ->delete();
-
-        return count($rows);
+        return PlexMovie::class;
     }
 
     /**
@@ -54,7 +32,7 @@ final class ReconcilePlexMovies
      * @param  array<string, mixed>  $item
      * @return array<string, mixed>
      */
-    private function rowFor(PlexServer $server, PlexLibrary $library, array $item, Carbon $now): array
+    protected function rowFor(PlexServer $server, PlexLibrary $library, array $item, CarbonInterface $now): array
     {
         $ids = PlexGuids::extract($item);
 

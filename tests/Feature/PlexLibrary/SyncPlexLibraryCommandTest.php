@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\PlexLibrary\Actions\ReconcilePlexShows;
 use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
@@ -21,20 +22,23 @@ uses(RefreshDatabase::class);
 | plex:sync — incremental crawl command slice
 |--------------------------------------------------------------------------
 | The command reconciles the top level (server, libraries, movies, shows) on
-| EVERY run, but crawls episodes ONLY for the changed set that
-| ReconcilePlexShows::handle() returns — new shows, or shows whose stored
-| _plex_updatedAt / _plex_leafCount moved. Every outbound Plex call is faked
-| at the wire by host-agnostic path pattern (Http::preventStrayRequests is
-| global). This slice asserts the observable end-state and the per-show crawl
-| requests only — never per-row identity, which the reconcilers own in their
-| own tests. The shared fake lives in fakePlexSeedCrawl().
+| EVERY run, but crawls episodes ONLY for the shows whose episode watermark is
+| behind: the app-owned episodes_synced_at column IS the crawl set. Nothing is
+| accumulated across a run and no changed set is returned — ReconcilePlexShows
+| nulls the watermark of a show whose stored _plex_updatedAt / _plex_leafCount
+| moved as it writes the page, so the selection is read back off the table.
+| Every outbound Plex call is faked at the wire by host-agnostic path pattern
+| (Http::preventStrayRequests is global). This slice asserts the observable
+| end-state and the per-show crawl requests only — never per-row identity, which
+| the reconcilers own in their own tests. The shared fake lives in
+| fakePlexSeedCrawl().
 |
-| The changed set is NOT the whole selection: a show also gets crawled while its
-| episode crawl is behind, tracked by the app-owned episodes_synced_at watermark
-| (stamped only after a show's episode reconcile returns). Without it a show
-| whose /allLeaves fetch failed would be stranded — ReconcilePlexShows already
-| wrote its incoming _plex_updatedAt/_plex_leafCount, so the next run sees no
-| diff and would never retry it.
+| That marking is the ONLY thing that can put two kinds of show back in the
+| crawl, because ReconcilePlexShows writes the incoming
+| _plex_updatedAt/_plex_leafCount before the episodes are fetched, leaving no
+| diff for any later read to find: a show whose /allLeaves fetch threw (its
+| watermark stayed null / behind), and a show whose leafCount moved while its
+| updatedAt held still (nothing an updatedAt comparison can see at all).
 |
 | A show is arranged "unchanged" by pre-seeding a PlexShow on the SAME server +
 | ratingKey whose _plex_updatedAt (rendered via Date::createFromTimestamp, the
@@ -106,6 +110,24 @@ it('skips the episode crawl when nothing changed', function (): void {
     Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/children'));
 });
 
+// The one case no read of _plex_updatedAt can ever see: the stored row carries
+// the fixture's own updatedAt (written through ReconcilePlexShows itself, so it
+// is byte-identical to what this run writes) and a caught-up episode watermark
+// pinned to it, so both stale-watermark arms are dead. Only leafCount moved, and
+// only the marking upsertPage does can turn that into a crawl.
+it('crawls a show whose only change is its leaf count', function (): void {
+    // Arrange
+    fakePlexSeedCrawl();
+    seedShowWithStaleLeafCount('27520', 3);
+
+    // Act
+    $this->artisan('plex:sync')->run();
+
+    // Assert
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/children'));
+    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/allLeaves'));
+});
+
 it('exits FAILURE when a show episode crawl failed', function (): void {
     // Arrange
     fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
@@ -141,8 +163,8 @@ it('leaves the episode watermark unstamped for a show whose crawl failed', funct
 
 // The second fakePlexSeedCrawl() in Arrange also resets the recorded requests,
 // so the assertions below see the SECOND run only. Its payload is byte-identical
-// to the first run's, so show 34112 is NOT in the changed set — only its
-// unstamped episode watermark can put it back in the crawl. The 24 episodes of
+// to the first run's, so show 34112 does NOT read as moved and is never marked —
+// only its unstamped episode watermark can put it back in the crawl. The 24 episodes of
 // the shared allLeaves fixture are re-parented to whichever show was crawled
 // last, so a row under 34112 proves that show was the one crawled.
 it('re-crawls a show whose episode crawl failed even though nothing changed', function (): void {
@@ -185,24 +207,63 @@ function showByRatingKey(string $ratingKey): PlexShow
 }
 
 /**
- * Pre-seed the server, its show library, and one PlexShow whose stored
- * _plex_updatedAt / _plex_leafCount match the fixture exactly, so the run
- * reuses the ancestor chain (updateOrCreate on natural keys) and
- * ReconcilePlexShows sees the show as unchanged. The server + library are
- * resolved by their natural keys (firstOrCreate), so repeated calls in one
- * test share one ancestor chain while each test starts from a rolled-back DB.
+ * Pre-seed the server and its show library, resolved by their natural keys
+ * (firstOrCreate) so repeated calls in one test share one ancestor chain while
+ * each test starts from a rolled-back DB. The run reuses this chain — both
+ * UpsertPlexServer and ReconcilePlexLibraries updateOrCreate on those same
+ * natural keys — which keeps ids stable across the pre-seed and the crawl.
  */
-function seedUnchangedShow(string $ratingKey, int $leafCount, int $updatedAtEpoch): void
+function seedShowLibrary(): PlexLibrary
 {
     $server = PlexServer::query()->firstOrCreate(
         ['_plex_clientIdentifier' => 'servermachineidentifier000000000'],
         PlexServer::factory()->raw(['_plex_clientIdentifier' => 'servermachineidentifier000000000']),
     );
 
-    $library = PlexLibrary::query()->firstOrCreate(
+    return PlexLibrary::query()->firstOrCreate(
         ['plex_server_id' => $server->id, '_plex_key' => '2'],
         PlexLibrary::factory()->raw(['plex_server_id' => $server->id, '_plex_key' => '2', '_plex_type' => 'show']),
     );
+}
+
+/**
+ * Pre-seed one show through the PRODUCTION write path — ReconcilePlexShows on
+ * the very fixture item the crawl will serve, with only leafCount replaced — so
+ * the stored _plex_updatedAt is whatever that path renders and the run's own
+ * write of it provably cannot differ. Only the leaf count is out of date.
+ *
+ * The seeding upsert marks the fresh row by nulling its watermark, so the stamp
+ * is applied afterwards and pinned to the show's own stored _plex_updatedAt: a
+ * caught-up crawl that neither the null nor the behind-updatedAt arm has any
+ * reason to pick up. Never a hand-written datetime literal — this suite runs on
+ * sqlite and production on MySQL, so the driver has to render both sides.
+ */
+function seedShowWithStaleLeafCount(string $ratingKey, int $storedLeafCount): void
+{
+    $library = seedShowLibrary();
+
+    $item = collect(json_decode(fixtureBytes('PlexLibrary/plex/section_show_all_includeGuids.json'), true)['MediaContainer']['Metadata'])
+        ->firstWhere('ratingKey', $ratingKey);
+
+    resolve(ReconcilePlexShows::class)->upsertPage(
+        PlexServer::query()->findOrFail($library->plex_server_id),
+        $library,
+        [[...$item, 'leafCount' => $storedLeafCount]],
+        now(),
+    );
+
+    $show = showByRatingKey($ratingKey);
+    $show->update(['episodes_synced_at' => $show->_plex_updatedAt]);
+}
+
+/**
+ * Pre-seed the server, its show library, and one PlexShow whose stored
+ * _plex_updatedAt / _plex_leafCount match the fixture exactly, so
+ * ReconcilePlexShows sees the show as unchanged.
+ */
+function seedUnchangedShow(string $ratingKey, int $leafCount, int $updatedAtEpoch): void
+{
+    $library = seedShowLibrary();
 
     // episodes_synced_at is pinned to the show's own _plex_updatedAt (not now())
     // so "unchanged" means unchanged at both levels — a caught-up episode crawl
