@@ -84,6 +84,7 @@ final class TvdbShowsCommandTestHost extends TvdbShowsCommand
         return $this->seriesIds;
     }
 
+    #[Override]
     protected function collectsFailedIds(): bool
     {
         return $this->collects;
