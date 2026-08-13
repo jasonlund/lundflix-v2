@@ -236,6 +236,24 @@ higher, the finding survives at missing-defect-hunter's severity (minimum
 SHOULD_FIX): two independent reviewers seeing the same defect outweighs one
 dismissal. Absent that rediscovery, a defeated finding is removed from the report.
 
+## Model Selection
+
+An agent's `model:` frontmatter follows its role, not its convenience. Four rules,
+enforced by `tests/Unit/AgentModelPolicyTest.php`:
+
+1. **Write-side agents `inherit`** — `review-fixer` and the `tdd-*` phases produce
+   code the session owns, so they run on whatever model the session runs.
+2. **Read-only breadth review and mechanical wrappers pin `sonnet`** — the six
+   Phase 3 reviewers work a known checklist and `coderabbit-reviewer` only shells a
+   CLI and reshapes its output. Pin the **alias**, never a dated model id, so the
+   pin tracks the current Sonnet instead of rotting.
+3. **Adversarial verification `inherit`** — Phase 5's `false-positive-hunter` and
+   `missing-defect-hunter` decide which findings survive, and that judgment is worth
+   the session model. Two agents, so the cost is bounded.
+4. **Never stamp a model version in prose, a commit trailer, or docs.** The harness
+   supplies the co-author trailer per session and it tracks the model on its own; a
+   hand-written stamp selects nothing and is guaranteed to go stale.
+
 ## Mechanical Grounding Verification
 
 Before routing AI-generated findings to adversarial verification, programmatically
