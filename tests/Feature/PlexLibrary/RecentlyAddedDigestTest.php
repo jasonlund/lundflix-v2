@@ -124,6 +124,26 @@ it('keeps an escaped title in the alphabetical place its raw title holds', funct
     ]);
 });
 
+// The rows arrive in whatever order the id lookup hands back, so a shared title
+// has to break its tie on something the line itself carries — the year.
+it('breaks a tie between two movies sharing a title on the year', function (): void {
+    // Arrange
+    // Created newest-first so the ascending year is what the assertion pins.
+    foreach ([2010, 2005] as $year) {
+        PlexMovie::factory()->create([
+            '_tmdb_id' => null,
+            '_plex_title' => 'The Crazies',
+            '_plex_year' => $year,
+        ]);
+    }
+
+    // Act
+    $lines = RecentlyAddedDigest::lines(PlexMovie::query()->with('movie')->get(), collect());
+
+    // Assert
+    expect($lines)->toBe(['The Crazies (2005)', 'The Crazies (2010)']);
+});
+
 it('renders a lone new episode as a single season and episode number', function (): void {
     // Arrange
     $season = matchedShowSeason(

@@ -21,7 +21,7 @@ final class RecentlyAddedDigest
         // Each kind is sorted within its own group and the groups are concatenated:
         // one sort over the finished lines would interleave shows among the movies.
         $movieLines = $movies
-            ->sortBy(fn (PlexMovie $plexMovie): string => self::movieTitle($plexMovie))
+            ->sortBy(fn (PlexMovie $plexMovie): string => self::rawMovieLine($plexMovie))
             ->map(fn (PlexMovie $plexMovie): string => self::movieLine($plexMovie))
             ->values();
 
@@ -36,10 +36,19 @@ final class RecentlyAddedDigest
 
     private static function movieLine(PlexMovie $plexMovie): string
     {
-        // Escaped here rather than in movieTitle() because lines() also sorts on that
-        // title, and every escape opens with '&', which would file "<Untitled>" ahead
-        // of the digit-led titles it belongs after.
-        $title = self::escapeSlack(self::movieTitle($plexMovie));
+        // Escaped only here, never in rawMovieLine(), because lines() sorts on that raw
+        // form: every escape opens with '&', which would file "<Untitled>" ahead of the
+        // digit-led titles it belongs after.
+        return self::escapeSlack(self::rawMovieLine($plexMovie));
+    }
+
+    /**
+     * The line before escaping — and the sort key, so two movies sharing a title
+     * break their tie on the year rather than on the order the rows came back in.
+     */
+    private static function rawMovieLine(PlexMovie $plexMovie): string
+    {
+        $title = self::movieTitle($plexMovie);
         $year = $plexMovie->movie?->_tmdb_release_date?->year ?? $plexMovie->_plex_year;
 
         return $year === null ? $title : "{$title} ({$year})";

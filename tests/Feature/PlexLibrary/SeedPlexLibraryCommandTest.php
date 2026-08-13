@@ -216,11 +216,12 @@ it('leaves another server pending', function (): void {
     expect($episode->refresh()->announced_at)->toBeNull();
 });
 
-// The row is one plex:sync inserted moments before the operator ran the seed,
-// still legitimately waiting out its debounce window. The seed only owns what
-// it inserted itself, so an arrival that predates the run stays pending —
-// arranged by writing created_at directly rather than travelling the clock.
-it('leaves a row that predates the run pending', function (): void {
+// A seed that crashed mid-crawl leaves its own rows pending with an arrival time
+// older than the retry, and the retry's upsert only updates them, so created_at
+// still predates it. Those rows are the seed's own backlog: leaving them pending
+// hands the whole stranded batch to the next sync as news. Arranged by writing
+// created_at directly rather than travelling the clock.
+it('stamps a row on its own server that predates the run', function (): void {
     // Arrange
     $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
     $library = PlexLibrary::factory()->create([
@@ -241,7 +242,7 @@ it('leaves a row that predates the run pending', function (): void {
     $this->artisan('plex:seed')->run();
 
     // Assert
-    expect($movie->refresh()->announced_at)->toBeNull();
+    expect($movie->refresh()->announced_at)->not->toBeNull();
 });
 
 it('emits an episode-count heartbeat every 100 episodes', function (): void {
