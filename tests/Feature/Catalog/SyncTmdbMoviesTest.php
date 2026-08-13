@@ -316,6 +316,8 @@ it('probes lazily — the second buffer is probed only after the first batch hyd
     // Assert
     $probes = array_keys($timeline, 'probe', true);
     $hydrates = array_keys($timeline, 'hydrate', true);
+    expect($probes)->not->toBeEmpty();
+    expect($hydrates)->not->toBeEmpty();
     // The last probe (the second buffer's) must land after the first hydrate.
     // Reading the whole synced catalog up front puts every probe before every
     // hydrate, so the two sequences never interleave.

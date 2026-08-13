@@ -8,11 +8,14 @@ use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
+use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 uses(RefreshDatabase::class);
 
@@ -29,13 +32,21 @@ uses(RefreshDatabase::class);
 | behind — never per-row identity, which the reconcilers own in their own tests.
 | The shared fake lives in fakePlexSeedCrawl().
 |
-| The last four tests cover the page loop of a genuinely multi-page library: the
+| The last five tests cover the page loop of a genuinely multi-page library: the
 | pages accumulate rather than the earlier ones being dropped, every row of every
-| page carries the one synced_at taken per library (not per page), a page fetch
-| that fails mid-walk leaves the pages already read AND the stale rows alone, and
-| only a completed walk sweeps a vanished row. The stamp-sensitive tests arrange
-| their pre-existing row through staleMovie() (whose stamp rule that helper
-| documents) or freeze the clock.
+| page carries the one synced_at taken per library (not per page), the running
+| total heartbeats as each page lands rather than in one burst after the library,
+| a page fetch that fails mid-walk leaves the pages already read AND the stale
+| rows alone, and only a completed walk sweeps a vanished row. The stamp-sensitive
+| tests arrange their pre-existing row through staleMovie() (whose stamp rule that
+| helper documents) or freeze the clock.
+|
+| The heartbeat-ordering test is the one place a SYNTHETIC section body is used:
+| the committed captures hold 3 movies, and no real capture we can commit crosses
+| the multiple-of-100 boundary the heartbeat keys on. Its pages are built in the
+| test as a structurally minimal MediaContainer (ratingKey/guid/title/type only,
+| totalSize 200) — an input real data can't supply at fixture scale, never a
+| stand-in for a real capture.
 |
 | Fixtures (byte-exact real captures, reused across the crawl):
 |   tests/Fixtures/Common/plex/resources.json — 3 server resources; resource 0
@@ -238,6 +249,39 @@ it('stamps every page of one movie library with a single synced_at', function ()
     // Assert
     expect(PlexMovie::query()->count())->toBe(3);
     expect(PlexMovie::query()->pluck('synced_at')->unique()->all())->toHaveCount(1);
+});
+
+// The ordering the heartbeat exists for: on a production-sized section the loop
+// runs for hours, so a beat that only fires once the whole library is walked is
+// silence, not liveness. Asserted at the seam it can only be observed at — the
+// output already written when the NEXT page is requested — since a post-hoc read
+// of the finished output cannot tell a per-page beat from one final burst.
+it('heartbeats each page of a movie library as it lands, not after the whole library', function (): void {
+    // Arrange
+    $page = fn (int $firstKey): string => json_encode(['MediaContainer' => ['size' => 100, 'totalSize' => 200, 'Metadata' => collect(range($firstKey, $firstKey + 99))
+        ->map(fn (int $key): array => [
+            'ratingKey' => (string) $key,
+            'guid' => "plex://movie/{$key}",
+            'title' => "Synthetic Movie {$key}",
+            'type' => 'movie',
+        ])->all()]]);
+    $console = new BufferedOutput;
+    $writtenWhenSecondPageWasRequested = '';
+    fakePlexSeedCrawl(movieSectionPages: [
+        fn (): PromiseInterface => Http::response($page(900001)),
+        function () use ($console, $page, &$writtenWhenSecondPageWasRequested): PromiseInterface {
+            $writtenWhenSecondPageWasRequested = $console->fetch();
+
+            return Http::response($page(900101));
+        },
+    ]);
+
+    // Act
+    Artisan::call('plex:seed', [], $console);
+
+    // Assert
+    expect($writtenWhenSecondPageWasRequested)->toContain('[movies 100]');
+    expect($console->fetch())->toContain('[movies 200]');
 });
 
 it('keeps the pages already read and prunes nothing when a page fetch fails mid-walk', function (): void {

@@ -359,6 +359,72 @@ it('processes every matched show exactly once while stamping the rows it walks',
     $this->assertDatabaseCount('episodes', 18);
 });
 
+it('announces the feed drain before reading the update feed', function (): void {
+    // Arrange
+    fakeTvdbEpisodes();
+
+    // Act & Assert
+    $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('Reading the episodes update feed…');
+});
+
+it('announces the show walk before seeding episodes', function (): void {
+    // Arrange
+    fakeTvdbEpisodes();
+
+    // Act & Assert
+    $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('Syncing episodes…');
+});
+
+it('emits an episode-count heartbeat once the running total crosses 100', function (): void {
+    // Arrange
+    // Synthetic feed body: 17 distinct seriesIds (the committed capture carries 3)
+    // is a structural input a real fixture can't practically provide — 17 shows ×
+    // 6 episodes is the smallest set that crosses a 100-episode beat.
+    $seriesIds = array_map(fn (int $offset): int => $offset * 1000, range(1, 17));
+    $body = json_encode(['status' => 'success', 'data' => array_map(
+        fn (int $seriesId): array => tvdbEpisodeUpdateRecord(9786562 + $seriesId, $seriesId),
+        $seriesIds,
+    ), 'links' => ['prev' => null, 'self' => '/updates', 'next' => null]]);
+    // One /episodes capture replayed for every show would collide on the globally
+    // unique episodes._tvdb_id, so each page's ids are offset by the series the walk
+    // is currently on. The offset is tracked across pages because the page-2
+    // fixture's links.next is followed under the capture's own (different) series id.
+    $currentSeries = 0;
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/updates*' => Http::response($body),
+        '*api4.thetvdb.com/v4/series/*/episodes*' => function (Request $request) use (&$currentSeries) {
+            $isFollowUp = Str::contains($request->url(), 'page=1');
+
+            if (! $isFollowUp) {
+                $currentSeries = (int) Str::before(Str::after($request->url(), '/series/'), '/');
+            }
+
+            $payload = json_decode(fixtureBytes($isFollowUp
+                ? 'Catalog/tvdb/series_episodes_page2.json'
+                : 'Catalog/tvdb/series_episodes_page1.json'), true);
+            $payload['data']['episodes'] = array_map(
+                fn (array $episode): array => [...$episode, 'id' => $episode['id'] + $currentSeries, 'seriesId' => $currentSeries],
+                $payload['data']['episodes'],
+            );
+
+            return Http::response(json_encode($payload));
+        },
+    ]);
+    collect($seriesIds)->each(fn (int $tvdbId) => Show::factory()->create([
+        '_tvdb_id' => $tvdbId,
+        'episodes_synced_at' => now(),
+        '_tvdb_defaultSeasonType' => 1,
+    ]));
+
+    // The 17th show takes the total to 102, the first crossing of a 100 boundary;
+    // the shows before it must stay silent, or the beat is per show, not per 100.
+    // Act & Assert
+    $this->artisan('catalog:sync-episodes-tvdb')
+        ->expectsOutputToContain('[episodes 102]')
+        ->doesntExpectOutputToContain('[episodes 6]');
+});
+
 it('aborts the run and leaves the marker untouched when a feed page fails', function (): void {
     // Arrange
     Http::fake([

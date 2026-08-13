@@ -166,10 +166,14 @@ don't restate them:
   silently truncate the catalog. TVDB narrows its `catch` to
   `TvdbRequestFailed`/`TvdbAuthenticationFailed` so a real bug (`QueryException`)
   still surfaces. Any chunk failure gates the marker advance (see below).
-- **A short pooled result IS the failure signal.** `movies()`/`tvShows()`/
-  `seriesMany()` report-not-throw a per-id failure and drop that id's key, so
-  `count($results) < count(array_unique($ids))` is the only way to detect it. A 404
-  stays present-as-null and does not count.
+- **Per-id failures are reported, not thrown — but the two APIs signal them
+  differently.** TMDB's `movies()`/`tvShows()` hand back only the results map and
+  drop a failed id's key, so a short count
+  (`count($results) < count(array_unique($ids))`) is the only way to detect one —
+  what `TmdbSyncCommand::syncChunk()` relies on. TVDB's `seriesMany()` returns a
+  `PooledResult` and names the failures in `PooledResult::failedIds`, which
+  `TvdbShowsCommand::chunkResult()` reads; never infer them from a short result
+  count. A 404 stays present-as-null either way and is not a failure.
 - **Heartbeats are plain `writeln`, never `spin()`/`progress()`** — those fork a
   renderer that overwrites the terminal and renders nothing at all under
   `catalog:sync`'s nested `Artisan::call`, which swallows the per-batch line. (The
@@ -190,10 +194,10 @@ window.
   `TmdbShows`/`TmdbMovies`), so the four feeds advance independently.
 - **Zero-failure gate:** a run advances its marker only if it finished with **no**
   failed ids/chunks; `--fresh` still advances (clean baseline). A per-id hydrate
-  failure counts — the pooled `movies()`/`tvShows()`/`seriesMany()` results **drop
-  a failed id's key** (report-not-throw), so a short result count
-  (`count($results) < count(array_unique($ids))`) flags the failure
-  and holds the marker. Any failure → marker unchanged → the next run re-covers the
+  failure counts, detected per the failure-signal rule above — a short
+  `movies()`/`tvShows()` result count, or a non-empty `seriesMany()`
+  `PooledResult::failedIds` — and holds the marker. Any failure → marker
+  unchanged → the next run re-covers the
   whole gap (idempotent upserts make that safe). A cache flush just drops to the
   24h fallback, not data loss.
 

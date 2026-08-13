@@ -91,12 +91,15 @@ it('yields the first section page intact before a second page 503 past retries t
     // Arrange
     // The 503 is pushed three times because the global retry middleware re-sends
     // a 5xx twice more, and each attempt draws the next item of the sequence.
+    // whenEmpty keeps a raised retry cap returning the same 503 rather than
+    // exhausting the sequence into an unrelated OutOfBoundsException.
     Http::fake([
         '*/library/sections/1/all*' => Http::sequence()
             ->push(fixtureBytes('PlexLibrary/plex/section_all_page1.json'))
             ->push('', 503)
             ->push('', 503)
-            ->push('', 503),
+            ->push('', 503)
+            ->whenEmpty(Http::response('', 503)),
     ]);
     $pages = resolve(PlexLibraryService::class)->fetchSectionItems('https://plex.test:6022', 'tok', '1');
 

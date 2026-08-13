@@ -189,6 +189,18 @@ positives, never at the author's judgment.
   reaches the operator's log only while the user sees generic lang-file copy.
   Carrying the detail that says which account failed and why is the design, not
   PII leakage.
+- A test file calling `DB::` / `Http::` / any facade **without** the matching
+  `use Illuminate\Support\Facades\*` import — Laravel's `AliasLoader` registers the
+  global facade aliases, so the unqualified call resolves and runs. It is a style
+  inconsistency at most, **never** a fatal and never BLOCKING. Before claiming any
+  "this will throw at runtime", check the suite: a green run is proof the path
+  executes.
+- New tests carrying **no** `// Arrange` / `// Act` / `// Assert` labels in a file
+  whose existing style is unlabeled (e.g. `TvdbUpdatesTest`, most of
+  `TmdbApiServiceTest`) — `tests/Unit/TestCommentStandardTest.php` polices the
+  *form* of labels that are present, not their presence. Matching the surrounding
+  file is correct; flag only a file that mixes both styles inconsistently within
+  itself.
 
 ## Consensus Rules (Used by Orchestrator, Not Agents)
 

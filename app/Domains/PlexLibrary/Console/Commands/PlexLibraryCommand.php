@@ -111,16 +111,22 @@ abstract class PlexLibraryCommand extends Command
         $lastBeat = -1;
 
         foreach ($libraries as $library) {
-            $before = $total;
+            // One clock per library, shared by every page: the sweep below deletes
+            // whatever this pass didn't stamp, so a per-page $now would leave page
+            // 1 behind its own library's watermark and delete it.
             $now = now();
 
             foreach ($this->library->fetchSectionItems($uri, $token, $library->_plex_key) as $page) {
+                $before = $total;
                 $total += $reconciler->upsertPage($server, $library, $page, $now);
+
+                // Beats per page, not per library: a production section walks for
+                // hours, and a beat deferred to the end of the library is silence
+                // followed by one burst.
+                $lastBeat = $this->hundredBeat($label, $before, $total, $lastBeat);
             }
 
             $reconciler->prune($server, $library, $now);
-
-            $lastBeat = $this->hundredBeat($label, $before, $total, $lastBeat);
         }
 
         $this->flushTotal($label, $total, $lastBeat);

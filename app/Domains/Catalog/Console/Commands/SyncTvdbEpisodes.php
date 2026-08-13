@@ -40,6 +40,8 @@ class SyncTvdbEpisodes extends Command
         // must abort the run with no show processed.
         $seen = [];
 
+        $this->output->writeln('Reading the episodes update feed…');
+
         foreach ($api->updates($since, 'episodes') as $record) {
             $seriesId = $record['seriesId'] ?? null;
 
@@ -49,6 +51,15 @@ class SyncTvdbEpisodes extends Command
         }
 
         $failed = false;
+
+        $this->output->writeln('Syncing episodes…');
+
+        // Per 100 rather than the other Catalog syncs' per 1000: those beat over
+        // bulk-hydrated batches, while this walk pays a paged HTTP crawl per show,
+        // so items land orders of magnitude slower — the same reason the Plex
+        // per-show episode crawl beats per 100.
+        $episodes = 0;
+        $beatAt = 100;
 
         // The feed carries far more distinct ids than a single whereIn can bind, so
         // the membership lookup runs a chunk at a time.
@@ -62,13 +73,18 @@ class SyncTvdbEpisodes extends Command
             // handle() stamps episodes_synced_at, which offset pagination would
             // skip or double-process. Report-and-continue so one bad show can't
             // abort the run.
-            $query->chunkById(200, function (Collection $shows) use ($seed, &$failed): void {
+            $query->chunkById(200, function (Collection $shows) use ($seed, &$failed, &$episodes, &$beatAt): void {
                 foreach ($shows as $show) {
                     try {
-                        $seed->handle($show);
+                        $episodes += $seed->handle($show);
                     } catch (TvdbRequestFailed|TvdbAuthenticationFailed $e) {
                         report($e);
                         $failed = true;
+                    }
+
+                    if ($episodes >= $beatAt) {
+                        $this->output->writeln("  [episodes {$episodes}]");
+                        $beatAt = intdiv($episodes, 100) * 100 + 100;
                     }
                 }
             });
