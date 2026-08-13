@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Str;
 use Symfony\Component\Finder\Finder;
+use Symfony\Component\Finder\SplFileInfo;
 
 /**
  * Drift guard for the `.claude/` agent toolkit: the commit trailer it instructs
@@ -125,4 +126,58 @@ it('runs the phase 5 hunters on the session model', function () use ($declaredMo
 
     // Assert
     expect($declared)->toBe(array_fill_keys($agents, 'inherit'));
+});
+
+it('runs every write-side agent on the session model', function () use ($declaredModel): void {
+    // These agents produce code the session owns, so pinning one would hand part
+    // of the work to a model the session never chose.
+    // Arrange
+    $agents = [
+        'review-fixer',
+        'tdd-test-writer',
+        'tdd-implementer',
+        'tdd-refactorer',
+    ];
+
+    // Act
+    $declared = array_combine($agents, array_map($declaredModel, $agents));
+
+    // Assert
+    expect($declared)->toBe(array_fill_keys($agents, 'inherit'));
+});
+
+it('declares a permitted model on every agent file, including ones added later', function () use ($declaredModel): void {
+    // The tests above name today's agents, so a *newly added* agent file is
+    // guarded by nothing. This sweeps the directory instead: rules 1–3 of Model
+    // Selection in `.claude/skills/review-pipeline/SKILL.md` admit these two
+    // values and no others, and rule 2 bars a dated model id outright.
+    // A missing `model:` key is an offender too, not an exemption — an unpinned
+    // agent silently takes the harness default, which is the drift the policy
+    // exists to stop, and `inherit` is how a role opts into the session model
+    // deliberately.
+    // The sweep is deliberately flat: it reads each agent by basename alone, so
+    // recursing would report a nested file under a path that doesn't exist.
+    // Arrange
+    $permitted = ['sonnet', 'inherit'];
+    $agentFiles = (new Finder)
+        ->files()
+        ->in(dirname(__DIR__, 2).'/.claude/agents')
+        ->name('*.md')
+        ->depth(0)
+        ->sortByName();
+
+    // Act
+    $offenders = collect($agentFiles)
+        ->map(fn (SplFileInfo $file): string => $file->getBasename('.md'))
+        ->reject(fn (string $agent): bool => in_array($declaredModel($agent), $permitted, true))
+        ->map(fn (string $agent): string => sprintf(
+            '.claude/agents/%s.md  declares model: %s',
+            $agent,
+            $declaredModel($agent) ?? '(none)',
+        ))
+        ->values()
+        ->all();
+
+    // Assert
+    expect($offenders)->toBe([]);
 });
