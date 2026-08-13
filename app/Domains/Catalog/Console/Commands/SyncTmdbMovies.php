@@ -10,6 +10,7 @@ use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Services\TmdbExportService;
+use App\Domains\Catalog\Support\Batches;
 use App\Domains\Catalog\Support\SyncMarker;
 use App\Domains\Catalog\Support\SyncWindow;
 use Carbon\CarbonImmutable;
@@ -142,19 +143,11 @@ class SyncTmdbMovies extends TmdbSyncCommand
 
     private function syncRows(TmdbExportService $export, string $file): bool
     {
-        $ids = [];
         $failed = false;
 
-        foreach ($this->keptRows($export, $file) as $row) {
-            $ids[] = (int) $row['id'];
+        foreach (Batches::of($this->keptRows($export, $file), self::HYDRATE_SIZE) as $rows) {
+            $ids = array_map(static fn (array $row): int => (int) $row['id'], $rows);
 
-            if (count($ids) >= self::HYDRATE_SIZE) {
-                $failed = $this->syncChunkSafely($ids) || $failed;
-                $ids = [];
-            }
-        }
-
-        if ($ids !== []) {
             $failed = $this->syncChunkSafely($ids) || $failed;
         }
 
@@ -171,25 +164,13 @@ class SyncTmdbMovies extends TmdbSyncCommand
      */
     private function keptRows(TmdbExportService $export, string $file): Generator
     {
-        $fresh = (bool) $this->option('fresh');
-        $buffer = [];
+        if ($this->option('fresh')) {
+            yield from $export->rows($file);
 
-        foreach ($export->rows($file) as $row) {
-            if ($fresh) {
-                yield $row;
-
-                continue;
-            }
-
-            $buffer[] = $row;
-
-            if (count($buffer) >= self::PROBE_SIZE) {
-                yield from $this->unsyncedRows($buffer);
-                $buffer = [];
-            }
+            return;
         }
 
-        if ($buffer !== []) {
+        foreach (Batches::of($export->rows($file), self::PROBE_SIZE) as $buffer) {
             yield from $this->unsyncedRows($buffer);
         }
     }

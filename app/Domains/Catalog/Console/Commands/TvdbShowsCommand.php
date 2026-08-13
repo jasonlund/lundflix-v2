@@ -11,8 +11,8 @@ use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TvdbApiService;
+use App\Domains\Catalog\Support\Batches;
 use App\Domains\Catalog\Support\SyncIdsResult;
-use Generator;
 use Illuminate\Console\Command;
 
 abstract class TvdbShowsCommand extends Command
@@ -54,38 +54,13 @@ abstract class TvdbShowsCommand extends Command
         $failed = false;
         $failedIds = [];
 
-        foreach ($this->batches($ids) as $chunk) {
+        foreach (Batches::of($ids, self::BATCH_SIZE) as $chunk) {
             $result = $this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks, $upsertSeasons);
             $failed = $failed || $result->failed;
             $failedIds = [...$failedIds, ...$result->failedIds];
         }
 
         return new SyncIdsResult($failed, $failedIds);
-    }
-
-    /**
-     * Hand-rolled rather than `LazyCollection::chunk()`: callers hand in raw
-     * generators, which `LazyCollection` rejects — it wants a generator *function*.
-     *
-     * @param  iterable<int, int>  $ids
-     * @return Generator<int, list<int>>
-     */
-    private function batches(iterable $ids): Generator
-    {
-        $chunk = [];
-
-        foreach ($ids as $id) {
-            $chunk[] = $id;
-
-            if (count($chunk) >= self::BATCH_SIZE) {
-                yield $chunk;
-                $chunk = [];
-            }
-        }
-
-        if ($chunk !== []) {
-            yield $chunk;
-        }
     }
 
     /**

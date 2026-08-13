@@ -10,11 +10,10 @@ use App\Domains\Catalog\Services\ImdbDatasetService;
 use App\Domains\Catalog\Support\CatalogImdbIds;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
-use Illuminate\Console\Command;
 
 #[Description('Sync IMDb akas: re-download the title.akas dataset and refresh the aka list on every matching catalog title')]
 #[Signature('catalog:sync-akas {--batch=}')]
-class SyncImdbAkas extends Command
+class SyncImdbAkas extends ImdbSyncCommand
 {
     /**
      * Default flush size for the accumulated akas buffer; --batch overrides it.
@@ -27,17 +26,12 @@ class SyncImdbAkas extends Command
      */
     private const int BATCH_SIZE = 1000;
 
-    /**
-     * Running count of titles applied, for the per-flush progress heartbeat.
-     */
-    private int $processed = 0;
-
     public function __construct(
-        private readonly ImdbDatasetService $datasets,
-        private readonly CatalogImdbIds $catalogIds,
+        ImdbDatasetService $datasets,
+        CatalogImdbIds $catalogIds,
         private readonly ImportImdbAkas $importer,
     ) {
-        parent::__construct();
+        parent::__construct($datasets, $catalogIds);
     }
 
     public function handle(): int
@@ -87,11 +81,22 @@ class SyncImdbAkas extends Command
         return self::SUCCESS;
     }
 
-    private function batchSize(): int
+    protected function defaultBatchSize(): int
     {
-        $batch = (int) $this->option('batch');
+        return self::BATCH_SIZE;
+    }
 
-        return $batch > 0 ? $batch : self::BATCH_SIZE;
+    protected function heartbeatTag(): string
+    {
+        return 'imdb akas';
+    }
+
+    /**
+     * @param  array<string, list<array<string, mixed>>>  $rows
+     */
+    protected function import(array $rows): void
+    {
+        $this->importer->handle($rows);
     }
 
     /**
@@ -111,37 +116,5 @@ class SyncImdbAkas extends Command
         if (count($batch) >= $size) {
             $this->flush($batch);
         }
-    }
-
-    /**
-     * Narrow the buffered groups to the ones the catalog holds a title for, persist
-     * them, and reset the buffer.
-     *
-     * The catalog-membership probe lives here rather than in the streaming loop so
-     * the run never holds the whole catalog's ids in memory. A batch left with
-     * nothing to write stays silent: title.akas covers far more titles than the
-     * catalog does, so a real run flushes thousands of zero-match batches and a
-     * heartbeat for each would bury the signal.
-     *
-     * @param  array<string, list<array<string, mixed>>>  $batch
-     */
-    private function flush(array &$batch): void
-    {
-        $groups = $batch;
-        $batch = [];
-
-        if ($groups === []) {
-            return;
-        }
-
-        $groups = array_intersect_key($groups, $this->catalogIds->existing(array_keys($groups)));
-
-        if ($groups === []) {
-            return;
-        }
-
-        $this->importer->handle($groups);
-        $this->processed += count($groups);
-        $this->output->writeln("  [imdb akas {$this->processed}]");
     }
 }

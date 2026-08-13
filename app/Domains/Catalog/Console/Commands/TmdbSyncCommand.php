@@ -9,6 +9,7 @@ use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TmdbApiService;
+use App\Domains\Catalog\Support\Batches;
 use App\Domains\Catalog\Support\SyncMarker;
 use App\Domains\Catalog\Support\SyncWindow;
 use Illuminate\Console\Command;
@@ -112,19 +113,8 @@ abstract class TmdbSyncCommand extends Command
             // Only ids we already hold — a changed id never synced is an insert
             // candidate the insert phase owns. The feed is unbounded, so probe per
             // slice; one whereIn over a busy window risks the placeholder limit.
-            $buffer = [];
-
-            foreach ($this->changedIds($window) as $id) {
-                $buffer[] = $id;
-
-                if (count($buffer) >= self::PROBE_SIZE) {
-                    $failed = $this->syncInBatches($this->syncedIdsAmong($buffer)->all()) || $failed;
-                    $buffer = [];
-                }
-            }
-
-            if ($buffer !== []) {
-                $failed = $this->syncInBatches($this->syncedIdsAmong($buffer)->all()) || $failed;
+            foreach (Batches::of($this->changedIds($window), self::PROBE_SIZE) as $slice) {
+                $failed = $this->syncInBatches($this->syncedIdsAmong($slice)->all()) || $failed;
             }
         } catch (\Throwable $e) {
             report($e);
