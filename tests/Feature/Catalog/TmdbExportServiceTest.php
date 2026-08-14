@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Exceptions\CorruptTmdbExportArchive;
 use App\Domains\Catalog\Services\TmdbExportService;
+use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 
 afterEach(fn () => Date::setTestNow());
@@ -67,17 +69,32 @@ it('returns a temp path whose contents are the downloaded bytes', function (): v
 });
 
 it('removes the temp file when the download fails', function (): void {
-    $tempFiles = fn (): array => glob(sys_get_temp_dir().'/tmdb_*');
-    Http::fake(['*files.tmdb.org*' => Http::response('', 500)]);
-    $before = $tempFiles();
+    // The stub handler is called with the Guzzle options, and `sink` is exactly the
+    // tempnam() path this download just created — so the ONE file under test is
+    // pinned here. Listing the shared system temp dir instead would fold in every
+    // `tmdb_*` file any other process left there, and go red on their comings and
+    // goings rather than on a leak.
+    // Arrange
+    Sleep::fake();
+    $sinkPath = null;
+    Http::fake(['*files.tmdb.org*' => function (Request $request, array $options) use (&$sinkPath) {
+        $sinkPath = $options['sink'];
 
+        return Http::response('', 500);
+    }]);
+
+    // Act
     try {
         resolve(TmdbExportService::class)->download('movie_ids');
     } catch (RequestException) {
         // the leak, not the throw, is under test
     }
 
-    expect($tempFiles())->toBe($before);
+    // Assert
+    // toBeString() is load-bearing: a null $sinkPath would coerce through
+    // file_exists() to false and pass the leak assertion vacuously.
+    expect($sinkPath)->toBeString();
+    expect(file_exists($sinkPath))->toBeFalse();
 });
 
 it('does not compound the global retry middleware past three attempts on a persistent 500', function (): void {
