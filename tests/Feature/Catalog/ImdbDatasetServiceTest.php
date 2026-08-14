@@ -68,6 +68,7 @@ it('removes the temp file when the download fails', function (): void {
     // just created, so capturing it pins the one file under test — a glob over
     // the shared temp dir also matches files other processes leave behind.
     // Arrange
+    Sleep::fake();
     $sinkPath = null;
     Http::fake(function (Request $request, array $options) use (&$sinkPath) {
         $sinkPath = $options['sink'];
