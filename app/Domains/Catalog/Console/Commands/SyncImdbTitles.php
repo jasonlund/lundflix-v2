@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\ImportImdbTitles;
+use App\Domains\Catalog\Console\Commands\Concerns\SkipsUnchangedDataset;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Services\ImdbDatasetService;
 use App\Domains\Catalog\Support\CatalogImdbIds;
@@ -13,9 +14,11 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Support\Str;
 
 #[Description('Sync IMDb titles: re-download the title.basics dataset and refresh the basics columns on every matching catalog title')]
-#[Signature('catalog:sync-titles {--batch=}')]
+#[Signature('catalog:sync-titles {--batch=} {--force}')]
 class SyncImdbTitles extends ImdbSyncCommand
 {
+    use SkipsUnchangedDataset;
+
     /**
      * Default flush size for the accumulated basics buffer; --batch overrides it.
      *
@@ -40,6 +43,10 @@ class SyncImdbTitles extends ImdbSyncCommand
 
     public function handle(): int
     {
+        if (! $this->shouldSyncDataset(ImdbDataset::TitleBasics)) {
+            return self::SUCCESS;
+        }
+
         $path = $this->datasets->download(ImdbDataset::TitleBasics);
 
         // Plain writeln progress, not a progress bar: bars render nothing
@@ -67,6 +74,11 @@ class SyncImdbTitles extends ImdbSyncCommand
         }
 
         $this->output->writeln("Skipped {$this->adultSkipped} adult ".Str::plural('title', $this->adultSkipped).'.');
+
+        // Deliberately past the try/finally, not inside it: a download or import
+        // that throws must leave the old marker standing so the next run retries
+        // this dataset instead of treating it as already applied.
+        $this->advanceDatasetMarker(ImdbDataset::TitleBasics);
 
         return self::SUCCESS;
     }

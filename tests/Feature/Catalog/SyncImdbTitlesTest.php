@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
+use App\Domains\Catalog\Support\ImdbDatasetMarker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -165,4 +167,49 @@ it('flushes once per batch', function (): void {
     $output = Artisan::output();
     expect(substr_count($output, '[imdb titles'))->toBe(2)
         ->and($output)->toContain('[imdb titles 4]');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Last-Modified gate
+|--------------------------------------------------------------------------
+| The probe is a HEAD and the download a GET, both against the same dataset
+| URL, so every fake below dispatches on $request->method(): the HEAD arm
+| carries the header under test, the GET arm serves the real fixture bytes.
+*/
+
+it('skips the basics download when the dataset is unchanged', function (): void {
+    // Arrange
+    $header = 'Tue, 12 Aug 2026 01:02:03 GMT';
+    resolve(ImdbDatasetMarker::class)->advance(ImdbDataset::TitleBasics, $header);
+    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    Http::fake(fn (Request $request) => $request->method() === 'HEAD'
+        ? Http::response('', 200, ['Last-Modified' => $header])
+        : Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')));
+
+    // Act
+    $exitCode = Artisan::call('catalog:sync-titles');
+
+    // Assert
+    expect(Artisan::output())->toContain('unchanged');
+    Http::assertNotSent(fn (Request $request): bool => $request->method() === 'GET');
+    expect($matrix->refresh()->_imdb_primaryTitle)->toBeNull();
+    expect($exitCode)->toBe(0);
+});
+
+it('advances the basics marker after a successful sync', function (): void {
+    // Arrange
+    $header = 'Wed, 13 Aug 2026 04:05:06 GMT';
+    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    Http::fake(fn (Request $request) => $request->method() === 'HEAD'
+        ? Http::response('', 200, ['Last-Modified' => $header])
+        : Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')));
+
+    // Act
+    Artisan::call('catalog:sync-titles');
+
+    // Assert
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && Str::endsWith($request->url(), '/title.basics.tsv.gz'));
+    expect($matrix->refresh()->_imdb_primaryTitle)->toBe('The Matrix');
+    expect(resolve(ImdbDatasetMarker::class)->current(ImdbDataset::TitleBasics))->toBe($header);
 });

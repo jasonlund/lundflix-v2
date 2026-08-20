@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
 use Throwable;
 
-#[Description('Sync the catalog from TMDB and TVDB, then apply IMDb ratings, surviving any single failure')]
+#[Description('Sync the catalog from TMDB and TVDB, surviving any single failure')]
 #[Signature('catalog:sync {--fresh}')]
 class SyncCatalog extends Command
 {
@@ -34,14 +34,15 @@ class SyncCatalog extends Command
 
     /**
      * The ordered command => arguments to dispatch: TMDB and TVDB establish the
-     * source-of-truth rows first (the TVDB show sync followed by the episodes
-     * sync for already-seeded shows), then the IMDb dataset steps — ratings,
-     * titles, akas — enrich them by _imdb_id last.
+     * source-of-truth rows — movies, then the TVDB show sync followed by the
+     * episodes sync for already-seeded shows, then the TMDB show hydration. The
+     * IMDb datasets are not here: they are far too large to pull on this
+     * frequently-run sync and have their own catalog:sync-imdb schedule.
      *
      * `--fresh` forces a full re-seed: the TVDB show step swaps from the
      * updates-only sync to the full allSeries crawl, and --fresh is forwarded to
-     * both TMDB syncs to reprocess every already-synced row. Seed, episodes, and
-     * the three IMDb dataset steps take no --fresh — passing it would error; the
+     * both TMDB syncs to reprocess every already-synced row. The seed and
+     * episodes steps take no --fresh — passing it would error; the
      * marker-driven episodes sync runs identically in both flows.
      *
      * @return array<class-string<Command>, array<string, bool>>
@@ -54,9 +55,6 @@ class SyncCatalog extends Command
                 SeedTvdbShows::class => [],
                 SyncTvdbEpisodes::class => [],
                 SyncTmdbShows::class => ['--fresh' => true],
-                SyncImdbRatings::class => [],
-                SyncImdbTitles::class => [],
-                SyncImdbAkas::class => [],
             ];
         }
 
@@ -65,9 +63,6 @@ class SyncCatalog extends Command
             SyncTvdbShows::class => [],
             SyncTvdbEpisodes::class => [],
             SyncTmdbShows::class => [],
-            SyncImdbRatings::class => [],
-            SyncImdbTitles::class => [],
-            SyncImdbAkas::class => [],
         ];
     }
 }

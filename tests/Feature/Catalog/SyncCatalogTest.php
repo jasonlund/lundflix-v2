@@ -10,6 +10,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Command\Command;
 
@@ -24,17 +25,6 @@ beforeEach(function (): void {
 |--------------------------------------------------------------------------
 | Fixtures (byte-exact real source slices)
 |--------------------------------------------------------------------------
-| tests/Fixtures/Catalog/imdb/title.ratings.tsv.gz — tt0133093 8.7/2252453,
-|   tt0137523 8.8/2615814, tt0816692 8.7/2541567, tt0000001 5.7/2211
-|   (no tt0903747 row, so Breaking Bad never gets ranked).
-| tests/Fixtures/Catalog/imdb/title.basics.tsv.gz — 6 rows incl. tt0133093
-|   (movie / The Matrix / 1999 / 136 / Action,Sci-Fi) and tt0903747 (tvSeries /
-|   Breaking Bad).
-| tests/Fixtures/Catalog/imdb/title.akas.tsv.gz — 5 titles' contiguous aka rows,
-|   incl. tt0133093 (67 rows).
-| The three IMDb fixtures deliberately overlap on tt0133093 — the movie TMDB
-| creates — so one default run proves all three enrichment steps landed on the
-| same row.
 | tests/Fixtures/Catalog/tmdb/movie_ids.json.gz — daily export incl. id 603
 |   (The Matrix).
 | tests/Fixtures/Catalog/tmdb/movie.json — /movie/603 (imdb_id tt0133093);
@@ -46,26 +36,22 @@ beforeEach(function (): void {
 |   drives via catalog:seed-shows-tvdb, faked in fakeCatalogSyncFreshAndUpdates().
 |
 | A default catalog:sync dispatches catalog:sync-movies → catalog:sync-shows-tvdb →
-| catalog:sync-shows-tmdb → the three IMDb enrichment steps (catalog:sync-ratings,
-| catalog:sync-titles, catalog:sync-akas). Under --fresh the TVDB step swaps to the full
-| crawl (catalog:seed-shows-tvdb) and --fresh is forwarded to both TMDB syncs:
-| catalog:sync-movies --fresh → catalog:seed-shows-tvdb → catalog:sync-shows-tmdb --fresh
-| → the same three IMDb steps.
+| catalog:sync-episodes-tvdb → catalog:sync-shows-tmdb. Under --fresh the TVDB step
+| swaps to the full crawl (catalog:seed-shows-tvdb) and --fresh is forwarded to both
+| TMDB syncs: catalog:sync-movies --fresh → catalog:seed-shows-tvdb →
+| catalog:sync-episodes-tvdb → catalog:sync-shows-tmdb --fresh.
 */
 
 /**
  * Fake every host the catalog:sync flow touches with happy-path fixtures:
- * the three IMDb datasets, the TMDB movie + tv exports, the shared TMDB API
- * (The Matrix for id 603, Game of Thrones for id 1399, 404 else), and TheTVDB's
- * /updates path (login JWT, the chained updates feed, Breaking Bad's extended
- * payload for the one discovered recordId 434847).
+ * the TMDB movie + tv exports, the shared TMDB API (The Matrix for id 603,
+ * Game of Thrones for id 1399, 404 else), and TheTVDB's /updates path (login
+ * JWT, the chained updates feed, Breaking Bad's extended payload for the one
+ * discovered recordId 434847).
  */
 function fakeCatalogSync(): void
 {
     Http::fake([
-        '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
-        '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),
-        '*title.akas*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
         // Both TMDB commands hit their changes feed after the insert phase on a
         // default run; empty-results pages drive the update phase through its
@@ -105,9 +91,6 @@ function fakeCatalogSync(): void
 function fakeCatalogSyncFreshAndUpdates(): void
 {
     Http::fake([
-        '*title.ratings*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz')),
-        '*title.basics*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz')),
-        '*title.akas*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')),
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
         // Both TMDB commands hit their changes feed after the insert phase on a
         // default run; empty-results pages drive the update phase through its
@@ -174,7 +157,7 @@ it('is born a show from TVDB; TMDB does not create a show it cannot match', func
     expect(Show::count())->toBe(1);
 });
 
-it('applies IMDb ratings last by _imdb_id', function (): void {
+it('requests no IMDb dataset on a default run', function (): void {
     // Arrange
     fakeCatalogSync();
 
@@ -182,44 +165,14 @@ it('applies IMDb ratings last by _imdb_id', function (): void {
     $this->artisan('catalog:sync');
 
     // Assert
-    $matrix = Movie::where('_imdb_id', 'tt0133093')->firstOrFail();
-    expect($matrix->_imdb_numVotes)->toBe(2252453);
-    expect($matrix->_imdb_averageRating)->toBe(8.7);
-
-    $breakingBad = Show::where('_imdb_id', 'tt0903747')->firstOrFail();
-    expect($breakingBad->_imdb_numVotes)->toBeNull();
+    // The three IMDb legs now run under catalog:sync-imdb, so the twice-daily
+    // catalog:sync must never reach for a multi-hundred-megabyte dataset.
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.ratings'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
 });
 
-it('fetches the basics and akas datasets on a default run', function (): void {
-    // Arrange
-    fakeCatalogSync();
-
-    // Act
-    $this->artisan('catalog:sync');
-
-    // Assert
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
-});
-
-it('applies IMDb basics and akas last by _imdb_id', function (): void {
-    // Arrange
-    fakeCatalogSync();
-
-    // Act
-    $this->artisan('catalog:sync');
-
-    // Assert
-    // The Matrix is created by the TMDB step, so its basics columns and aka list
-    // can only be populated if the IMDb steps ran after it against _imdb_id.
-    $matrix = Movie::where('_imdb_id', 'tt0133093')->firstOrFail();
-    expect($matrix->_imdb_titleType)->toBe('movie')
-        ->and($matrix->_imdb_primaryTitle)->toBe('The Matrix')
-        ->and($matrix->_imdb_genres)->toBe(['Action', 'Sci-Fi'])
-        ->and($matrix->_imdb_akas)->toBeArray()->not->toBeEmpty();
-});
-
-it('under --fresh fetches the basics and akas datasets too', function (): void {
+it('requests no IMDb dataset under --fresh either', function (): void {
     // Arrange
     fakeCatalogSyncFreshAndUpdates();
 
@@ -227,25 +180,41 @@ it('under --fresh fetches the basics and akas datasets too', function (): void {
     $this->artisan('catalog:sync', ['--fresh' => true]);
 
     // Assert
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.ratings'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
+    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
 });
 
-it('continues past a failing titles command, exits FAILURE and still runs akas', function (): void {
+it('still builds the TMDB movie and the TVDB show on a default run', function (): void {
     // Arrange
+    fakeCatalogSync();
+
+    // Act & Assert
+    $this->artisan('catalog:sync')->assertExitCode(Command::SUCCESS);
+
+    // Assert
+    // Dropping the IMDb legs must leave the TMDB/TVDB chain itself untouched.
+    expect(Movie::where('_imdb_id', 'tt0133093')->first())->not->toBeNull();
+    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+});
+
+it('continues past a failing movies command, exits FAILURE and reports', function (): void {
+    // Arrange
+    Sleep::fake();
     Exceptions::fake();
     // Http::fake merges stubs and the first registered match wins, so this 500
-    // registered ahead of the happy-path helper overrides only the basics fetch.
-    Http::fake(['*title.basics*' => Http::response('', 500)]);
+    // registered ahead of the happy-path helper overrides only the ids export.
+    Http::fake(['*movie_ids*' => Http::response('', 500)]);
     fakeCatalogSync();
 
     // Act & Assert
     $this->artisan('catalog:sync')->assertExitCode(Command::FAILURE);
 
     // Assert
+    // The dead export takes catalog:sync-movies down with it, but the orchestrator
+    // reports the throwable and keeps dispatching — so the TVDB show still lands.
     Exceptions::assertReported(fn (RequestException $e): bool => true);
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
-    expect(Movie::where('_imdb_id', 'tt0133093')->firstOrFail()->_imdb_akas)->toBeArray()->not->toBeEmpty();
+    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
 });
 
 it('exits SUCCESS when every command succeeds', function (): void {
@@ -254,40 +223,6 @@ it('exits SUCCESS when every command succeeds', function (): void {
 
     // Act & Assert
     $this->artisan('catalog:sync')->assertExitCode(Command::SUCCESS);
-});
-
-it('continues past a failing ratings command, exits FAILURE and reports', function (): void {
-    // Arrange
-    Exceptions::fake();
-    Http::fake([
-        '*title.ratings*' => Http::response('', 500),
-        '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
-        '*api.themoviedb.org*' => function (Request $request) {
-            if (Str::contains($request->url(), '/movie/603')) {
-                return Http::response(fixtureBytes('Catalog/tmdb/movie.json'));
-            }
-
-            if (Str::contains($request->url(), '/tv/1399')) {
-                return Http::response(fixtureBytes('Catalog/tmdb/tv.json'));
-            }
-
-            return Http::response('', 404);
-        },
-        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
-            ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
-            : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
-            ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
-            : Http::response('', 404),
-    ]);
-
-    // Act & Assert
-    $this->artisan('catalog:sync')->assertExitCode(Command::FAILURE);
-
-    // Assert
-    Exceptions::assertReported(fn (RequestException $e): bool => true);
-    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
 });
 
 it('under --fresh crawls the full TVDB seed and forwards --fresh to both TMDB syncs', function (): void {

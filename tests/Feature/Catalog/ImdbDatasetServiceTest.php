@@ -300,3 +300,50 @@ it('counts the title.basics fixture data rows', function (): void {
 
     @unlink($path);
 });
+
+it('returns the raw last-modified header of the dataset', function (): void {
+    // The header value is returned verbatim — never parsed into a date — because
+    // callers compare it to a stored value with raw string equality.
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response('', 200, ['Last-Modified' => 'Tue, 12 Aug 2026 01:02:03 GMT'])]);
+
+    // Act
+    $lastModified = resolve(ImdbDatasetService::class)->lastModified(ImdbDataset::TitleRatings);
+
+    // Assert
+    expect($lastModified)->toBe('Tue, 12 Aug 2026 01:02:03 GMT');
+});
+
+it('probes the dataset url with a head request', function (): void {
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response('', 200, ['Last-Modified' => 'Tue, 12 Aug 2026 01:02:03 GMT'])]);
+
+    // Act
+    resolve(ImdbDatasetService::class)->lastModified(ImdbDataset::TitleRatings);
+
+    // Assert
+    Http::assertSent(fn ($request): bool => $request->method() === 'HEAD'
+        && Str::endsWith((string) $request->url(), 'title.ratings.tsv.gz'));
+});
+
+it('returns null when the probe carries no last-modified header', function (): void {
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response('', 200)]);
+
+    // Act
+    $lastModified = resolve(ImdbDatasetService::class)->lastModified(ImdbDataset::TitleRatings);
+
+    // Assert
+    expect($lastModified)->toBeNull();
+});
+
+it('returns null when the probe fails with a non-2xx response', function (): void {
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response('', 500, ['Last-Modified' => 'Tue, 12 Aug 2026 01:02:03 GMT'])]);
+
+    // Act
+    $lastModified = resolve(ImdbDatasetService::class)->lastModified(ImdbDataset::TitleRatings);
+
+    // Assert
+    expect($lastModified)->toBeNull();
+});

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpdateImdbRatings;
+use App\Domains\Catalog\Console\Commands\Concerns\SkipsUnchangedDataset;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Services\ImdbDatasetService;
 use Illuminate\Console\Attributes\Description;
@@ -12,9 +13,11 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Description('Sync IMDb ratings: re-download the title.ratings dataset and refresh votes/rating on every matching catalog title')]
-#[Signature('catalog:sync-ratings')]
+#[Signature('catalog:sync-ratings {--force}')]
 class SyncImdbRatings extends Command
 {
+    use SkipsUnchangedDataset;
+
     /**
      * Flush the accumulated ratings buffer once it reaches this size.
      */
@@ -34,6 +37,10 @@ class SyncImdbRatings extends Command
 
     public function handle(): int
     {
+        if (! $this->shouldSyncDataset(ImdbDataset::TitleRatings)) {
+            return self::SUCCESS;
+        }
+
         $path = $this->datasets->download(ImdbDataset::TitleRatings);
 
         // Plain writeln progress, not a progress bar: bars render nothing
@@ -62,6 +69,11 @@ class SyncImdbRatings extends Command
         } finally {
             @unlink($path);
         }
+
+        // Deliberately past the try/finally, not inside it: a download or import
+        // that throws must leave the old marker standing so the next run retries
+        // this dataset instead of treating it as already applied.
+        $this->advanceDatasetMarker(ImdbDataset::TitleRatings);
 
         return self::SUCCESS;
     }

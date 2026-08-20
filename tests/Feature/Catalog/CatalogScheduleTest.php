@@ -21,14 +21,31 @@ it('schedules catalog:sync at midnight and noon America/Los_Angeles without over
     // Arrange
     $schedule = resolve(Schedule::class);
 
+    // anchored on the trailing argument so the sibling catalog:sync-imdb entry can't match
     // Act
     $event = collect($schedule->events())->first(
-        fn ($e): bool => Str::contains($e->command ?? '', 'catalog:sync'),
+        fn ($e): bool => Str::endsWith($e->command ?? '', ' catalog:sync'),
     );
 
     // Assert
     expect($event)->not->toBeNull();
     expect($event->expression)->toBe('0 0,12 * * *');
+    expect($event->timezone)->toBe('America/Los_Angeles');
+    expect($event->withoutOverlapping)->toBeTrue();
+});
+
+it('schedules catalog:sync-imdb daily at 06:00 America/Los_Angeles without overlapping', function (): void {
+    // Arrange
+    $schedule = resolve(Schedule::class);
+
+    // Act
+    $event = collect($schedule->events())->first(
+        fn ($e): bool => Str::endsWith($e->command ?? '', ' catalog:sync-imdb'),
+    );
+
+    // Assert
+    expect($event)->not->toBeNull();
+    expect($event->expression)->toBe('0 6 * * *');
     expect($event->timezone)->toBe('America/Los_Angeles');
     expect($event->withoutOverlapping)->toBeTrue();
 });

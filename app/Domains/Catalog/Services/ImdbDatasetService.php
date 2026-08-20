@@ -25,7 +25,7 @@ final class ImdbDatasetService
                 ->timeout(600)
                 ->withOptions(['retry_enabled' => false])
                 ->retry(3, 1000)
-                ->get(self::BASE_URL.'/'.$dataset->filename())
+                ->get($this->url($dataset))
                 ->throw();
         } catch (Throwable $e) {
             @unlink($path);
@@ -34,6 +34,23 @@ final class ImdbDatasetService
         }
 
         return $path;
+    }
+
+    public function lastModified(ImdbDataset $dataset): ?string
+    {
+        try {
+            $response = Http::head($this->url($dataset));
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $lastModified = $response->header('Last-Modified');
+
+        return $lastModified === '' ? null : $lastModified;
     }
 
     /**
@@ -95,6 +112,11 @@ final class ImdbDatasetService
                 gzclose($handle);
             }
         });
+    }
+
+    private function url(ImdbDataset $dataset): string
+    {
+        return self::BASE_URL.'/'.$dataset->filename();
     }
 
     /**

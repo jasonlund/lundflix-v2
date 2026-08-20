@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\ImportImdbAkas;
+use App\Domains\Catalog\Console\Commands\Concerns\SkipsUnchangedDataset;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Services\ImdbDatasetService;
 use App\Domains\Catalog\Support\CatalogImdbIds;
@@ -12,9 +13,11 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 
 #[Description('Sync IMDb akas: re-download the title.akas dataset and refresh the aka list on every matching catalog title')]
-#[Signature('catalog:sync-akas {--batch=}')]
+#[Signature('catalog:sync-akas {--batch=} {--force}')]
 class SyncImdbAkas extends ImdbSyncCommand
 {
+    use SkipsUnchangedDataset;
+
     /**
      * Default flush size for the accumulated akas buffer; --batch overrides it.
      *
@@ -36,6 +39,10 @@ class SyncImdbAkas extends ImdbSyncCommand
 
     public function handle(): int
     {
+        if (! $this->shouldSyncDataset(ImdbDataset::TitleAkas)) {
+            return self::SUCCESS;
+        }
+
         $path = $this->datasets->download(ImdbDataset::TitleAkas);
 
         // Plain writeln progress, not a progress bar: bars render nothing
@@ -77,6 +84,11 @@ class SyncImdbAkas extends ImdbSyncCommand
         } finally {
             @unlink($path);
         }
+
+        // Deliberately past the try/finally, not inside it: a download or import
+        // that throws must leave the old marker standing so the next run retries
+        // this dataset instead of treating it as already applied.
+        $this->advanceDatasetMarker(ImdbDataset::TitleAkas);
 
         return self::SUCCESS;
     }

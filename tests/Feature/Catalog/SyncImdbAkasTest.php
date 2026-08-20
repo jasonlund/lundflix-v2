@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
+use App\Domains\Catalog\Support\ImdbDatasetMarker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -203,4 +205,69 @@ it('downloads the akas dataset and removes the temp file when it finishes', func
     // Assert
     Http::assertSent(fn (Request $request): bool => Str::endsWith($request->url(), '/title.akas.tsv.gz'));
     expect($tempFiles())->toBe($before);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Last-Modified gate
+|--------------------------------------------------------------------------
+| The probe is a HEAD and the download a GET, both against the same dataset
+| URL, so every fake below dispatches on $request->method(): the HEAD arm
+| carries the header under test, the GET arm serves the real fixture bytes.
+*/
+
+it('skips the akas download when the dataset is unchanged', function (): void {
+    // Arrange
+    $header = 'Tue, 12 Aug 2026 01:02:03 GMT';
+    resolve(ImdbDatasetMarker::class)->advance(ImdbDataset::TitleAkas, $header);
+    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    Http::fake(fn (Request $request) => $request->method() === 'HEAD'
+        ? Http::response('', 200, ['Last-Modified' => $header])
+        : Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')));
+
+    // Act
+    $exitCode = Artisan::call('catalog:sync-akas');
+
+    // Assert
+    expect(Artisan::output())->toContain('unchanged');
+    Http::assertNotSent(fn (Request $request): bool => $request->method() === 'GET');
+    expect($matrix->refresh()->_imdb_akas)->toBeNull();
+    expect($exitCode)->toBe(0);
+});
+
+// The untouched basics marker is the point: each leg gates on its own dataset,
+// so an akas run must never stamp another leg's marker and skip it next time.
+it('advances the akas marker after a successful sync', function (): void {
+    // Arrange
+    $header = 'Wed, 13 Aug 2026 04:05:06 GMT';
+    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    Http::fake(fn (Request $request) => $request->method() === 'HEAD'
+        ? Http::response('', 200, ['Last-Modified' => $header])
+        : Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')));
+
+    // Act
+    Artisan::call('catalog:sync-akas');
+
+    // Assert
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && Str::endsWith($request->url(), '/title.akas.tsv.gz'));
+    expect($matrix->refresh()->_imdb_akas)->toHaveCount(67);
+    expect(resolve(ImdbDatasetMarker::class)->current(ImdbDataset::TitleAkas))->toBe($header);
+    expect(resolve(ImdbDatasetMarker::class)->current(ImdbDataset::TitleBasics))->toBeNull();
+});
+
+it('downloads the akas dataset despite a matching marker when forced', function (): void {
+    // Arrange
+    $header = 'Tue, 12 Aug 2026 01:02:03 GMT';
+    resolve(ImdbDatasetMarker::class)->advance(ImdbDataset::TitleAkas, $header);
+    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    Http::fake(fn (Request $request) => $request->method() === 'HEAD'
+        ? Http::response('', 200, ['Last-Modified' => $header])
+        : Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')));
+
+    // Act
+    Artisan::call('catalog:sync-akas', ['--force' => true]);
+
+    // Assert
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && Str::endsWith($request->url(), '/title.akas.tsv.gz'));
+    expect($matrix->refresh()->_imdb_akas)->toHaveCount(67);
 });
