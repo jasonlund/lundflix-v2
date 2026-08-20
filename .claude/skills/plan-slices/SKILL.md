@@ -66,10 +66,38 @@ side-effect. Internal method calls and private state are not behaviors.
   default, error type, validation rule — becomes **at least one** behavior.
 - Drop "behaviors" that nothing can observe (see the testability gate).
 
-## Step 3 — Testability gate (the opinionated part)
+## Step 3 — The seam contract (the opinionated part)
 
-For each behavior, check it can be driven test-first. Flag the problem and
-recommend the **smallest seam**:
+A **seam** is the public boundary a test observes behavior at without reaching
+inside — the interface is the test surface. Vocabulary:
+`.claude/skills/codebase-design/SKILL.md`.
+
+### 3a — Name the seams, and get them confirmed
+
+Before any slice is written, list the seams this ticket's tests will run against.
+**No test is planned at an unconfirmed seam.** You can't test everything, so
+agreeing the seams up front is how the effort lands on critical paths instead of
+spreading evenly over every edge case.
+
+- **Prefer an existing seam** to a new one. An `artisan()` call, an HTTP route, an
+  existing Action's `handle()` — each costs nothing and already has prior art.
+- **Take the highest seam that can still observe the behavior.** Testing at the
+  command or route level exercises the wiring too; testing at a private helper
+  proves only that the helper works.
+- **Fewest seams wins — one is the ideal.** State the count outright ("one new
+  seam: `SyncShows::handle()`; everything else runs through existing `artisan()` +
+  `Http::fake()`"). A ticket that needs four new seams is usually a design problem
+  surfacing early, not a testing problem.
+- **New seam ⇒ justify it.** One adapter is a hypothetical seam; two (production +
+  test) make it real. A seam nothing varies across is just indirection.
+
+Put the seam list at the **top of the backlog** and confirm it with the user
+alongside the testability findings.
+
+### 3b — Testability gate
+
+For each behavior, check it can be driven test-first at one of those seams. Flag
+the problem and recommend the **smallest seam**:
 
 - **I/O isn't fakeable** — hard-coded URL, `now()`/clock, filesystem, a `new`'d
   HTTP client → **inject it or move it to config** so a test can fake it.
@@ -115,13 +143,16 @@ reason — the right-reason-RED gate the `tdd` skill and `tdd-test-writer` enfor
 Append a `## TDD Slice Backlog` section to the target (the Linear ticket body or
 the plan file — see **Input & output target**), in this order:
 
-1. **Testability findings** first (from Step 3) — each with its recommended seam,
-   marked if it requires a design edit before execution.
-2. A **Decision ↔ test traceability** table: each locked decision → the
+1. **The seam contract** first (Step 3a) — the named seams, which already exist vs
+   which are new, and the total new-seam count.
+2. **Testability findings** (Step 3b) — each with its recommended seam, marked if
+   it requires a design edit before execution.
+3. A **Decision ↔ test traceability** table: each locked decision → the
    slice/test that proves it. Flag **untested decisions** and any **behavior with
    no backing decision**.
-3. One block **per slice**, in execution order:
+4. One block **per slice**, in execution order:
    - **Title** + a one-sentence behavior statement.
+   - **Seam** — which confirmed seam this slice tests at.
    - **Stack target** (Laravel / React) + **test file path**.
    - The **2–6 test list** (each AAA, exactly one Act).
    - **Files involved.**
@@ -136,6 +167,7 @@ Example slice block:
 ### Slice 1 — Store movie (backend)
 Posting a valid movie persists it and redirects; invalid input is rejected.
 
+- **Seam:** existing — the `movies.store` route (HTTP)
 - **Stack/file:** Laravel · `tests/Feature/Catalog/StoreMovieTest.php`
 - **Tests:**
   1. stores a movie and redirects (valid payload)
@@ -149,9 +181,9 @@ Posting a valid movie persists it and redirects; invalid input is rejected.
 
 ## Step 7 — Stop and hand off
 
-Confirm the backlog is appended to the target, then tell the user: review the
-testability findings, then **invoke the `tdd` skill** to execute the first slice.
-Do nothing else.
+Confirm the backlog is appended to the target, then tell the user: **confirm the
+seam contract**, review the testability findings, then **invoke the `tdd` skill**
+to execute the first slice. Do nothing else.
 
 **Advance the ticket to Todo.** When the target is a **Linear ticket** and the
 backlog has been appended, the ticket is planned and ready — move it to **Todo**
@@ -170,3 +202,5 @@ when the target is a plain plan file (no ticket to move).
   backend commands.
 - `.claude/skills/tdd-react-testing/SKILL.md` — Vitest/RTL conventions + frontend
   commands.
+- `.claude/skills/codebase-design/SKILL.md` — seam / interface / depth vocabulary
+  the Step 3 contract is written in.
