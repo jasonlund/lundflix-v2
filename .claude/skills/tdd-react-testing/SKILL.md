@@ -44,15 +44,17 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Index from './Index'
 
-test('shows the movies returned by the server', () => {
-  // Arrange
-  const movies = [{ id: 1, title: 'Heat' }]
+describe('movie index page', () => {
+  it('shows the movies returned by the server', () => {
+    // Arrange
+    const movies = [{ id: 1, title: 'Heat' }]
 
-  // Act
-  render(<Index movies={movies} />)
+    // Act
+    render(<Index movies={movies} />)
 
-  // Assert
-  expect(screen.getByRole('heading', { name: /heat/i })).toBeInTheDocument()
+    // Assert
+    expect(screen.getByRole('heading', { name: /heat/i })).toBeInTheDocument()
+  })
 })
 ```
 
@@ -83,6 +85,23 @@ enforced (the Pest guard `tests/Unit/TestCommentStandardTest.php` scans
    ```
 4. **Why-prose on its own line(s), above the label it explains.** The AAA line
    stays label-only.
+
+## Test-organization standard (strict)
+
+The same standard the Pest suite follows — the guard
+`tests/Unit/TestOrganizationStandardTest.php` scans `resources/js/**/*.test.ts(x)`
+too, applying the two rules that aren't PHP-shaped:
+
+1. **Every `it()`/`test()` lives inside a `describe()`.** Several top-level
+   describes per file are fine; nesting allowed. Never a top-level test.
+2. **Descriptions** start lowercase, never start with "should", and are unique
+   within their describe.
+
+Judgment rules, not machine-checked: label a describe by **subject + facet**
+(`describe('Login page', …)`, `describe('submit handler', …)`), put the happy path
+first and failures last, and prefer a per-`describe` `beforeEach` over repeating
+the same arrange in every test of that group. The file-skeleton and helper-name
+rules are PHP-only and don't apply here.
 
 ## RED checklist (for tdd-test-writer)
 

@@ -20,52 +20,54 @@ use Illuminate\Support\Str;
 |
 */
 
-it('posts the digest lines as newline-joined Slack text', function (): void {
-    // Arrange
-    Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
-    config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
-    config()->set('services.slack.notifications.channel', '#lundflix');
-    $lines = ['Blade Runner 2049 (2017)', 'Severance S02E04'];
+describe('RecentlyAddedToPlex Slack delivery', function (): void {
+    it('posts the digest lines as newline-joined Slack text', function (): void {
+        // Arrange
+        Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
+        config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
+        config()->set('services.slack.notifications.channel', '#lundflix');
+        $lines = ['Blade Runner 2049 (2017)', 'Severance S02E04'];
 
-    // Act
-    NotificationFacade::route('slack', config('services.slack.notifications.channel'))
-        ->notify(new RecentlyAddedToPlex($lines));
+        // Act
+        NotificationFacade::route('slack', config('services.slack.notifications.channel'))
+            ->notify(new RecentlyAddedToPlex($lines));
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::endsWith($request->url(), '/api/chat.postMessage')
-        && $request['text'] === "Blade Runner 2049 (2017)\nSeverance S02E04");
-    Http::assertSentCount(1);
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::endsWith($request->url(), '/api/chat.postMessage')
+            && $request['text'] === "Blade Runner 2049 (2017)\nSeverance S02E04");
+        Http::assertSentCount(1);
+    });
 
-it('targets the configured channel with the configured bot token', function (): void {
-    // Arrange
-    Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
-    config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
-    config()->set('services.slack.notifications.channel', '#lundflix');
-    $lines = ['Blade Runner 2049 (2017)', 'Severance S02E04'];
+    it('targets the configured channel with the configured bot token', function (): void {
+        // Arrange
+        Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
+        config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
+        config()->set('services.slack.notifications.channel', '#lundflix');
+        $lines = ['Blade Runner 2049 (2017)', 'Severance S02E04'];
 
-    // Act
-    NotificationFacade::route('slack', config('services.slack.notifications.channel'))
-        ->notify(new RecentlyAddedToPlex($lines));
+        // Act
+        NotificationFacade::route('slack', config('services.slack.notifications.channel'))
+            ->notify(new RecentlyAddedToPlex($lines));
 
-    // Assert
-    Http::assertSent(fn ($request): bool => $request['channel'] === config('services.slack.notifications.channel')
-        && $request->hasHeader('Authorization', 'Bearer '.config('services.slack.notifications.bot_user_oauth_token')));
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => $request['channel'] === config('services.slack.notifications.channel')
+            && $request->hasHeader('Authorization', 'Bearer '.config('services.slack.notifications.bot_user_oauth_token')));
+    });
 
-// Slack is the only delivery channel: in-app delivery is deferred, so a stored
-// notifications row would mean 'database' had crept into via().
-it('stores no in-app notification row', function (): void {
-    // Arrange
-    Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
-    config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
-    config()->set('services.slack.notifications.channel', '#lundflix');
-    $lines = ['Blade Runner 2049 (2017)', 'Severance S02E04'];
+    // Slack is the only delivery channel: in-app delivery is deferred, so a stored
+    // notifications row would mean 'database' had crept into via().
+    it('stores no in-app notification row', function (): void {
+        // Arrange
+        Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
+        config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
+        config()->set('services.slack.notifications.channel', '#lundflix');
+        $lines = ['Blade Runner 2049 (2017)', 'Severance S02E04'];
 
-    // Act
-    NotificationFacade::route('slack', config('services.slack.notifications.channel'))
-        ->notify(new RecentlyAddedToPlex($lines));
+        // Act
+        NotificationFacade::route('slack', config('services.slack.notifications.channel'))
+            ->notify(new RecentlyAddedToPlex($lines));
 
-    // Assert
-    expect(DB::table('notifications')->count())->toBe(0);
+        // Assert
+        expect(DB::table('notifications')->count())->toBe(0);
+    });
 });

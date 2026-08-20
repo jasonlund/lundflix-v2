@@ -22,27 +22,29 @@ use Illuminate\Support\Str;
 | this file with auth and fetch behavior.
 */
 
-it('defaults services.tvdb.concurrency to 10', function (): void {
-    putenv('TVDB_CONCURRENCY');
-    unset($_ENV['TVDB_CONCURRENCY'], $_SERVER['TVDB_CONCURRENCY']);
+describe('services.tvdb config shape', function (): void {
+    it('defaults services.tvdb.concurrency to 10', function (): void {
+        putenv('TVDB_CONCURRENCY');
+        unset($_ENV['TVDB_CONCURRENCY'], $_SERVER['TVDB_CONCURRENCY']);
 
-    $config = require base_path('config/services.php');
+        $config = require base_path('config/services.php');
 
-    expect($config['tvdb']['concurrency'] ?? null)->toBe(10);
-});
+        expect($config['tvdb']['concurrency'] ?? null)->toBe(10);
+    });
 
-it('binds services.tvdb.key from TVDB_KEY', function (): void {
-    $config = require base_path('config/services.php');
+    it('binds services.tvdb.key from TVDB_KEY', function (): void {
+        $config = require base_path('config/services.php');
 
-    expect($config['tvdb']['key'])->toBe(env('TVDB_KEY'));
-});
+        expect($config['tvdb']['key'])->toBe(env('TVDB_KEY'));
+    });
 
-it('exposes no static token or jwt key', function (): void {
-    $config = require base_path('config/services.php');
+    it('exposes no static token or jwt key', function (): void {
+        $config = require base_path('config/services.php');
 
-    $keys = array_keys($config['tvdb'] ?? []);
+        $keys = array_keys($config['tvdb'] ?? []);
 
-    expect($keys)->toBe(['key', 'concurrency']);
+        expect($keys)->toBe(['key', 'concurrency']);
+    });
 });
 
 /*

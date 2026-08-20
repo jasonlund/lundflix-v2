@@ -70,76 +70,78 @@ $report = (fn (array $offenders): array => array_map(
     $offenders,
 ));
 
-it('has no AAA label line that uses "/" or collapses labels without " & "', function () use ($scanAaaLabelLines, $report): void {
-    // Arrange
-    // Require exactly ONE space after `//` (case-SENSITIVE): `//Arrange` (no
-    // space) and wrong-case labels collected above are thus reported as
-    // offenders. `// Arrange` / `// Act & Assert` remain the only valid forms.
-    $conforming = '#^\s*// (Arrange|Act|Assert|Arrange & Act|Act & Assert)\s*$#';
+describe('AAA label line form', function () use ($scanAaaLabelLines, $report): void {
+    it('has no AAA label line that uses "/" or collapses labels without " & "', function () use ($scanAaaLabelLines, $report): void {
+        // Arrange
+        // Require exactly ONE space after `//` (case-SENSITIVE): `//Arrange` (no
+        // space) and wrong-case labels collected above are thus reported as
+        // offenders. `// Arrange` / `// Act & Assert` remain the only valid forms.
+        $conforming = '#^\s*// (Arrange|Act|Assert|Arrange & Act|Act & Assert)\s*$#';
 
-    // Act
-    $offenders = array_values(array_filter(
-        $scanAaaLabelLines(),
-        function (array $l) use ($conforming): bool {
-            $isOffender = preg_match($conforming, (string) $l['text']) !== 1;
-            // Strip the leading `//` opener so its own slashes aren't mistaken
-            // for a label separator; then a remaining `/` or a no-` & ` label
-            // adjacency is the collapse offence.
-            $body = preg_replace('#^\s*//#', '', (string) $l['text']);
-            $usesSlashOrCollapse = Str::contains($body, '/')
-                || preg_match('#^\s*(Arrange|Act|Assert)\s+(Arrange|Act|Assert)#', $body) === 1;
+        // Act
+        $offenders = array_values(array_filter(
+            $scanAaaLabelLines(),
+            function (array $l) use ($conforming): bool {
+                $isOffender = preg_match($conforming, (string) $l['text']) !== 1;
+                // Strip the leading `//` opener so its own slashes aren't mistaken
+                // for a label separator; then a remaining `/` or a no-` & ` label
+                // adjacency is the collapse offence.
+                $body = preg_replace('#^\s*//#', '', (string) $l['text']);
+                $usesSlashOrCollapse = Str::contains($body, '/')
+                    || preg_match('#^\s*(Arrange|Act|Assert)\s+(Arrange|Act|Assert)#', $body) === 1;
 
-            return $isOffender && $usesSlashOrCollapse;
-        },
-    ));
+                return $isOffender && $usesSlashOrCollapse;
+            },
+        ));
 
-    // Assert
-    expect($report($offenders))->toBe([]);
-});
+        // Assert
+        expect($report($offenders))->toBe([]);
+    });
 
-it('has no AAA label line whose "&" join is anything but exactly " & "', function () use ($scanAaaLabelLines, $report): void {
-    // Arrange
-    // Require exactly ONE space after `//` (case-SENSITIVE): `//Arrange` (no
-    // space) and wrong-case labels collected above are thus reported as
-    // offenders. `// Arrange` / `// Act & Assert` remain the only valid forms.
-    $conforming = '#^\s*// (Arrange|Act|Assert|Arrange & Act|Act & Assert)\s*$#';
+    it('has no AAA label line whose "&" join is anything but exactly " & "', function () use ($scanAaaLabelLines, $report): void {
+        // Arrange
+        // Require exactly ONE space after `//` (case-SENSITIVE): `//Arrange` (no
+        // space) and wrong-case labels collected above are thus reported as
+        // offenders. `// Arrange` / `// Act & Assert` remain the only valid forms.
+        $conforming = '#^\s*// (Arrange|Act|Assert|Arrange & Act|Act & Assert)\s*$#';
 
-    // Act
-    $offenders = array_values(array_filter(
-        $scanAaaLabelLines(),
-        function (array $l) use ($conforming): bool {
-            $isOffender = preg_match($conforming, (string) $l['text']) !== 1;
+        // Act
+        $offenders = array_values(array_filter(
+            $scanAaaLabelLines(),
+            function (array $l) use ($conforming): bool {
+                $isOffender = preg_match($conforming, (string) $l['text']) !== 1;
 
-            return $isOffender && Str::contains((string) $l['text'], '&');
-        },
-    ));
+                return $isOffender && Str::contains((string) $l['text'], '&');
+            },
+        ));
 
-    // Assert
-    expect($report($offenders))->toBe([]);
-});
+        // Assert
+        expect($report($offenders))->toBe([]);
+    });
 
-it('has no AAA label line carrying prose after the label', function () use ($scanAaaLabelLines, $report): void {
-    // Arrange
-    // Require exactly ONE space after `//` (case-SENSITIVE): `//Arrange` (no
-    // space) and wrong-case labels collected above are thus reported as
-    // offenders. `// Arrange` / `// Act & Assert` remain the only valid forms.
-    $conforming = '#^\s*// (Arrange|Act|Assert|Arrange & Act|Act & Assert)\s*$#';
+    it('has no AAA label line carrying prose after the label', function () use ($scanAaaLabelLines, $report): void {
+        // Arrange
+        // Require exactly ONE space after `//` (case-SENSITIVE): `//Arrange` (no
+        // space) and wrong-case labels collected above are thus reported as
+        // offenders. `// Arrange` / `// Act & Assert` remain the only valid forms.
+        $conforming = '#^\s*// (Arrange|Act|Assert|Arrange & Act|Act & Assert)\s*$#';
 
-    // Act
-    $offenders = array_values(array_filter(
-        $scanAaaLabelLines(),
-        function (array $l) use ($conforming): bool {
-            $isOffender = preg_match($conforming, (string) $l['text']) !== 1;
-            // Trailing-prose offenders are the leftover: non-conforming label
-            // lines that aren't slash/collapse (sub-rule 1) or `&` (sub-rule 2).
-            $body = preg_replace('#^\s*//#', '', (string) $l['text']);
-            $usesSlashOrCollapse = Str::contains($body, '/')
-                || preg_match('#^\s*(Arrange|Act|Assert)\s+(Arrange|Act|Assert)#', $body) === 1;
+        // Act
+        $offenders = array_values(array_filter(
+            $scanAaaLabelLines(),
+            function (array $l) use ($conforming): bool {
+                $isOffender = preg_match($conforming, (string) $l['text']) !== 1;
+                // Trailing-prose offenders are the leftover: non-conforming label
+                // lines that aren't slash/collapse (sub-rule 1) or `&` (sub-rule 2).
+                $body = preg_replace('#^\s*//#', '', (string) $l['text']);
+                $usesSlashOrCollapse = Str::contains($body, '/')
+                    || preg_match('#^\s*(Arrange|Act|Assert)\s+(Arrange|Act|Assert)#', $body) === 1;
 
-            return $isOffender && ! $usesSlashOrCollapse && ! Str::contains($body, '&');
-        },
-    ));
+                return $isOffender && ! $usesSlashOrCollapse && ! Str::contains($body, '&');
+            },
+        ));
 
-    // Assert
-    expect($report($offenders))->toBe([]);
+        // Assert
+        expect($report($offenders))->toBe([]);
+    });
 });
