@@ -33,6 +33,41 @@ SUMMARY: [What was checked and why it passed]
 === END NO FINDINGS ===
 ```
 
+## How Findings Are Written — Simplified Technical English
+
+Every `FINDING`, `EVIDENCE`, `RECOMMENDATION`, and `SUMMARY` field, and every line
+of the Phase 6 report, is written in **ASD-STE100 Simplified Technical English**.
+The reader scans 30 findings to decide what to fix. Controlled language makes that
+scan fast; ordinary prose makes it slow.
+
+The rules that bind here:
+
+- **One topic per sentence.** A sentence carrying two ideas becomes two sentences.
+- **Short sentences.** Up to 20 words for an instruction, 25 for a description.
+- **Active voice.** "The query returns every tenant's rows", not "rows are returned
+  for every tenant".
+- **Simple tenses.** Present for what the code does; past for what a run produced.
+- **One word, one meaning; one thing, one word.** Pick the term and repeat it
+  exactly. Elegant variation costs the reader a re-read to confirm two words mean
+  one thing.
+- **Use the glossary.** Name domain concepts as `CONTEXT.md` names them, and
+  interfaces as `codebase-design` names them.
+- **Noun clusters up to three words.** "download source markup drift" is the limit.
+- **Paragraphs up to six sentences.**
+- **Write recommendations as commands.** "Add a tenant scope to the query on L40."
+- **No idiom, no jargon beyond the glossary, no rhetorical questions.**
+
+Write full sentences with articles. Telegraphic style ("query missing scope, add
+one") reads fast and lands ambiguously, so it is not the target here.
+
+Two things stay verbatim and are never rewritten into STE: **quoted code** in
+`EVIDENCE`, and a **quoted ticket line** in a requirements finding. Both are
+evidence; paraphrasing them destroys their value.
+
+**Source:** adapted from `mattpocock-skills:wait-what`, which re-pitches a message
+in STE using the `CONTEXT.md` vocabulary. Offer to explain the spec when a reader
+asks why findings read this way.
+
 ## The Comment Bar — only comment if
 
 A candidate is worth a comment **only when it clears ALL four bars**. Fail any one

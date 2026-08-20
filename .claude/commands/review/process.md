@@ -243,6 +243,18 @@ the user **your own recommendation on the fix**, not just the reviewer's words:
   positive)?
 - The concrete change you'd make if approved.
 
+**Write all three in Simplified Technical English** — one topic per sentence, active
+voice, ≤20-word instructions, the same word for the same thing, domain terms as
+`CONTEXT.md` names them. The full rules live in the *How Findings Are Written*
+section of `.claude/skills/review-pipeline/SKILL.md`. The user is reading these
+items back to back to make a decision on each, so a presentation that takes two
+readings costs more here than anywhere else in the pipeline. Keep the quoted comment
+line and any quoted code verbatim.
+
+**Three sentences per item is the target.** One for the ask, one for your read, one
+for the change. Reach for more only when the item genuinely carries more, and put the
+overflow below the three, never inside them.
+
 ### Endorsed-pattern dismissals — capture a reinforcement, don't present
 
 Dismissed-as-FP items are **not presented** (Phase 1 auto-dismisses them). But when a

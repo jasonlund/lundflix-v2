@@ -582,6 +582,32 @@ invoked with that prefix**; the skill files' own cross-references to bare
 `mattpocock-skills:setup-matt-pocock-skills`; edit `docs/agents/*.md` directly to
 change the config.
 
+**`/map` is the router** — one user-invoked skill naming every skill, command, and
+flow here, plus the phase-boundary tree. Open it when you've forgotten what exists.
+
+### Borrowed practice carries a Source line
+
+Several native skills adapt practice from the AI Hero plugin rather than calling it
+(three upstream skills set `disable-model-invocation: true`, so nothing here *can*
+call them). Every borrowed section ends in a `**Source:**` line naming the upstream
+skill.
+
+**When you apply a section that carries one, offer to explain its origin** — the
+upstream skill, what it argues, and the file to read. One line, then continue:
+*"This is the seam contract, adapted from `mattpocock-skills:tdd` — want the
+original reasoning?"* Offer once, and paste upstream text only when asked.
+
+### Human-only steps → offer the wizard
+
+When a task needs steps only a human can take — provisioning a third-party
+credential, clicking through a vendor dashboard, setting a CI secret, a one-off
+cutover — offer `mattpocock-skills:wizard`. It generates an interactive bash script
+that opens each URL, captures each value, and writes it where it belongs, so the
+procedure stops being re-explained every time. Adding an API credential here is the
+standard case: the value must reach `.env.example`, the README key table, **and**
+the Conductor root `.env`. Do the work directly whenever you can; the wizard is for
+where a human is genuinely in the loop.
+
 ### Issue tracker
 
 Linear, team `lundflix` (`FLIX-123`), via `mcp__linear-server__*` only — GitHub
