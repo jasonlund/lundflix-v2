@@ -541,3 +541,28 @@ rather than restating it:
   at PR-open, every ticket the PR covers moves to In Review together.)
 - **Report, don't ask.** State the transition in one line; the change is
   automatic — never prompt for permission.
+
+## Agent skills
+
+Configuration the installed engineering skills read before they act —
+`mattpocock-skills:triage`, `:to-spec`, `:to-tickets`, `:wayfinder`,
+`:code-review`. They ship as the `mattpocock-skills` plugin, so **every one is
+invoked with that prefix**; the skill files' own cross-references to bare
+`/to-spec`-style names are upstream text and are stale here. Written by
+`mattpocock-skills:setup-matt-pocock-skills`; edit `docs/agents/*.md` directly to
+change the config.
+
+### Issue tracker
+
+Linear, team `lundflix` (`FLIX-123`), via `mcp__linear-server__*` only — GitHub
+Issues are unused. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See
+`docs/agents/domain.md`.
