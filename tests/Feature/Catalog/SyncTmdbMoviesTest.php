@@ -47,10 +47,19 @@ uses(RefreshDatabase::class);
 |   `{"id":N,"title":"Movie N"}` detail body.
 */
 
-function fakeTmdbSync(): void
+/**
+ * $exportSink, when passed, captures the temp path the export download sinks to,
+ * so a caller can assert on that exact file instead of globbing the shared
+ * system temp dir (where sibling suites' files come and go mid-assertion).
+ */
+function fakeTmdbSync(?string &$exportSink = null): void
 {
     Http::fake([
-        '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
+        '*movie_ids*' => function (Request $request, array $options) use (&$exportSink) {
+            $exportSink = $options['sink'];
+
+            return Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz'));
+        },
         // A default run always hits the changes feed after the insert phase; an
         // empty-results page drives the update phase through its success path
         // (no swallowed exception, no stray stack trace). Listed before the
@@ -215,16 +224,21 @@ it('persists the hydrated movie images into media', function (): void {
 });
 
 it('exits SUCCESS and deletes the export temp file', function (): void {
+    // Capturing the sink path pins the assertion to THIS run's temp file; globbing
+    // the shared system temp dir would also see files other processes create and
+    // remove mid-run, reddening the test for reasons unrelated to a leak. The
+    // toBeString() guard proves the export really downloaded, so "no leftover file"
+    // can't pass vacuously on a run that never sank one.
     // Arrange
-    fakeTmdbSync();
-    $tempFiles = fn (): array => glob(sys_get_temp_dir().'/tmdb_*');
-    $before = $tempFiles();
+    $sinkPath = null;
+    fakeTmdbSync($sinkPath);
 
     // Act
     $this->artisan('catalog:sync-movies')->assertExitCode(0);
 
     // Assert
-    expect($tempFiles())->toBe($before);
+    expect($sinkPath)->toBeString();
+    expect(file_exists($sinkPath))->toBeFalse();
 });
 
 it('writes _imdb_id from the payload on the upserted _tmdb_id row', function (): void {

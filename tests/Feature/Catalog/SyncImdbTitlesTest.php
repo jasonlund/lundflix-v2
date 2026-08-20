@@ -136,17 +136,25 @@ it('never reads the catalog ids unbounded', function (): void {
 // Asserting the fetch alongside the cleanup keeps "no leftover temp file" from
 // passing for the wrong reason (a run that never downloaded anything).
 it('downloads the basics dataset and deletes the temp file afterward', function (): void {
+    // The stub handler hands us the request's $options, whose 'sink' is the exact
+    // tempnam() path this run created — so the leak check pins that one path
+    // instead of globbing the shared system temp dir, where a sibling test or a
+    // parallel agent's files would flip the result for unrelated reasons.
     // Arrange
-    $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');
-    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
-    $before = $tempFiles();
+    $sinkPath = null;
+    Http::fake(['*datasets.imdbws.com*' => function (Request $request, array $options) use (&$sinkPath) {
+        $sinkPath = $options['sink'];
+
+        return Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'));
+    }]);
 
     // Act
     $this->artisan('catalog:sync-titles');
 
     // Assert
     Http::assertSent(fn (Request $request): bool => Str::endsWith($request->url(), '/title.basics.tsv.gz'));
-    expect($tempFiles())->toBe($before);
+    expect($sinkPath)->toBeString();
+    expect(file_exists($sinkPath))->toBeFalse();
 });
 
 // Four matched, non-adult titles at --batch=2 must flush twice: the buffer

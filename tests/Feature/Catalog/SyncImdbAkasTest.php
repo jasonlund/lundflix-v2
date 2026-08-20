@@ -194,17 +194,25 @@ it('emits no heartbeat and writes nothing when the catalog matches no title in t
 // Asserting the fetch alongside the cleanup keeps "no leftover temp file" from
 // passing for the wrong reason (a run that never downloaded anything).
 it('downloads the akas dataset and removes the temp file when it finishes', function (): void {
+    // The sink option the stub handler receives IS the tempnam() path the
+    // download just created, so capturing it pins the one file under test — a
+    // glob over the shared temp dir also matches files other processes leave
+    // behind.
     // Arrange
-    $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');
-    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
-    $before = $tempFiles();
+    $sinkPath = null;
+    Http::fake(['*datasets.imdbws.com*' => function (Request $request, array $options) use (&$sinkPath) {
+        $sinkPath = $options['sink'];
+
+        return Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'));
+    }]);
 
     // Act
     $this->artisan('catalog:sync-akas');
 
     // Assert
     Http::assertSent(fn (Request $request): bool => Str::endsWith($request->url(), '/title.akas.tsv.gz'));
-    expect($tempFiles())->toBe($before);
+    expect($sinkPath)->toBeString();
+    expect(file_exists($sinkPath))->toBeFalse();
 });
 
 /*
