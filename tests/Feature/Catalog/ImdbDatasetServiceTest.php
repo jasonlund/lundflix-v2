@@ -70,11 +70,11 @@ it('removes the temp file when the download fails', function (): void {
     // Arrange
     Sleep::fake();
     $sinkPath = null;
-    Http::fake(function (Request $request, array $options) use (&$sinkPath) {
+    Http::fake(['*datasets.imdbws.com*' => function (Request $request, array $options) use (&$sinkPath) {
         $sinkPath = $options['sink'];
 
         return Http::response('', 500);
-    });
+    }]);
 
     // Act
     try {

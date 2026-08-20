@@ -91,8 +91,8 @@ it('removes the temp file when the download fails', function (): void {
     }
 
     // Assert
-    // toBeString() is load-bearing: a null $sinkPath would coerce through
-    // file_exists() to false and pass the leak assertion vacuously.
+    // The toBeString() guard proves the download really sank a file, so "no
+    // leftover file" can't pass vacuously on a run that never created one.
     expect($sinkPath)->toBeString();
     expect(file_exists($sinkPath))->toBeFalse();
 });
@@ -101,6 +101,7 @@ it('does not compound the global retry middleware past three attempts on a persi
     // The always-on global Guzzle retry would multiply Laravel's ->retry(3) up to
     // 3x3 = 9 real requests against a persistently failing host; the retry_enabled
     // guard suppresses the global layer so exactly three attempts are sent.
+    Sleep::fake();
     Http::fake(['*files.tmdb.org*' => Http::response('', 500)]);
 
     try {
