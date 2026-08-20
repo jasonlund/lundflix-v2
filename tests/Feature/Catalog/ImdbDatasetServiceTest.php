@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Exceptions\CorruptImdbDatasetArchive;
 use App\Domains\Catalog\Services\ImdbDatasetService;
+use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
@@ -63,17 +64,28 @@ it('returns a temp path whose contents are the downloaded bytes', function (): v
 });
 
 it('removes the temp file when the download fails', function (): void {
-    $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');
-    Http::fake(['*datasets.imdbws.com*' => Http::response('', 500)]);
-    $before = $tempFiles();
+    // The sink option the stub handler receives IS the tempnam() path download()
+    // just created, so capturing it pins the one file under test — a glob over
+    // the shared temp dir also matches files other processes leave behind.
+    // Arrange
+    Sleep::fake();
+    $sinkPath = null;
+    Http::fake(['*datasets.imdbws.com*' => function (Request $request, array $options) use (&$sinkPath) {
+        $sinkPath = $options['sink'];
 
+        return Http::response('', 500);
+    }]);
+
+    // Act
     try {
         resolve(ImdbDatasetService::class)->download(ImdbDataset::TitleRatings);
     } catch (RequestException) {
         // the leak, not the throw, is under test
     }
 
-    expect($tempFiles())->toBe($before);
+    // Assert
+    expect($sinkPath)->toBeString();
+    expect(file_exists($sinkPath))->toBeFalse();
 });
 
 it('leaves the temp file in place on success', function (): void {
