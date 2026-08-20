@@ -509,6 +509,23 @@ cross-reference — don't duplicate.
   tree; a plan on disk drifts from the ticket and biases future agents who read
   it as a convention. Bars *version-controlled* planning files only — gitignored
   scratch space (e.g. `.context`) is fine; it never enters the repo.
+- **Durable decision records are a different artifact class, and DO live in the
+  repo.** The bar above is on **per-ticket** planning — a plan for one piece of
+  work, which drifts from its ticket the moment either changes. A **glossary**
+  (`CONTEXT.md`) and an **ADR** (`docs/adr/NNNN-slug.md`) are neither: they are
+  cross-ticket, decision-level, and outlive the work that produced them. They also
+  have to be checked in to do their job — skills read them from the working tree
+  while exploring, which a Linear body can't support. Both are created **lazily**,
+  only when a term is actually resolved or a decision actually made; see
+  `docs/agents/domain.md`.
+  - An **ADR is 1–3 sentences** and earns its place only when all three hold:
+    hard to reverse, surprising without context, and the result of a real
+    trade-off. Miss one and skip it — an easily-reversed decision just gets
+    reversed, and an unsurprising one leaves nobody wondering why.
+  - **Don't duplicate what this file already says.** A convention documented here
+    at length (the DDD layout, raw-source column prefixes) does not also get an
+    ADR; two sources drift. ADRs are for decisions with no home here — especially
+    deliberate deviations from an outside authority.
 
 ### Automatic ticket status transitions
 

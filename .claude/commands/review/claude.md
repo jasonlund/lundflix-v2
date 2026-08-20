@@ -150,6 +150,19 @@ prioritize the most-changed files.
    record `SUPPRESSED_NITS = {count}` for the Phase 6 tally ("suppressed N more").
    Gate-owned nits (formatting/style/import-order/type-hints) should never have made
    it this far — if any did, drop them, they're a reviewer defect.
+6. **Split out the requirements axis — never rerank across it.** Pull every
+   `CATEGORY: requirements` finding into `SPEC_FINDINGS`; everything else stays in
+   the standards pool. The two axes measure different things and are **not
+   commensurable**: code can follow every convention while implementing the wrong
+   thing (standards pass, spec fail), or do exactly what the ticket asked in a way
+   that breaks conventions (spec pass, standards fail). Merging them into one
+   ranked list lets the louder category bury the other — typically a pile of
+   convention findings hiding a missing acceptance criterion.
+
+   Dedup, grounding, and adversarial verification all still apply to
+   `SPEC_FINDINGS` exactly as before. This splits *presentation and ranking*, not
+   rigor. Never rank a spec finding against a standards finding, and never report
+   a single "worst issue" across both — report the worst **within each axis**.
 
 ---
 
@@ -179,7 +192,19 @@ collapsible `<details>` block, not the top line.
 ```markdown
 # PR Review: PR #{number}{ against {ticket_id} if present}
 
-**{X} blocking · {Y} should-fix · {Z} consider · {N} nits{, suppressed {M} more}**
+**Spec: {S} findings · Standards: {X} blocking · {Y} should-fix · {Z} consider ·
+{N} nits{, suppressed {M} more}**
+
+## Spec — does it do what the ticket asked?
+
+[`SPEC_FINDINGS` only. If none: "Implements the ticket as specified." If the
+ticket was unavailable: "No ticket — spec axis not reviewed."]
+[One bullet each: (a) acceptance criteria missing or partial, (b) behavior in the
+diff nobody asked for, (c) criteria implemented but implemented wrong. Quote the
+ticket line for each.]
+
+**This section is never merged into the one below, and the two are never ranked
+against each other.** A clean standards review does not offset a spec failure.
 
 ## Key Defects
 
@@ -189,6 +214,7 @@ the fix. 🔴 BLOCKING, 🟡 SHOULD_FIX. Ordered by severity. Bury per-finding
 reasoning in a `<details>` block so the bullet stays one line.]
 
 ## Summary
+- **Spec Findings:** {count}
 - **Blocking Issues:** {count}
 - **Should Fix:** {count}
 - **Consider:** {count}

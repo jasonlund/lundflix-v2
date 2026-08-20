@@ -141,6 +141,51 @@ When reviewing, check changes against these standards (full detail in `CLAUDE.md
 
 **Testing** — see the dedicated `tdd-laravel-testing` and `tdd-react-testing` skills.
 
+## Smell Baseline (judgement calls only)
+
+A shared vocabulary for design friction, so reviewers name the same thing the same
+way instead of inventing one-off phrasings. Fowler, *Refactoring* ch.3. **Two rules
+bind every entry, without exception:**
+
+- **The repo overrides.** A documented convention always wins. Where `CLAUDE.md`,
+  `.ai/guidelines/project.md`, or this contract endorses something the baseline
+  would flag, **stay silent** — see the Convention Override Rule below.
+- **Always a judgement call, never a hard violation.** Report as "possible Feature
+  Envy", capped at **CONSIDER** unless it also clears the Comment Bar as an
+  objective defect on its own. A smell name is not evidence; you still need the
+  `file:line` showing the behavior.
+
+Each reads *what it is* → *the fix*:
+
+- **Mysterious Name** — a name that doesn't reveal what it does or holds. → rename;
+  if no honest name comes, the design is murky.
+- **Duplicated Code** — the same logic shape in more than one hunk. → extract, call
+  from both.
+- **Feature Envy** — a method reaching into another object's data more than its
+  own. → move it onto the data it envies.
+- **Data Clumps** — the same few fields always travelling together. → bundle into
+  one type (a DTO under `Data/`, a value object under `Common/ValueObjects/`).
+- **Primitive Obsession** — a string or int standing in for a domain concept. →
+  give the concept its own small type (an enum, a value object).
+- **Repeated Switches** — the same `match`/`if`-cascade on the same type recurring
+  across the change. → polymorphism, or one shared map.
+- **Shotgun Surgery** — one logical change forcing scattered edits across the diff.
+  → gather what changes together.
+- **Divergent Change** — one file edited for several unrelated reasons. → split so
+  each module changes for one reason.
+- **Speculative Generality** — abstraction, parameters, or hooks for needs the
+  ticket doesn't have. → delete; inline back until a real need shows.
+- **Message Chains** — long `a->b()->c()->d()` navigation the caller shouldn't
+  depend on. → hide the walk behind one method.
+- **Middle Man** — a class or method that mostly just delegates onward. → cut it,
+  call the real target. (**Not** a `Contracts/` interface: that indirection is the
+  endorsed cross-domain boundary.)
+- **Refused Bequest** — a subclass ignoring or overriding most of what it inherits.
+  → drop the inheritance, use composition.
+
+Design vocabulary for the recommendation — seam, interface, depth, adapter:
+`.claude/skills/codebase-design/SKILL.md`.
+
 ## Convention Override Rule
 
 Before flagging a code pattern, reviewer agents MUST check whether `CLAUDE.md`,
@@ -160,6 +205,12 @@ positives, never at the author's judgment.
 **Commonly false-positived conventions** (endorsed — do not flag):
 - Models under `app/Domains/{Domain}/Models/` — intentional DDD layout, not a
   misplacement.
+- A test verifying an ingest/sync write with `assertDatabaseHas` / `assertDatabaseCount`
+  / `assertDatabaseMissing` rather than through a read interface — for these modules
+  the persisted row **is** the observable behavior, and there is no read interface to
+  go through. Endorsed in `docs/adr/0002-database-assertions-verify-ingest-behavior.md`
+  and `tdd-laravel-testing`. Never flag it as "testing implementation" or "bypassing
+  the interface"; ~31 test files do this deliberately.
 - Fixed third-party base URLs as `private const` on a service — intentional, not
   "should be config".
 - Many small named exception classes for one domain — intentional
