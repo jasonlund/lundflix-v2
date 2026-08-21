@@ -1,11 +1,13 @@
 ---
 name: codebase-design
 description: >-
-  Shared vocabulary for designing deep modules and placing test seams — module,
-  interface, depth, seam, adapter, leverage, locality. Use when designing or
-  reshaping a module's interface, deciding where a seam belongs, or making code
-  testable; and whenever another skill needs these terms. A reference to consult,
-  not a session to run.
+  lundflix's stack-local design reference: the four dependency categories mapped
+  onto this app's test seams (sqlite `:memory:` for the database, `Http::fake()`
+  with byte-exact fixtures for third parties, `artisan()` for our own
+  out-of-process code), the seam vocabulary `plan-slices` and `tdd` write their
+  cards in, and the ingest-write exception recorded in ADR-0002. Use when deciding
+  how a lundflix module is tested across its seam, or when another skill in this
+  repo needs these exact terms. A reference to consult, not a session to run.
 ---
 
 # Codebase Design
@@ -13,14 +15,14 @@ description: >-
 Design **deep modules**: a lot of behavior behind a small interface, placed at a
 clean seam, testable through that interface. This file is the single source of
 these terms — `plan-slices` writes its seam contract in them, `tdd` names the seam
-each RED card tests at, and `review-pipeline` cites them. Use them **exactly**;
-don't drift into "component", "service", "API", or "boundary".
+each RED card tests at, and `review-pipeline` cites them. Use them **exactly** as
+defined below.
 
 ## Glossary
 
 **Module** — anything with an interface and an implementation. Deliberately
 scale-agnostic: a method, an Action class, a service, a domain. *Avoid:* unit,
-component.
+component, service.
 
 **Interface** — everything a caller must know to use the module correctly. Not
 just the signature: invariants, ordering constraints, error modes (which named
@@ -69,6 +71,11 @@ everywhere.
 - **Shallow-module checklist** when designing an interface: can I remove a method?
   simplify a parameter? hide more behind it?
 
+**Source:** the glossary and principles above are adapted from
+`mattpocock-skills:codebase-design` (`SKILL.md` and `DEEPENING.md`); the stack
+mapping below is local. Offer to explain the upstream reasoning when applying
+these terms.
+
 ## Dependency categories
 
 How a module is tested across its seam depends on what it depends on. Classify
@@ -93,14 +100,10 @@ the fake substitutes at the HTTP seam, so the service's own interface stays clea
 2. **Return results rather than hiding them.** A value a caller can assert on beats
    a side effect a test has to go looking for. (An ingest action that persists is
    the deliberate exception — see below.)
-3. **Small surface area.** Fewer methods, fewer parameters, less test setup.
 
 **A persisted row is a legitimate observable.** For an ingest or sync module the
-whole point *is* the write — `SyncTmdbMovies` has no read interface to verify
-through, and inventing one to satisfy "return, don't side-effect" is exactly the
-speculative generality this vocabulary exists to prevent. Asserting on the
-persisted state is testing the interface, not reaching past it. See
-`docs/adr/0002-database-assertions-verify-ingest-behavior.md`.
+write *is* the behavior, so assert the persisted state and treat that as testing
+the interface — see `docs/adr/0002-database-assertions-verify-ingest-behavior.md`.
 
 ## Exploring an interface twice
 
@@ -109,9 +112,12 @@ surface — one author's "2–3 options" tend to be one idea in three costumes. 
 parallel subagents, each designing under an **opposing** constraint (minimize the
 interface / maximize flexibility / optimize the most common caller), then compare
 on **depth**, **locality**, and **seam placement** and recommend one, grafting the
-best parts of the runners-up. `mattpocock-skills:codebase-design` ships the full
-pattern in its `DESIGN-IT-TWICE.md`. Expensive — reserve it for decisions that are
-costly to undo.
+best parts of the runners-up. Expensive — reserve it for decisions that are costly
+to undo.
+
+**Source:** adapted from `mattpocock-skills:codebase-design`'s
+`DESIGN-IT-TWICE.md`, which ships the full parallel-subagent pattern (briefs,
+per-agent outputs, comparison). Offer the original before running one.
 
 ## Rejected framings
 

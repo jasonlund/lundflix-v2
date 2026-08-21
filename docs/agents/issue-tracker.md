@@ -61,7 +61,7 @@ are its sub-issues.
 - **Map**: `save_issue(team: "lundflix", title: …, labels: ["wayfinder:map"])`,
   holding the Notes / Decisions-so-far / Fog body. Create the label with
   `create_issue_label` first if it does not exist.
-- **Child ticket**: `save_issue(team: "lundflix", parentId: "FLIX-<map>",
+- **Child ticket**: `save_issue(team: "lundflix", title: …, parentId: "FLIX-<map>",
   labels: ["wayfinder:<type>"])` — `research` / `prototype` / `grilling` / `task`.
 - **Blocking**: Linear's native relations —
   `save_issue(id: <child>, blockedBy: ["FLIX-<n>"])` (append-only; drop with

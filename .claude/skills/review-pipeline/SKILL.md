@@ -55,7 +55,9 @@ The rules that bind here:
 - **Noun clusters up to three words.** "download source markup drift" is the limit.
 - **Paragraphs up to six sentences.**
 - **Write recommendations as commands.** "Add a tenant scope to the query on L40."
-- **No idiom, no jargon beyond the glossary, no rhetorical questions.**
+- **Literal words, glossary terms, statements.** Every word carries its plain
+  meaning, every domain term comes from the glossary, and every point is a
+  statement.
 
 Write full sentences with articles. Telegraphic style ("query missing scope, add
 one") reads fast and lands ambiguously, so it is not the target here.
@@ -179,16 +181,25 @@ When reviewing, check changes against these standards (full detail in `CLAUDE.md
 ## Smell Baseline (judgement calls only)
 
 A shared vocabulary for design friction, so reviewers name the same thing the same
-way instead of inventing one-off phrasings. Fowler, *Refactoring* ch.3. **Two rules
-bind every entry, without exception:**
+way instead of inventing one-off phrasings. Fowler, *Refactoring* ch.3. **Three
+rules bind every entry, without exception:**
 
 - **The repo overrides.** A documented convention always wins. Where `CLAUDE.md`,
   `.ai/guidelines/project.md`, or this contract endorses something the baseline
   would flag, **stay silent** — see the Convention Override Rule below.
 - **Always a judgement call, never a hard violation.** Report as "possible Feature
-  Envy", capped at **CONSIDER** unless it also clears the Comment Bar as an
-  objective defect on its own. A smell name is not evidence; you still need the
-  `file:line` showing the behavior.
+  Envy". A smell name is a label, not evidence; cite the `file:line` showing the
+  behavior in every case.
+- **The cap follows the basis, not the phenomenon.** The smell name is the whole
+  basis of the finding → cap it at **CONSIDER**. The finding also stands on its own
+  as an objective defect that clears the Comment Bar → it takes the severity the
+  Severity Definitions table gives that defect, and the smell name is vocabulary
+  for the recommendation. Example: "possible Speculative Generality" alone is
+  CONSIDER; "the `$strategy` parameter added at L12 has one caller, which passes one
+  value, and the ticket asks for none" is graded as the defect it is. An agent brief
+  may rate the same phenomenon higher — `discipline-reviewer` grades speculative
+  generality, overengineering, and duplicated code as BLOCKING or SHOULD_FIX. Both
+  hold: grade the grounded defect, cap the bare label.
 
 Each reads *what it is* → *the fix*:
 
@@ -221,6 +232,13 @@ Each reads *what it is* → *the fix*:
 Design vocabulary for the recommendation — seam, interface, depth, adapter:
 `.claude/skills/codebase-design/SKILL.md`.
 
+**Source:** adapted near-verbatim from the smell baseline in
+`mattpocock-skills:code-review`, including the repo-overrides rule. It lives inline
+because every Phase 3 reviewer needs the whole baseline in context to name a smell
+the same way; one Skill call per reviewer costs more than the text and arrives too
+late to shape the finding. Offer to walk through the upstream two-axis review when a
+reader asks where the baseline comes from.
+
 ## Convention Override Rule
 
 Before flagging a code pattern, reviewer agents MUST check whether `CLAUDE.md`,
@@ -241,11 +259,10 @@ positives, never at the author's judgment.
 - Models under `app/Domains/{Domain}/Models/` — intentional DDD layout, not a
   misplacement.
 - A test verifying an ingest/sync write with `assertDatabaseHas` / `assertDatabaseCount`
-  / `assertDatabaseMissing` rather than through a read interface — for these modules
-  the persisted row **is** the observable behavior, and there is no read interface to
-  go through. Endorsed in `docs/adr/0002-database-assertions-verify-ingest-behavior.md`
-  and `tdd-laravel-testing`. Never flag it as "testing implementation" or "bypassing
-  the interface"; ~31 test files do this deliberately.
+  / `assertDatabaseMissing` — this **is** behavior verification for these modules, so
+  treat it as the endorsed pattern and stay silent. Reasoning:
+  `docs/adr/0002-database-assertions-verify-ingest-behavior.md`; test conventions:
+  `tdd-laravel-testing`.
 - Fixed third-party base URLs as `private const` on a service — intentional, not
   "should be config".
 - Many small named exception classes for one domain — intentional
@@ -306,6 +323,21 @@ Deduplication: Match on (file, line range ±10 lines, category). Additionally,
 merge findings from different agents with the same FILE, same CATEGORY, and
 substantially the same recommended fix regardless of line distance. When multiple
 reviewers flag the same issue, keep the richest evidence and highest severity.
+
+**Category precedence — one defect keeps one category.** Two reviewers describe one
+defect under two categories often enough to matter: a stale page title arrived once
+as `requirements` and once as `convention`. Merge those as well — same FILE,
+same defect, substantially the same fix merges even when CATEGORY differs. Give the
+merged finding the single category that ranks highest here:
+
+`requirements` > `security` > `correctness` > `architecture` > `testing` >
+`performance` > `convention`
+
+`requirements` ranks first because Phase 4 of `/review:claude` routes on CATEGORY
+alone. The spec axis exists to keep an acceptance failure out of the standards pile,
+so a defect that is also an acceptance failure belongs on that axis; the convention
+angle is extra evidence for the same finding. Keep the losing category's EVIDENCE in
+the merged block, so one finding reaches one axis carrying both reviewers' reasoning.
 
 ## Tiebreaker Rule (Phase 5)
 

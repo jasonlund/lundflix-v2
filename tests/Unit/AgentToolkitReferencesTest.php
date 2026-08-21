@@ -13,14 +13,26 @@ use Symfony\Component\Finder\Finder;
  * the agent simply fails to load the file and carries on without the rules it
  * was supposed to read. Nothing else in the suite can see that.
  *
+ * The scan root is `.claude/` — that is where the routing prose lives — but the
+ * *targets* it checks are wider: a skill naming `.ai/guidelines/project.md` or
+ * `docs/agents/domain.md` dangles exactly as loudly as one naming a sibling
+ * skill, so every prefix the toolkit points at is checked.
+ *
+ * Scope limit, deliberate: this guard answers `file_exists` and nothing more, so
+ * it catches a path that stopped resolving, never a pointer that dangles on
+ * *content* (a file that exists but no longer carries the rule cited from it).
+ * Scanning more source files buys no coverage of that second failure and only
+ * makes a green run look like it did — fix content drift with a check that reads
+ * the target, not by widening the Finder below.
+ *
  * NB: the placeholder-bearing paths this file must ignore (`{Domain}`, `*.md`)
  * are excluded by the character class rather than a deny-list, so a new
  * placeholder style can never silently become an offender.
  */
 
 /**
- * Every `.claude/…` or `docs/…` path referenced in the toolkit's markdown,
- * paired with where it was referenced from.
+ * Every `.claude/…`, `.ai/…` or `docs/…` path referenced in the toolkit's
+ * markdown, paired with where it was referenced from.
  *
  * @return list<array{file: string, line: int, path: string}>
  */
@@ -51,7 +63,7 @@ $scanReferences = function (): array {
             //     (`app/Domains/{Domain}/…`, `docs/agents/*.md`) never match.
             // A file is what an agent actually loads, so a file is what drifts
             // silently — a bare directory mention has no load to fail.
-            preg_match_all('#(?<![~/\w])(?:\.claude|docs)/[A-Za-z0-9._\-/]+\.[A-Za-z0-9]{2,4}\b#', $text, $matches);
+            preg_match_all('#(?<![~/\w])(?:\.claude|\.ai|docs)/[A-Za-z0-9._\-/]+\.[A-Za-z0-9]{2,4}\b#', $text, $matches);
 
             foreach ($matches[0] as $path) {
                 $references[] = [

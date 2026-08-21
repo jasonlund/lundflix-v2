@@ -37,7 +37,9 @@ next slice → new RED plan card
 
 - **One behavior slice per cycle.** Write a small, cohesive SET of failing tests
   (typically 2–6) covering one feature surface — e.g. "store movie" with its happy
-  path + key validation cases. Not one assertion; not the whole feature.
+  path + key validation cases. Not one assertion; not the whole feature. This is a
+  deliberate deviation from canon TDD's one-test-per-cycle rule — see
+  `docs/adr/0003-multi-test-red-slices.md`.
 - **Every test is Arrange–Act–Assert.** Three separated blocks; exactly one Act
   per test. Applies to every test in the codebase, backend and frontend.
 - **Test behavior, not implementation.** Assert what the user/caller observes
@@ -77,6 +79,11 @@ Then briefly answer, before any code (keeps design testable):
 When the backlog came from `plan-slices`, its **seam contract** already answers
 that third question — honor it rather than re-deriving it. Testing at a seam the
 contract didn't name is a deviation: say so and get it confirmed.
+
+**Source:** the seam requirement — the *Test at a named seam* core rule and the
+seam question above — is adapted from `mattpocock-skills:tdd`'s *Seams: where
+tests go*, which puts tests only at pre-agreed public boundaries. Offer to explain
+the upstream contract when a slice's seam is in question.
 
 ## Step 1 — 🔴 RED (presented for approval via Conductor's plan UI)
 

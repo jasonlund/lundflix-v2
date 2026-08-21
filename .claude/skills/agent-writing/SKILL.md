@@ -5,8 +5,7 @@ description: >-
   definition, `.ai/guidelines/project.md`, a domain `GUIDELINES.md`, code comments
   and PHP docblocks. Use when authoring or editing any of those, when asked to make
   writing less verbose or prune comments/docblocks, or when a skill fires
-  unreliably and its description needs sharpening. Audits and rewrites prose only,
-  leaving code behavior as it stands.
+  unreliably and its description needs sharpening.
 ---
 
 # Agent Writing
@@ -112,12 +111,15 @@ demand**.
 **Position matters** within a file: lost-in-the-middle is real, so put the most
 critical rules at the top or the bottom.
 
-### Descriptions are context pointers
+### Context pointers
 
-A skill's `description` is a **context pointer**: it names out-of-context material
-and encodes the condition for reaching it. Its *wording*, not its target, decides
-when and how reliably the agent reaches the material. A must-have skill behind a
-weak description is a variance bug — sharpen the wording before inlining anything.
+A **context pointer** is a line held in context that names out-of-context material
+and encodes the condition for reaching it. A skill's `description` is the leading
+example; a line in `.ai/guidelines/project.md` naming `docs/agents/domain.md` is
+the same object, and so is a "see X" in a command. Its *wording*, not its target,
+decides when and how reliably the agent reaches the material. A must-have target
+behind a weak pointer is a variance bug — sharpen the wording before inlining
+anything.
 
 A pointer does two jobs: say what the material is, and list the **branches** that
 should trigger it. It is always loaded, so it earns harder pruning than the body:
@@ -127,12 +129,31 @@ should trigger it. It is always loaded, so it earns harder pruning than the body
   written twice.
 - **Cut identity the body already carries.**
 
-**Invocation is a budget choice.** A model-invoked skill keeps its description
-loaded every turn and buys agent discovery plus reach from other skills. A
-user-invoked skill (`disable-model-invocation: true`) costs zero context and
-spends *your* memory instead — you become the index. Choose model-invocation only
-when an agent or another skill must reach it on its own. When user-invoked skills
-outgrow memory, a **router** skill naming the others is the cure.
+### The two loads
+
+Every document and pointer spends one of two budgets:
+
+- **Context load** — the cost on the agent's window. An always-loaded line (a
+  skill description, a `project.md` pointer) spends tokens and attention every
+  turn, whether or not it fires.
+- **Cognitive load** — the cost on the human: which documents exist and when to
+  reach for each. The human is the index. This is **not a cost to minimise: it is
+  the price of human agency** — spend it where human judgement matters, remove it
+  where it does not.
+
+Material behind a pointer escapes context load for the price of the pointer's own
+line; material with no pointer rides entirely on cognitive load. So neither budget
+is free, and moving a cost is not the same as removing it.
+
+**Invocation is where the trade bites.** A model-invoked skill keeps its
+description loaded every turn — permanent context load — and buys agent discovery
+plus reach from other skills. A user-invoked skill (`disable-model-invocation:
+true`) costs zero context and spends *your* memory instead: you become the index.
+Choose model-invocation only when an agent or another skill must reach it on its
+own. When user-invoked skills outgrow memory, that piled-up cognitive load is
+cured by a **router** skill naming the others (`/map` here). Shared reference two
+user-invoked skills both need can live in neither — with no descriptions, neither
+can fire the other — so push it to a plain file both point at.
 
 ### Completion criteria
 
@@ -141,13 +162,39 @@ it a lever:
 
 - **Clarity** — can the agent tell done from not-done? A vague bound ("understanding
   reached") invites **premature completion**, with attention slipping toward *being
-  done* because the remaining steps are visible and pulling. Sharpen the bound first;
-  it is local and cheap.
+  done*. The visible **post-completion steps** supply the pull; the criterion's
+  clarity is the resistance. Defend in order: sharpen the bound first — local and
+  cheap; only when it is irreducibly fuzzy *and* you observe the rush, hide the later
+  steps by splitting the sequence (below).
 - **Demand** — how much it requires. "Every modified model accounted for" forces
   real legwork where "produce a change list" does not. Demand binds flat reference
   too: "every rule applied" carries an exhaustiveness bar with no steps at all.
 
 The strongest criteria are both checkable and exhaustive.
+
+### When to split
+
+Splitting one document into two spends one of the two loads, so cut only where the
+split earns it. Two cuts:
+
+- **By sequence** — split a run of steps where the post-completion steps tempt the
+  agent to rush the one in front of it. Keeping them out of view drives more
+  legwork on the current task. **Hiding only works across a real context
+  boundary** — a hand-off or a subagent dispatch. An inline call leaves the later
+  steps sitting in context and clears nothing, so a "split" into a new heading or
+  a second file the same agent reads buys no resistance at all. Beware the
+  reverse: merging sequences exposes each step's later steps to what follows,
+  inviting premature completion.
+- **By invocation** — split off a model-invoked skill when a distinct leading word
+  should trigger it on its own (a word you actually type), or when another skill
+  must reach it. You pay permanent context load for the new always-loaded
+  description, so that independent reach has to be worth it.
+
+This is the lever that shaped the flow skills here: `tdd`,
+`.claude/commands/review/process.md` and `.claude/commands/plan/run.md` each cut
+their sequence at a subagent dispatch, so a phase runs with its later phases out
+of context. Preserve those boundaries when editing them — collapsing a dispatch
+into an inline step looks like simplification and silently removes the resistance.
 
 ## Cut
 
@@ -156,6 +203,22 @@ The strongest criteria are both checkable and exhaustive.
 - Restates what the code, types, or a passing test already says → **cut**.
 - Captures a non-obvious **why**, gotcha, or contract → **keep**.
 - Dropping it would cause a mistake → **keep**, overriding every cut rule.
+
+**Bound the override before you use it.** Left unbounded it defends anything: any
+duplication survives by asserting some reader would err without it, and the rule
+that outranks every other rule becomes the one that is never tested. Invoking it
+is an argument, so it has to be checkable — name all three:
+
+1. **Which reader** — the agent or human running *which* document, at which step.
+2. **On which branch** — the concrete path through the work where the line is
+   reached, not "someone, someday".
+3. **What mistake** — the specific wrong action, and why the code, a test, or the
+   other copy fails to prevent it.
+
+Cannot fill all three, or the answer is "it is useful context" → the ordinary cut
+rules stand. A named reader on a named branch is also the fix's specification:
+often the cheaper answer is a pointer from that branch to the single source
+below, not a second copy.
 
 ### Single source of truth
 Each meaning lives in exactly one authoritative place, so changing the behavior is
@@ -198,7 +261,8 @@ through them to find what is still live.
 3. **Cut** per the checklist. Borderline → flag rather than delete.
 4. **Shape**: count negations and rewrite them positive; hunt passages that collapse
    into a leading word; check each piece sits on the right rung; sharpen any vague
-   completion criterion; re-read the description as a pointer.
+   completion criterion; re-read every context pointer — the description, and each
+   line naming another doc — for branch coverage.
 5. **Reorder** so critical rules sit at the top or bottom.
 6. **Show the diff** and the kept-constraint list.
 
@@ -212,5 +276,5 @@ through them to find what is still live.
 See `examples.md` for before/after cases.
 
 **Source:** the Shape half is adapted from `mattpocock-skills:writing-for-agents`
-(with `SKILL-MECHANICS.md` for invocation and routers). Offer to walk through the
-original when applying these levers.
+(with its `SKILL-MECHANICS.md` for the invocation cut and routers). Offer to walk
+through the original when applying these levers.

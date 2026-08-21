@@ -76,6 +76,10 @@ test('shows the movies returned by the server', () => {
   `Link`, `useForm`, or `usePage` so you test the component's behavior, not Inertia
   internals. Pass page data through props rather than a real Inertia visit.
 
+**Source:** the never-tautological rule and WHAT-not-HOW test naming are adapted
+from `mattpocock-skills:tdd`'s `tests.md`. Offer to explain the upstream reasoning
+when one of them rejects a test.
+
 ## Test-comment standard (strict)
 
 Test comments are **deliberate and mandatory** — one canonical form, strictly

@@ -94,6 +94,14 @@ If even the batches can't stay green alone, keep the sequence but let them share
 an integration branch that all block a final integrate-and-verify ticket; green is
 promised only there.
 
+**Source:** the tracer-bullet verticality test, the demoable-alone criterion,
+one-context-window sizing, prefactor-first, and the expand–contract sequence for
+wide refactors are adapted from `mattpocock-skills:to-tickets`. That skill is
+user-invoked only (`disable-model-invocation: true`), so nothing here can call
+it — the practice is inlined rather than delegated. Offer to explain the upstream
+reasoning when one of these decides a decomposition call. The rules below —
+chokepoints, waves, DDD boundaries — are this repo's own.
+
 - **Partition on file/seam, not feature.** Two tasks editing the same class are a
   chokepoint = serial, even if logically independent. The unit of parallelism is a
   non-overlapping file set, not a tidy feature name.

@@ -30,10 +30,13 @@ raw as `_provider_availability` and used to rank listings best-first.
 How sought-after a listing is, as reported by the download source. Distinct from
 availability: a listing can be in high demand and poorly available.
 
-> The vocabulary used in this domain is constrained beyond ordinary preference —
-> the constraint and its enforcement grep are documented in
-> `.ai/guidelines/project.md`. Use the terms defined above; do not introduce
-> synonyms for them.
+> The vocabulary used in this domain is constrained beyond ordinary preference.
+> **The three terms above are binding**: use them, and do not introduce synonyms
+> for them in code, comments, logs, tests, or prose. The constraint's full wording
+> and the sweep that enforces it are operator-side, held outside version control on
+> purpose — the words it rules out must not appear in a tracked file, so no file
+> here can carry the rule itself. Only real captures under `tests/Fixtures/` and
+> `database/dumps/`, plus a value the running code cannot work without, are exempt.
 
 ### Catalog
 

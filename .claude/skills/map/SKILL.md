@@ -6,11 +6,12 @@ disable-model-invocation: true
 
 # Map
 
-You don't remember 32 toolkit files, so ask. This skill names what exists and when
-to reach for each. It carries no description into the agent's context and fires
-nothing on its own — it is a page you open when you've forgotten what's here.
+You don't remember 33 toolkit files — 12 skills, 8 commands, 13 subagents, this
+skill among them — so ask. This page names all of them and when to reach for each.
+It carries no description into the agent's context and fires nothing on its own.
 
-Keep it current: a new skill or command that never lands here is invisible.
+Keep it current: a new skill, command, or subagent that never lands here is
+invisible.
 
 ## The main flow: rough idea → merged PR
 
@@ -45,9 +46,14 @@ individual skills only when you're re-entering partway:
 subagent so tests can't be retrofitted. `tdd-laravel-testing` and
 `tdd-react-testing` carry the stack conventions; the subagents read them.
 
-**Review — `/review:run`** chains the five stages with approval gates.
-`/review:claude` (multi-agent) and `/review:suite` (adds CodeRabbit) run
-standalone when you only want the analysis.
+**Review — `/review:run`** chains the five stages with approval gates:
+`/review:create-pr` (lint, commit, push, open) → `/review:human` (orientation pass
+for you) → `/review:suite` → `/review:process` (fix the approved items) → delta.
+Standalone when you want one piece: `/review:claude` (multi-agent analysis),
+`/review:suite` (that plus CodeRabbit), and **`/review:add`** — posts a
+`/review:claude` report to the PR as one review, inline where the file/line is in
+the diff. `/review:suite` calls `add` for you; run it yourself after a bare
+`/review:claude`.
 
 ## On-ramps
 
@@ -75,58 +81,49 @@ Situations that generate work and then merge onto the flow.
 - **`codebase-design`** — the vocabulary layer beneath planning, tdd, and review:
   module, interface, depth, **seam**, adapter, leverage, locality.
 
+## Subagents (`.claude/agents/`)
+
+Thirteen, and you never invoke one directly — the commands and skills above dispatch
+them, each into its own context window.
+
+- **Phase 3 reviewers** (`/review:claude`, in parallel): `requirements-reviewer`,
+  `conventions-reviewer`, `edge-case-reviewer`, `integration-reviewer`,
+  `discipline-reviewer`, `testing-reviewer` — one axis each.
+- **Phase 5 challengers** (`/review:claude`): `false-positive-hunter` argues the
+  medium-confidence findings are wrong; `missing-defect-hunter` re-reads the PR with
+  fresh eyes.
+- **`coderabbit-reviewer`** — `/review:suite`'s second engine; runs the CodeRabbit
+  CLI and normalizes its output into the pipeline's finding format.
+- **`review-fixer`** — `/review:process` runs these in parallel, one per approved
+  item or file-cluster, test-first. Each owns its files and never commits.
+- **TDD trio** (`tdd`, one phase each so tests can't be retrofitted):
+  `tdd-test-writer` → `tdd-implementer` → `tdd-refactorer`.
+
 ## Borrowed practice
 
 Several skills here adapt practice from the **AI Hero** plugin
-(`~/.claude/skills/mattpocock-skills/skills/`). Each borrowed section ends in a
-`**Source:**` line naming the upstream skill.
+(`~/.claude/skills/mattpocock-skills/skills/`), each borrowed section closing with a
+`**Source:**` line. The convention for those lines — offer to explain the origin
+when you apply one — is in `CLAUDE.md` under *Borrowed practice carries a Source
+line*, already in your context; it isn't repeated here.
 
-**When you apply one of those sections, offer to explain where it came from** — the
-upstream skill, what it argues, and the file to read. One line is enough: *"This is
-the seam contract, adapted from `mattpocock-skills:tdd` — want the original
-reasoning?"* Offer; don't lecture, and don't paste the upstream text unasked.
-
-Three upstream skills are **user-invoked only** (`to-spec`, `to-tickets`,
-`grill-with-docs`), so no skill or hook here can call them — only you can type
-them. That is why their practice is inlined rather than delegated.
+What is local: **20 of the 35 upstream skills are user-invoked only**
+(`disable-model-invocation: true`), among them `ask-matt`, `wait-what`, `to-spec`,
+`to-tickets`, `grill-with-docs`, `triage`, and `wayfinder`. No skill, command, or
+hook here can reach those — only you can type them. The rest are callable, and the
+toolkit hands off to several by name: `diagnosing-bugs`, `prototype`, `research`,
+`codebase-design`, `wizard`. (`code-review`, `tdd`, and `writing-for-agents` are
+callable too, yet their practice is still inlined — see the `CLAUDE.md` section
+above for why.)
 
 ## Phase boundaries
 
 A **phase** is a chunk of work inside a session: the grilling, the implementation,
-the QA. It ends when you think *"ok, we're done with that."* The **boundary** is the
-gap between two, and it is the only place this decision belongs — mid-phase, either
-continue or split what's left into subagents.
+the QA. The **boundary** is the gap between two, and it is the only place the
+continue / `clear` / hand-off / subagent / `compact` decision belongs — mid-phase,
+either continue or split what's left into subagents.
 
-Work the tree top to bottom. **First yes wins.**
+The decision tree — five questions, top to bottom, **first yes wins** — is in
+`.claude/skills/map/PHASE-BOUNDARIES.md`, beside this file. Open it at a boundary.
 
-**1. Can you continue in this session?** Yes when the next phase needs this one as a
-**primary source**, or enough window remains for it to fit. Grilling →
-implementation is the standard yes: implementation wants the reasoning verbatim, not
-a summary of it. Continue costs nothing and loses nothing, so rule it out first.
-
-**2. Is this context irrelevant to what comes next?** Then `/clear` — the cheapest
-move on the board, and the old session stays resumable. Getting it wrong is one-way:
-clear a *relevant* context and the **why** behind the work is gone, and reading the
-diff back never returns it.
-
-**3. Do you need to hand off?** Only for a **new harness**, a **new directory or
-repo**, a **colleague**, or forking a side task found **mid-phase**. What a handoff
-buys is portability. Nothing travelling means no handoff. In Conductor, a new
-workspace is the usual answer here.
-
-**4. Can the task run AFK?** Scoped tightly enough to need no steering → a
-**subagent**, leaving this session untouched. Automated review is the standard case.
-
-**5. Otherwise `/compact`.** Relevant context, same harness, same directory, and you
-stay in the loop. Pass it an instruction (`/compact we're going to QA this area`) so
-the summary keeps what the next phase needs.
-
-`/compact` is the **default, not the first reach** — the four questions above it are
-cheaper or more precise. Every move except Continue turns a **primary source** into a
-**secondary** one: full-but-noisy becomes lossy-but-roomy. That trade is why question
-1 comes first. Compacting *mid*-phase loses the thread.
-
-These are judgement calls. The value is in asking them in order, at the boundary.
-
-**Source:** the flow-map shape and the phase-boundary tree are adapted from
-`mattpocock-skills:ask-matt` and its `PHASE-BOUNDARIES.md`.
+**Source:** the flow-map shape is adapted from `mattpocock-skills:ask-matt`.

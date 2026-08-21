@@ -561,31 +561,19 @@ rather than restating it:
 
 ### PR-open is contended — write, then verify
 
-Linear's GitHub integration writes status too, and `pull_request.opened` is an
-event **both** it and `review:create-pr` react to. The integration's mapping for
-*opened* defaults to **In Progress**, so it can overwrite our In Review write
-milliseconds later. Observed on FLIX-277/PR #109: our write landed at
-`01:28:06.870` and the integration reverted it at `01:28:06.995` — 125 ms.
+At PR-open **both** `review:create-pr` and Linear's GitHub integration write the
+status, and the integration's default mapping for *opened* is In Progress — so our
+In Review write can be reverted milliseconds later, nondeterministically and
+silently. That one transition is therefore **write → read back → correct once**:
+`save_issue(state: "In Review")`, re-read with `get_issue` **after** the PR-created
+call returns, and re-apply once if it was reverted (say so in the report). A
+**second** revert means the integration is fighting the contract — stop, leave it,
+tell the user to fix the mapping, never loop. **The durable cure is one writer, not
+a better retry:** set the integration's PR-opened mapping to In Review in Linear's
+GitHub settings — a vendor-dashboard click, so offer `mattpocock-skills:wizard`.
 
-The winner is decided by webhook delivery time, so this **fails nondeterministically
-and silently** — the MCP call succeeds either way, and the skill reports success
-while the ticket sits in the wrong state.
-
-So at PR-open only, the transition is **write → read back → correct once**:
-
-1. `save_issue(state: "In Review")`.
-2. Re-read with `get_issue` **after** the PR-created call has returned, so the
-   webhook has had a chance to land.
-3. Status already In Review → done. Reverted → apply it once more, and say in the
-   report that the integration was corrected.
-4. A **second** revert means the integration is actively fighting the contract.
-   Stop, leave it, and tell the user to fix the mapping — never loop.
-
-**The durable cure is one writer, not a better retry.** Set the integration's
-PR-opened mapping to In Review in Linear's GitHub settings; then step 1 becomes
-redundant and this whole clause collapses back to a verify. That is a vendor
-dashboard click, so it's a `mattpocock-skills:wizard` job — offer it rather than
-re-explaining the click.
+The incident behind the rule and the timing forensics:
+`docs/agents/linear-pr-open-contention.md`.
 
 ## Agent skills
 
@@ -597,15 +585,22 @@ invoked with that prefix**; the skill files' own cross-references to bare
 `mattpocock-skills:setup-matt-pocock-skills`; edit `docs/agents/*.md` directly to
 change the config.
 
-**`/map` is the router** — one user-invoked skill naming every skill, command, and
-flow here, plus the phase-boundary tree. Open it when you've forgotten what exists.
+**`/map` is the router** — one user-invoked skill naming every skill, command,
+subagent, and flow here, and pointing at the phase-boundary tree beside it. Open it
+when you've forgotten what exists.
 
 ### Borrowed practice carries a Source line
 
-Several native skills adapt practice from the AI Hero plugin rather than calling it
-(three upstream skills set `disable-model-invocation: true`, so nothing here *can*
-call them). Every borrowed section ends in a `**Source:**` line naming the upstream
-skill.
+Several native skills adapt practice from the AI Hero plugin rather than calling it,
+each borrowed section closing with a `**Source:**` line naming the upstream skill.
+Two reasons. **20 of the 35 upstream skills set `disable-model-invocation: true`**,
+so nothing here *can* call them — including the two inlined most directly:
+`wait-what` (Source of review-pipeline's Simplified Technical English section) and
+`ask-matt` (Source of `/map`). The rest are callable — `code-review`'s smell
+baseline, `writing-for-agents` — and are inlined anyway, because the practice has to
+be in context *before* the work starts: one Skill call per reviewer costs more than
+the text and lands too late to shape the finding. (A different set from the five
+config readers named above; these are skills whose *text* is adapted here.)
 
 **When you apply a section that carries one, offer to explain its origin** — the
 upstream skill, what it argues, and the file to read. One line, then continue:

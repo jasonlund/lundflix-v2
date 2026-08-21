@@ -68,14 +68,16 @@ description: >-
 - **Test names describe WHAT, not HOW** — `it('rejects a duplicate title')`, not
   `it('calls the uniqueness validator')`.
 
+**Source:** the tautological, implementation-coupled, and mock-only-at-seams rules
+are adapted from `mattpocock-skills:tdd` (`tests.md` and `mocking.md`). Offer to
+explain the upstream reasoning when one of them decides a review call.
+
 ### Database assertions ARE behavior verification
 
 `assertDatabaseHas` / `assertDatabaseCount` / `assertDatabaseMissing` are the
-**correct** way to verify an ingest or sync module. For `SyncTmdbMovies` the
-persisted row *is* the observable behavior — there is no read interface to go
-through, and adding one purely to satisfy a "verify through the interface" rule is
-speculative generality. Asserting the persisted state is testing at the seam, not
-reaching past it. See `docs/adr/0002-database-assertions-verify-ingest-behavior.md`.
+**correct** way to verify an ingest or sync module such as `SyncTmdbMovies`: the
+persisted row *is* the observable behavior, so assert it and treat that as testing
+at the seam — see `docs/adr/0002-database-assertions-verify-ingest-behavior.md`.
 
 Where a read interface *does* exist and is the thing under test, prefer it — assert
 on what the endpoint or accessor returns rather than re-querying the table behind it.

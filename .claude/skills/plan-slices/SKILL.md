@@ -94,6 +94,12 @@ spreading evenly over every edge case.
 Put the seam list at the **top of the backlog** and confirm it with the user
 alongside the testability findings.
 
+**Source:** the seam contract is adapted from `mattpocock-skills:tdd`'s *Seams:
+where tests go* (test only at pre-agreed seams, prefer the existing public
+boundary) and `mattpocock-skills:codebase-design`'s `DEEPENING.md` (one adapter is
+a hypothetical seam; two make it real). Offer to explain the upstream reasoning
+when a new-seam count is challenged.
+
 ### 3b — Testability gate
 
 For each behavior, check it can be driven test-first at one of those seams. Flag

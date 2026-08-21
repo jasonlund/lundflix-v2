@@ -18,8 +18,8 @@ This is a single-context repo: one `CONTEXT.md` and one `docs/adr/` at the root.
 ├── CONTEXT.md
 ├── docs/
 │   ├── adr/
-│   │   ├── 0001-domain-driven-layout.md
-│   │   └── 0002-raw-source-column-prefixes.md
+│   │   ├── 0001-refactor-stays-in-the-tdd-loop.md
+│   │   └── 0002-database-assertions-verify-ingest-behavior.md
 │   └── agents/                         ← this config
 └── app/Domains/
 ```

@@ -152,12 +152,13 @@ it, don't silently start one**, and fold only the answer back into the cluster.
   what a library actually supports) → `mattpocock-skills:research`, which reads
   primary sources in the background while the rest of the round continues.
 - **A hard-to-reverse interface** — a model's column set, a service's public
-  surface — → `mattpocock-skills:codebase-design`'s design-it-twice pattern:
-  parallel subagents each designing under an opposing constraint (minimize the
-  interface / maximize flexibility / optimize the common caller), compared on
-  depth, locality, and seam placement. Reach for it when the honest read is that
-  your "2–3 options" are one idea in three costumes. Too expensive to run on every
-  cluster; reserve it for the ones that are costly to undo.
+  surface — → `mattpocock-skills:codebase-design`'s design-it-twice pattern, which
+  explores rival interfaces in parallel. Reach for it when the honest read is that
+  your "2–3 options" are one idea in three costumes.
+
+**Source:** the design-it-twice resolver is adapted from
+`mattpocock-skills:codebase-design` (`DESIGN-IT-TWICE.md`); `.claude/skills/codebase-design/SKILL.md`
+carries this repo's short form. Offer to explain the pattern before starting one.
 
 ## Phase D — Present the full plan (hard gate)
 
