@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
@@ -63,15 +64,22 @@ describe('catalog:sync-ratings ratings ingest', function (): void {
     });
 
     it('deletes the temp file afterward', function (): void {
+        // The sink option the stub handler receives IS the tempnam() path download()
+        // just created, so capturing it pins the one file under test — a glob over
+        // the shared temp dir also matches files other processes leave behind.
         // Arrange
-        $tempFiles = fn () => glob(sys_get_temp_dir().'/imdb_*');
-        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
-        $before = $tempFiles();
+        $sinkPath = null;
+        Http::fake(['*datasets.imdbws.com*' => function (Request $request, array $options) use (&$sinkPath) {
+            $sinkPath = $options['sink'];
+
+            return Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'));
+        }]);
 
         // Act
         $this->artisan('catalog:sync-ratings');
 
         // Assert
-        expect($tempFiles())->toBe($before);
+        expect($sinkPath)->toBeString();
+        expect(file_exists($sinkPath))->toBeFalse();
     });
 });

@@ -435,11 +435,9 @@ Summarize the run:
 - Tests: {pass/fail summary} · Pint: {clean/fixed}
 ```
 
-**Do not auto-commit.** Prompt the user to commit + push. On approval, commit with
-the required trailer and push:
-```
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
-```
+**Do not auto-commit.** Prompt the user to commit + push. On approval, commit with a
+ticket-prefixed subject plus the co-author trailer the harness supplies for this
+session — never hardcode one, it stamps a model version that rots — then push.
 
 ## Orchestration Notes
 

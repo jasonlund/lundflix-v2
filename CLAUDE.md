@@ -308,6 +308,32 @@ cross-source value "conflicts" to resolve at ingest (e.g. `_imdb_runtime` and
 `_tmdb_runtime` coexist rather than fighting over one `runtime` column). The
 source of truth is chosen per read, not baked into the schema.
 
+### Column position: timestamps always last
+
+**`created_at`/`updated_at` are the final two columns of every table, in that
+order** — a table reads `id` → keys → source blocks `imdb → tmdb → tvdb` (each
+closed by its own `*_synced_at`) → app bookkeeping → timestamps. A new table
+declares `$table->timestamps()` last and gets this for free.
+
+- **A migration that adds a column to an existing table places it with
+  `->after('<preceding column>')`** — the column lands in its source block instead
+  of being appended past `updated_at`, which is how six tables ended up scrambled
+  (FLIX-247). Add a whole block with `$table->after('<col>', function (Blueprint
+  $table): void { … })` so the group stays contiguous. `after` is a MySQL
+  modifier; other grammars ignore it, so it costs nothing on sqlite.
+- **Nothing should need rearranging again.** The one-off repair lives in
+  `2026_08_13_000000_reorder_table_columns_to_keep_timestamps_last.php` and is
+  history, not a pattern to copy — don't write another reposition migration to
+  clean up after a missing `after()`.
+- `App\Domains\Local\Database\ColumnOrder::alterStatement()` exists for that
+  repair: given a table's `SHOW FULL COLUMNS` rows plus a target name order it
+  returns one `ALTER TABLE … MODIFY COLUMN … AFTER …` statement, rebuilding each
+  definition verbatim and throwing `ColumnOrderMismatch` unless the target order
+  is an exact permutation. Reach for it only if a table is already scrambled, and
+  guard the call on the MySQL driver.
+- Column order is a MySQL concern — the sqlite test DB has none, so ordering is
+  never assertable in CI. Verify by hand with `SHOW COLUMNS` after migrating.
+
 ### Crosswalk / queryable-id columns — the one ingest-normalize exception
 
 "No transform at ingest" holds for descriptive fields (normalize at read). It does
@@ -393,8 +419,6 @@ enough that materializing is provably fine — say why in a comment).
 
 - Read-only iteration with no writes → `lazy()`/`cursor()` is fine (streams
   without the PK-pagination overhead).
-- `--limit`-style caps don't compose with `chunkById` directly — track a
-  processed count and `return false` from the closure to halt early.
 
 ## Persistence: version-controlled database seed
 
@@ -405,7 +429,10 @@ checkout/workspace has a usable dataset with no third-party API calls (FLIX-194)
   tooling) — `App\Domains\Local\Console\Commands` (registered in `bootstrap/app.php`
   `withCommands`), with `mysqldump`/`mysql` shelled through the `Process` facade
   (fakeable) and the pure helpers in `App\Domains\Local\Database` (`DumpFit`
-  fitting, `DumpSelection` coherence, `MysqlConnection` args).
+  fitting, `DumpSelection` coherence, `MysqlConnection` args). "Local-development
+  tooling" names the *commands* only — `App\Domains\Local\Database` also holds pure
+  schema helpers called from **migrations** (`ColumnOrder`), which run in every
+  environment, so the domain must ship to production.
 - **`database/dumps/*.sql.gz`** are generated blobs: **one file per table**
   (`movies`, `shows`, `seasons`, `media`, `downloads` — never `settings`, which is
   secret + `APP_KEY`-encrypted), each capped under 50 MB. `movies`/`shows` are the

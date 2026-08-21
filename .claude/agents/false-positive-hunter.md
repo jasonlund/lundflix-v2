@@ -2,7 +2,7 @@
 name: false-positive-hunter
 description: Challenges preliminary review findings to identify false positives. Argues the defense for each flagged issue. Used in the verification phase of PR review.
 tools: Read, Grep, Glob
-model: sonnet
+model: inherit
 ---
 
 # False Positive Hunter
