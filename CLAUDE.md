@@ -550,7 +550,7 @@ boundary named):
 | --- | --- | --- |
 | Planning done (TDD backlog appended) | `plan-slices` | **Todo** |
 | Execution begins (first slice for the ticket) | `tdd` | **In Progress** |
-| PR opened | `review:create-pr` | **In Review** |
+| PR opened | `review:create-pr`, then **verified** (see below) | **In Review** |
 | PR merged | Linear's native GitHub integration | **Done** |
 
 The lifecycle order is `Backlog < Todo < In Progress < In Review < Done`. Each
@@ -571,6 +571,34 @@ rather than restating it:
   at PR-open, every ticket the PR covers moves to In Review together.)
 - **Report, don't ask.** State the transition in one line; the change is
   automatic — never prompt for permission.
+
+### PR-open is contended — write, then verify
+
+Linear's GitHub integration writes status too, and `pull_request.opened` is an
+event **both** it and `review:create-pr` react to. The integration's mapping for
+*opened* defaults to **In Progress**, so it can overwrite our In Review write
+milliseconds later. Observed on FLIX-277/PR #109: our write landed at
+`01:28:06.870` and the integration reverted it at `01:28:06.995` — 125 ms.
+
+The winner is decided by webhook delivery time, so this **fails nondeterministically
+and silently** — the MCP call succeeds either way, and the skill reports success
+while the ticket sits in the wrong state.
+
+So at PR-open only, the transition is **write → read back → correct once**:
+
+1. `save_issue(state: "In Review")`.
+2. Re-read with `get_issue` **after** the PR-created call has returned, so the
+   webhook has had a chance to land.
+3. Status already In Review → done. Reverted → apply it once more, and say in the
+   report that the integration was corrected.
+4. A **second** revert means the integration is actively fighting the contract.
+   Stop, leave it, and tell the user to fix the mapping — never loop.
+
+**The durable cure is one writer, not a better retry.** Set the integration's
+PR-opened mapping to In Review in Linear's GitHub settings; then step 1 becomes
+redundant and this whole clause collapses back to a verify. That is a vendor
+dashboard click, so it's a `mattpocock-skills:wizard` job — offer it rather than
+re-explaining the click.
 
 ## Agent skills
 
