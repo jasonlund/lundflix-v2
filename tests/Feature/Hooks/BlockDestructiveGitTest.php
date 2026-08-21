@@ -127,6 +127,37 @@ it('blocks a git invocation that destroys uncommitted work', function (string $c
     // the rest of the line.
     'clean -fd after a closed heredoc' => "cat <<EOF\nnotes about git clean -fd\nEOF\n; git clean -fd",
     'reset --hard after a closed tab-stripping heredoc' => "cat <<-END\n\tnotes\n\tEND\ngit reset --hard",
+    // A here-string (`<<<`) is a single-line redirection: it feeds ONE word to
+    // the command on its own line and opens no body, so the next line is an
+    // ordinary command position. Reading `<<<` as a heredoc opener made the
+    // scanner wait for a terminator line that can never arrive and swallow the
+    // rest of the payload as data — the whole guard silently disarmed by three
+    // characters.
+    'clean -fd on the line after a here-string' => "echo hi <<<foo\ngit clean -fd",
+    'reset --hard on the line after a here-string' => "cat <<<word\ngit reset --hard",
+    'clean -fd several lines after a here-string' => "echo hi <<<foo\necho still running\ngit clean -fd",
+    // Verified against real bash: `bash -c 'echo \"; echo WOULD_RUN'` prints `"`
+    // and then WOULD_RUN, so the second command genuinely executes. A backslash
+    // outside quotes makes the next character literal — it opens no quoted
+    // stretch — and a scanner that reads the escaped quote as an opener swallows
+    // the separator behind it and the destructive command with it.
+    'escaped double quote before a separator' => 'echo \"; git clean -fd',
+    'escaped single quote before a separator' => "echo \\'; git reset --hard",
+    // Bash treats a backslash inside single quotes as an ordinary character, so
+    // the quote closes on the very next `'` and the separator after it splits.
+    'trailing backslash inside a single-quoted string' => "echo 'a\\'; git clean -fd",
+    // DELIBERATE OVER-BLOCK. Real bash refuses this line outright ("unexpected
+    // EOF while looking for matching quote", exit 2) so nothing runs at all. The
+    // scanner cannot tell that from a construct it merely failed to model, so it
+    // scans the unresolved remainder rather than dropping it — blocking a line
+    // the shell would not have run either way.
+    'unterminated quote (over-block: bash rejects the line as a syntax error)' => 'echo "unterminated; git clean -fd',
+    // DELIBERATE OVER-BLOCK. Real bash reads an unterminated body to end of
+    // input and hands it to `cat` as data, so the command inside never runs. It
+    // is refused anyway: an unterminated body is exactly the state the
+    // here-string defect produced, where the scanner waited for a terminator
+    // that could never arrive and silently allowed everything after it.
+    'unterminated heredoc body (over-block: bash treats the body as data)' => "cat <<EOF\nnotes\ngit clean -fd",
 ]);
 
 it('allows a command that destroys nothing', function (string $command): void {
@@ -170,6 +201,20 @@ it('allows a command that destroys nothing', function (string $command): void {
     // too and an exact line match would never find it.
     'tab-stripping heredoc with an indented terminator' => "cat <<-END\n\tgit clean -fd\n\tEND",
     'heredoc delimiter word other than EOF' => "cat <<MESSAGE\ngit branch -D topic\nMESSAGE",
+    // The here-string's own word is stdin data for `cat`, exactly like a quoted
+    // string — the command position on this line is still `cat`.
+    'a here-string carrying the command as data' => 'cat <<< "git clean -fd"',
+    // Verified against real bash: `bash -c 'echo a\; echo WOULD_RUN'` prints
+    // `a; echo WOULD_RUN`, so the escaped semicolon is an argument character and
+    // the git words behind it are more arguments to echo — no second command
+    // exists to refuse.
+    'an escaped separator that keeps the git words as echo arguments' => 'echo a\; git clean -fd',
+    // Verified against real bash: this prints `a"; echo WOULD_RUN` — the escaped
+    // quote does not close the string, so the whole line is one argument. The
+    // guard allowed it before escapes were modelled only by accident (the
+    // trailing `"` sat where the flag matcher required whitespace or end of
+    // segment); it has to stay allowed for the stated reason instead.
+    'an escaped quote that keeps a double-quoted string open' => 'echo "a\"; git clean -fd"',
 ]);
 
 it('fails closed on stdin it cannot parse', function (string $stdin): void {

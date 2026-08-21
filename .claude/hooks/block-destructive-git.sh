@@ -57,6 +57,21 @@ fi
 # prevent. `(` and `)` split too, so a command substitution such as
 # `$(git clean -fd)` is still reached.
 #
+# INVARIANT — when this scanner cannot confidently parse, it OVER-blocks; it
+# never under-blocks. Every defect this guard has shipped had one shape: the
+# scanner met a shell construct it did not model, lost track of where commands
+# begin, and silently ALLOWED the text it could not place — its own harness,
+# global options, long flags, cross-segment leakage, here-strings, backslash
+# escapes. Each fix taught it one more token and left the next unknown one
+# exploitable. So the direction of failure is inverted here: if the scan reaches
+# the end of input still inside a quote or a heredoc body, that unresolved
+# remainder is split on separators anyway and scanned as segments, instead of
+# being dropped. Anyone extending this scanner must preserve that: a construct
+# you do not model has to end the scan unresolved — and so be refused, loudly —
+# never be skipped as though it had been understood. An over-block is visible and
+# can be argued with; an under-block is silent and is how every bypass here
+# happened.
+#
 # A heredoc body is tracked for the same reason and is skipped whole. The shell
 # feeds those lines to the preceding command as stdin DATA — it never executes
 # one of them — so a line inside a body is no more a command position than a
@@ -66,11 +81,53 @@ fi
 # constantly (commit messages, ADRs, skill docs, the notes above). A guard that
 # refuses to let you write about a command is a guard people route around,
 # which costs more than the hole it closes.
+# `<<-` strips leading tabs from the body, so ITS terminator is indented too and
+# an exact line match would never find it — hence the trim for that form only.
+# Trimming the plain form as well would be worse than useless: a body line that
+# merely reads `  EOF` would end the body early and put the remaining prose back
+# in command position, which is the bug this tracking exists to fix.
+heredoc_line_terminates() {
+  local line=$1 delimiter=$2 strips_indent=$3
+
+  if [[ -n $strips_indent ]]; then
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+  fi
+
+  [[ $line == "$delimiter" ]]
+}
+
+# The fail-closed half of the invariant above: text the scanner could not place
+# is split with no quote, heredoc or escape tracking at all. That is the honest
+# reading of a remainder whose structure is by definition unknown — every
+# separator in it is treated as a separator, so a destructive command hiding
+# behind one lands at the start of a segment and is still matched.
+split_unparsed_remainder() {
+  local text=$1 segment='' char i
+
+  for ((i = 0; i < ${#text}; i++)); do
+    char=${text:i:1}
+
+    case $char in
+      ';' | '&' | '|' | '(' | ')' | $'\n')
+        SEGMENTS+=("$segment")
+        segment=''
+        ;;
+      *)
+        segment+=$char
+        ;;
+    esac
+  done
+
+  SEGMENTS+=("$segment")
+}
+
 split_into_segments() {
   local text=$1 quote='' segment='' char i
   local heredoc_delimiter='' heredoc_strips_indent='' heredoc_line=''
   local pending_delimiter='' pending_strips_indent=''
-  local terminator delimiter_quote j
+  local quote_start=0 heredoc_start=0
+  local delimiter_quote j
 
   SEGMENTS=()
 
@@ -78,22 +135,10 @@ split_into_segments() {
     char=${text:i:1}
 
     # Inside the body: consume lines, emitting nothing, until one of them is the
-    # terminator. `<<-` strips leading tabs from the body, so ITS terminator is
-    # indented too and an exact line match would never find it — hence the trim
-    # for that form only. Trimming the plain form as well would be worse than
-    # useless: a body line that merely reads `  EOF` would end the body early
-    # and put the remaining prose back in command position, which is the bug
-    # being fixed here.
+    # terminator.
     if [[ -n $heredoc_delimiter ]]; then
       if [[ $char == $'\n' ]]; then
-        terminator=$heredoc_line
-
-        if [[ -n $heredoc_strips_indent ]]; then
-          terminator=${terminator#"${terminator%%[![:space:]]*}"}
-          terminator=${terminator%"${terminator##*[![:space:]]}"}
-        fi
-
-        if [[ $terminator == "$heredoc_delimiter" ]]; then
+        if heredoc_line_terminates "$heredoc_line" "$heredoc_delimiter" "$heredoc_strips_indent"; then
           heredoc_delimiter=''
         fi
 
@@ -102,6 +147,20 @@ split_into_segments() {
         heredoc_line+=$char
       fi
 
+      continue
+    fi
+
+    # A backslash escapes the character behind it: that character is literal
+    # text, so it can neither open nor close a quote nor separate two commands,
+    # and both characters are consumed in one step. Single quotes are the one
+    # exception — bash gives a backslash no meaning inside them, so `'a\'` ends
+    # at that second quote and the separator after it really does split. Reading
+    # `\"` as a quote opener was the bypass this closes: `echo \"; git clean -fd`
+    # runs the clean, but the scanner spent the rest of the line "inside" a
+    # string that bash never opened.
+    if [[ $char == '\' && $quote != "'" ]]; then
+      segment+=${text:i:2}
+      i=$((i + 1))
       continue
     fi
 
@@ -116,14 +175,30 @@ split_into_segments() {
     case $char in
       '"' | "'")
         quote=$char
+        quote_start=$i
         segment+=$char
         ;;
       # `<<` opens a heredoc, but only the delimiter is read here: the body does
       # not start until the current line ends, so the rest of this line stays
-      # ordinary command text (`cat <<EOF | tee f` is still a pipeline). `<<<`
-      # is a here-string — one word on this line, no body — so it is left alone.
+      # ordinary command text (`cat <<EOF | tee f` is still a pipeline).
       '<')
-        if [[ ${text:i:3} == '<<<' || ${text:i:2} != '<<' ]]; then
+        # A here-string is NOT a heredoc and the two branches must never be
+        # unified: `<<<word` takes its data from that one word on this line and
+        # opens no body, so the NEXT line is an ordinary command position. It is
+        # therefore plain text to this scanner — but all three characters have to
+        # be consumed in one step, and before the bare-`<<` test. Appending just
+        # one of them re-entered this case on the second `<`, where the remaining
+        # `<<` reads as a heredoc opener; the parser below then took the
+        # here-string's word as a delimiter and swallowed every following line
+        # waiting for a terminator that never comes, disarming the guard for the
+        # whole rest of the command.
+        if [[ ${text:i:3} == '<<<' ]]; then
+          segment+='<<<'
+          i=$((i + 2))
+          continue
+        fi
+
+        if [[ ${text:i:2} != '<<' ]]; then
           segment+=$char
           continue
         fi
@@ -172,6 +247,7 @@ split_into_segments() {
         if [[ $char == $'\n' && -n $pending_delimiter ]]; then
           heredoc_delimiter=$pending_delimiter
           heredoc_strips_indent=$pending_strips_indent
+          heredoc_start=$((i + 1))
           pending_delimiter=''
           pending_strips_indent=''
         fi
@@ -186,6 +262,23 @@ split_into_segments() {
   done
 
   SEGMENTS+=("$segment")
+
+  # End of input closes a body whose terminator is its last line: a heredoc need
+  # not end in a newline (`cat <<EOF\ndata\nEOF` is complete), and the check
+  # inside the loop only ever fires on one. Without this the ordinary documented
+  # heredoc would end the scan "unresolved" and be refused by the tail below.
+  if [[ -n $heredoc_delimiter ]] && heredoc_line_terminates "$heredoc_line" "$heredoc_delimiter" "$heredoc_strips_indent"; then
+    heredoc_delimiter=''
+  fi
+
+  # Still inside a quote or a heredoc body means the scanner no longer knows
+  # where commands begin, so per the invariant at the top the remainder is
+  # scanned rather than trusted as data.
+  if [[ -n $quote ]]; then
+    split_unparsed_remainder "${text:quote_start}"
+  elif [[ -n $heredoc_delimiter ]]; then
+    split_unparsed_remainder "${text:heredoc_start}"
+  fi
 }
 
 matches() {
