@@ -31,88 +31,94 @@ $verifiedPlexAccount = fn (): array => [
     'token' => 'sxWpYzQ1TkxAbCdEfGhI',
 ];
 
-it('creates a user from the verified plex identity and the submitted name and password', function () use ($verifiedPlexAccount): void {
-    // Arrange
-    $plex = $verifiedPlexAccount();
+describe('handle() user creation', function () use ($verifiedPlexAccount): void {
+    it('creates a user from the verified plex identity and the submitted name and password', function () use ($verifiedPlexAccount): void {
+        // Arrange
+        $plex = $verifiedPlexAccount();
 
-    // Act
-    $user = resolve(RegisterPlexUser::class)->handle($plex, [
-        'name' => 'Jason',
-        // A submitted email is spoofable — the form renders it read-only, so the
-        // created user's email must come from $plex, never from $input.
-        'email' => 'attacker@example.com',
-        'password' => 'correct-horse-battery-staple',
-        'password_confirmation' => 'correct-horse-battery-staple',
-    ]);
+        // Act
+        $user = resolve(RegisterPlexUser::class)->handle($plex, [
+            'name' => 'Jason',
+            // A submitted email is spoofable — the form renders it read-only, so the
+            // created user's email must come from $plex, never from $input.
+            'email' => 'attacker@example.com',
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]);
 
-    // Assert
-    $this->assertDatabaseHas('users', [
-        'id' => $user->id,
-        'name' => 'Jason',
-        'email' => 'user1@example.com',
-        '_plex_id' => '1001',
-        '_plex_uuid' => '0000000000000001',
-        '_plex_username' => 'plexuser1',
-        '_plex_thumb' => 'https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1',
-    ]);
-    $stored = User::query()->findOrFail($user->id);
-    expect($stored->password)->not->toBe('correct-horse-battery-staple')
-        ->and(Hash::check('correct-horse-battery-staple', $stored->password))->toBeTrue()
-        ->and($stored->_plex_token)->toBe('sxWpYzQ1TkxAbCdEfGhI');
+        // Assert
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'name' => 'Jason',
+            'email' => 'user1@example.com',
+            '_plex_id' => '1001',
+            '_plex_uuid' => '0000000000000001',
+            '_plex_username' => 'plexuser1',
+            '_plex_thumb' => 'https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1',
+        ]);
+        $stored = User::query()->findOrFail($user->id);
+        expect($stored->password)->not->toBe('correct-horse-battery-staple')
+            ->and(Hash::check('correct-horse-battery-staple', $stored->password))->toBeTrue()
+            ->and($stored->_plex_token)->toBe('sxWpYzQ1TkxAbCdEfGhI');
+    });
 });
 
-it('rejects a registration with no name', function () use ($verifiedPlexAccount): void {
-    // Arrange
-    $plex = $verifiedPlexAccount();
+describe('handle() input validation', function () use ($verifiedPlexAccount): void {
+    it('rejects a registration with no name', function () use ($verifiedPlexAccount): void {
+        // Arrange
+        $plex = $verifiedPlexAccount();
 
-    // Act & Assert
-    expect(fn (): User => resolve(RegisterPlexUser::class)->handle($plex, [
-        'name' => '',
-        'password' => 'correct-horse-battery-staple',
-        'password_confirmation' => 'correct-horse-battery-staple',
-    ]))->toThrow(ValidationException::class);
-    expect(User::query()->count())->toBe(0);
+        // Act & Assert
+        expect(fn (): User => resolve(RegisterPlexUser::class)->handle($plex, [
+            'name' => '',
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]))->toThrow(ValidationException::class);
+        expect(User::query()->count())->toBe(0);
+    });
+
+    it('rejects a registration whose password is too weak and unconfirmed', function () use ($verifiedPlexAccount): void {
+        // Arrange
+        $plex = $verifiedPlexAccount();
+
+        // Act & Assert
+        expect(fn (): User => resolve(RegisterPlexUser::class)->handle($plex, [
+            'name' => 'Jason',
+            'password' => 'short',
+            'password_confirmation' => 'mismatched',
+        ]))->toThrow(ValidationException::class);
+        expect(User::query()->count())->toBe(0);
+    });
 });
 
-it('rejects a registration whose password is too weak and unconfirmed', function () use ($verifiedPlexAccount): void {
-    // Arrange
-    $plex = $verifiedPlexAccount();
+describe('handle() plex account validation', function () use ($verifiedPlexAccount): void {
+    // Plex Home managed/restricted profiles can hold server access with no email at
+    // all, so getUserInfo() types it string|null — it must fail validation rather
+    // than reach the NOT NULL users.email column as an uncaught QueryException.
+    it('rejects a plex account with no email', function () use ($verifiedPlexAccount): void {
+        // Arrange
+        $plex = [...$verifiedPlexAccount(), 'email' => null];
 
-    // Act & Assert
-    expect(fn (): User => resolve(RegisterPlexUser::class)->handle($plex, [
-        'name' => 'Jason',
-        'password' => 'short',
-        'password_confirmation' => 'mismatched',
-    ]))->toThrow(ValidationException::class);
-    expect(User::query()->count())->toBe(0);
-});
+        // Act & Assert
+        expect(fn (): User => resolve(RegisterPlexUser::class)->handle($plex, [
+            'name' => 'Jason',
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]))->toThrow(ValidationException::class);
+        expect(User::query()->count())->toBe(0);
+    });
 
-// Plex Home managed/restricted profiles can hold server access with no email at
-// all, so getUserInfo() types it string|null — it must fail validation rather
-// than reach the NOT NULL users.email column as an uncaught QueryException.
-it('rejects a plex account with no email', function () use ($verifiedPlexAccount): void {
-    // Arrange
-    $plex = [...$verifiedPlexAccount(), 'email' => null];
+    it('rejects a plex account whose email is already registered', function () use ($verifiedPlexAccount): void {
+        // Arrange
+        User::factory()->create(['email' => 'user1@example.com']);
+        $plex = $verifiedPlexAccount();
 
-    // Act & Assert
-    expect(fn (): User => resolve(RegisterPlexUser::class)->handle($plex, [
-        'name' => 'Jason',
-        'password' => 'correct-horse-battery-staple',
-        'password_confirmation' => 'correct-horse-battery-staple',
-    ]))->toThrow(ValidationException::class);
-    expect(User::query()->count())->toBe(0);
-});
-
-it('rejects a plex account whose email is already registered', function () use ($verifiedPlexAccount): void {
-    // Arrange
-    User::factory()->create(['email' => 'user1@example.com']);
-    $plex = $verifiedPlexAccount();
-
-    // Act & Assert
-    expect(fn (): User => resolve(RegisterPlexUser::class)->handle($plex, [
-        'name' => 'Jason',
-        'password' => 'correct-horse-battery-staple',
-        'password_confirmation' => 'correct-horse-battery-staple',
-    ]))->toThrow(ValidationException::class);
-    expect(User::query()->count())->toBe(1);
+        // Act & Assert
+        expect(fn (): User => resolve(RegisterPlexUser::class)->handle($plex, [
+            'name' => 'Jason',
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]))->toThrow(ValidationException::class);
+        expect(User::query()->count())->toBe(1);
+    });
 });

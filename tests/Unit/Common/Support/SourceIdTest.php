@@ -4,97 +4,103 @@ declare(strict_types=1);
 
 use App\Domains\Common\Support\SourceId;
 
-it('validates and coerces IMDb crosswalk ids, malformed to null', function (): void {
-    // Arrange
-    $backtick = 'tt5078754`';
+describe('imdb() normalization', function (): void {
+    it('validates and coerces IMDb crosswalk ids, malformed to null', function (): void {
+        // Arrange
+        $backtick = 'tt5078754`';
 
-    // Act
-    $actual = [
-        'valid' => SourceId::imdb('tt0903747'),
-        'trimmed' => SourceId::imdb(' tt5078754 '),
-        'trailingJunk' => SourceId::imdb($backtick),
-        'missingPrefix' => SourceId::imdb('0167577'),
-        'person' => SourceId::imdb('nm0000123'),
-        'event' => SourceId::imdb('ev0000123'),
-        'urlGarbage' => SourceId::imdb('www.imdb.comtitlett1489340'),
-        'null' => SourceId::imdb(null),
-        'empty' => SourceId::imdb(''),
-    ];
+        // Act
+        $actual = [
+            'valid' => SourceId::imdb('tt0903747'),
+            'trimmed' => SourceId::imdb(' tt5078754 '),
+            'trailingJunk' => SourceId::imdb($backtick),
+            'missingPrefix' => SourceId::imdb('0167577'),
+            'person' => SourceId::imdb('nm0000123'),
+            'event' => SourceId::imdb('ev0000123'),
+            'urlGarbage' => SourceId::imdb('www.imdb.comtitlett1489340'),
+            'null' => SourceId::imdb(null),
+            'empty' => SourceId::imdb(''),
+        ];
 
-    // Assert
-    expect($actual)->toBe([
-        'valid' => 'tt0903747',
-        'trimmed' => 'tt5078754',
-        'trailingJunk' => null,
-        'missingPrefix' => null,
-        'person' => null,
-        'event' => null,
-        'urlGarbage' => null,
-        'null' => null,
-        'empty' => null,
-    ]);
+        // Assert
+        expect($actual)->toBe([
+            'valid' => 'tt0903747',
+            'trimmed' => 'tt5078754',
+            'trailingJunk' => null,
+            'missingPrefix' => null,
+            'person' => null,
+            'event' => null,
+            'urlGarbage' => null,
+            'null' => null,
+            'empty' => null,
+        ]);
+    });
 });
 
-it('validates and coerces TMDB crosswalk ids by range, malformed to null', function (): void {
-    // Arrange
+describe('tmdb() normalization', function (): void {
+    it('validates and coerces TMDB crosswalk ids by range, malformed to null', function (): void {
+        // Arrange
 
-    // Act
-    $actual = [
-        'valid' => SourceId::tmdb('1396'),
-        'overflow' => SourceId::tmdb('129536129536'),
-        'spaceOverflow' => SourceId::tmdb(' 51996251996'),
-        'slugAppended' => SourceId::tmdb('1335814-silvio-santos'),
-        'midRangeUnknown' => SourceId::tmdb('5643188'),
-        'columnMax' => SourceId::tmdb('4294967295'),
-        'aboveColumnMax' => SourceId::tmdb('4294967296'),
-        'zero' => SourceId::tmdb('0'),
-        'nonDigit' => SourceId::tmdb('abc'),
-        'null' => SourceId::tmdb(null),
-    ];
+        // Act
+        $actual = [
+            'valid' => SourceId::tmdb('1396'),
+            'overflow' => SourceId::tmdb('129536129536'),
+            'spaceOverflow' => SourceId::tmdb(' 51996251996'),
+            'slugAppended' => SourceId::tmdb('1335814-silvio-santos'),
+            'midRangeUnknown' => SourceId::tmdb('5643188'),
+            'columnMax' => SourceId::tmdb('4294967295'),
+            'aboveColumnMax' => SourceId::tmdb('4294967296'),
+            'zero' => SourceId::tmdb('0'),
+            'nonDigit' => SourceId::tmdb('abc'),
+            'null' => SourceId::tmdb(null),
+        ];
 
-    // Assert
-    expect($actual)->toBe([
-        'valid' => 1396,
-        'overflow' => null,
-        'spaceOverflow' => null,
-        'slugAppended' => null,
-        'midRangeUnknown' => 5643188,
-        'columnMax' => 4294967295,
-        'aboveColumnMax' => null,
-        'zero' => null,
-        'nonDigit' => null,
-        'null' => null,
-    ]);
+        // Assert
+        expect($actual)->toBe([
+            'valid' => 1396,
+            'overflow' => null,
+            'spaceOverflow' => null,
+            'slugAppended' => null,
+            'midRangeUnknown' => 5643188,
+            'columnMax' => 4294967295,
+            'aboveColumnMax' => null,
+            'zero' => null,
+            'nonDigit' => null,
+            'null' => null,
+        ]);
+    });
 });
 
-it('coerces positive ints for upsert keys, non-positive to null', function (): void {
-    // Arrange
+describe('positiveInt() coercion', function (): void {
+    it('coerces positive ints for upsert keys, non-positive to null', function (): void {
+        // Arrange
 
-    // Act
-    $actual = [
-        'positiveInt' => SourceId::positiveInt(5),
-        'numericString' => SourceId::positiveInt('5'),
-        'zero' => SourceId::positiveInt(0),
-        'negative' => SourceId::positiveInt(-3),
-        'nonNumeric' => SourceId::positiveInt('x'),
-        'columnMax' => SourceId::positiveInt('4294967295'),
-        'aboveColumnMax' => SourceId::positiveInt('4294967296'),
-        'hugeOverflow' => SourceId::positiveInt('99999999999999999999'),
-        'decimalString' => SourceId::positiveInt('70327.5'),
-        'null' => SourceId::positiveInt(null),
-    ];
+        // Act
+        $actual = [
+            'positiveInt' => SourceId::positiveInt(5),
+            'numericString' => SourceId::positiveInt('5'),
+            'zero' => SourceId::positiveInt(0),
+            'negative' => SourceId::positiveInt(-3),
+            'nonNumeric' => SourceId::positiveInt('x'),
+            'columnMax' => SourceId::positiveInt('4294967295'),
+            'aboveColumnMax' => SourceId::positiveInt('4294967296'),
+            'hugeOverflow' => SourceId::positiveInt('99999999999999999999'),
+            'decimalString' => SourceId::positiveInt('70327.5'),
+            'null' => SourceId::positiveInt(null),
+        ];
 
-    // Assert
-    expect($actual)->toBe([
-        'positiveInt' => 5,
-        'numericString' => 5,
-        'zero' => null,
-        'negative' => null,
-        'nonNumeric' => null,
-        'columnMax' => 4294967295,
-        'aboveColumnMax' => null,
-        'hugeOverflow' => null,
-        'decimalString' => null,
-        'null' => null,
-    ]);
+        // Assert
+        expect($actual)->toBe([
+            'positiveInt' => 5,
+            'numericString' => 5,
+            'zero' => null,
+            'negative' => null,
+            'nonNumeric' => null,
+            'columnMax' => 4294967295,
+            'aboveColumnMax' => null,
+            'hugeOverflow' => null,
+            'decimalString' => null,
+            'null' => null,
+        ]);
+    });
 });

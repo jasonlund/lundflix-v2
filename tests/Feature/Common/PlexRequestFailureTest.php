@@ -18,26 +18,28 @@ use Illuminate\Support\Facades\Http;
 | definitive miss (the token simply isn't claimed yet) and returns null.
 */
 
-it('throws PlexRequestFailed when getUserInfo fails at the transport level', function (): void {
-    Http::fake([
-        '*plex.tv/api/v2/user*' => fn () => throw new ConnectionException('Connection timed out'),
-    ]);
+describe('plex.tv failure mapping', function (): void {
+    it('throws PlexRequestFailed when getUserInfo fails at the transport level', function (): void {
+        Http::fake([
+            '*plex.tv/api/v2/user*' => fn () => throw new ConnectionException('Connection timed out'),
+        ]);
 
-    expect(fn () => resolve(PlexApiService::class)->getUserInfo('token'))->toThrow(PlexRequestFailed::class);
-});
+        expect(fn () => resolve(PlexApiService::class)->getUserInfo('token'))->toThrow(PlexRequestFailed::class);
+    });
 
-it('throws PlexAuthenticationFailed when getUserInfo gets a 401', function (): void {
-    Http::fake([
-        '*plex.tv/api/v2/user*' => Http::response('', 401),
-    ]);
+    it('throws PlexAuthenticationFailed when getUserInfo gets a 401', function (): void {
+        Http::fake([
+            '*plex.tv/api/v2/user*' => Http::response('', 401),
+        ]);
 
-    expect(fn () => resolve(PlexApiService::class)->getUserInfo('token'))->toThrow(PlexAuthenticationFailed::class);
-});
+        expect(fn () => resolve(PlexApiService::class)->getUserInfo('token'))->toThrow(PlexAuthenticationFailed::class);
+    });
 
-it('returns null from getTokenFromPin when the pin 404s', function (): void {
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response('', 404),
-    ]);
+    it('returns null from getTokenFromPin when the pin 404s', function (): void {
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response('', 404),
+        ]);
 
-    expect(resolve(PlexApiService::class)->getTokenFromPin(538114995))->toBeNull();
+        expect(resolve(PlexApiService::class)->getTokenFromPin(538114995))->toBeNull();
+    });
 });

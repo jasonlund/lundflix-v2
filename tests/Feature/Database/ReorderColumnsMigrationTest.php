@@ -19,38 +19,40 @@ use Illuminate\Support\Str;
  */
 $migrationPath = 'migrations/2026_08_13_000000_reorder_table_columns_to_keep_timestamps_last.php';
 
-it('issues no alter statement when run on a non-MySQL connection', function () use ($migrationPath): void {
-    // Arrange
-    $migration = require database_path($migrationPath);
-    DB::enableQueryLog();
+describe('column-reorder migration non-MySQL inertness', function () use ($migrationPath): void {
+    it('issues no alter statement when run on a non-MySQL connection', function () use ($migrationPath): void {
+        // Arrange
+        $migration = require database_path($migrationPath);
+        DB::enableQueryLog();
 
-    // Act
-    $migration->up();
+        // Act
+        $migration->up();
 
-    // Assert
-    expect(loggedStatements(fn (string $sql): bool => Str::contains($sql, 'alter table')))->toBeEmpty();
-});
+        // Assert
+        expect(loggedStatements(fn (string $sql): bool => Str::contains($sql, 'alter table')))->toBeEmpty();
+    });
 
-it('issues no statement at all when reversed on a non-MySQL connection', function () use ($migrationPath): void {
-    // Arrange
-    $migration = require database_path($migrationPath);
-    DB::enableQueryLog();
+    it('issues no statement at all when reversed on a non-MySQL connection', function () use ($migrationPath): void {
+        // Arrange
+        $migration = require database_path($migrationPath);
+        DB::enableQueryLog();
 
-    // Act
-    $migration->down();
+        // Act
+        $migration->down();
 
-    // Assert
-    expect(DB::getQueryLog())->toBe([]);
-});
+        // Assert
+        expect(DB::getQueryLog())->toBe([]);
+    });
 
-it('leaves the movies column list untouched on a non-MySQL connection', function () use ($migrationPath): void {
-    // Arrange
-    $migration = require database_path($migrationPath);
-    $before = Schema::getColumnListing('movies');
+    it('leaves the movies column list untouched on a non-MySQL connection', function () use ($migrationPath): void {
+        // Arrange
+        $migration = require database_path($migrationPath);
+        $before = Schema::getColumnListing('movies');
 
-    // Act
-    $migration->up();
+        // Act
+        $migration->up();
 
-    // Assert
-    expect(Schema::getColumnListing('movies'))->toBe($before);
+        // Assert
+        expect(Schema::getColumnListing('movies'))->toBe($before);
+    });
 });
