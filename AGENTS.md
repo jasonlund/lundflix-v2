@@ -528,6 +528,23 @@ cross-reference — don't duplicate.
   tree; a plan on disk drifts from the ticket and biases future agents who read
   it as a convention. Bars *version-controlled* planning files only — gitignored
   scratch space (e.g. `.context`) is fine; it never enters the repo.
+- **Durable decision records are a different artifact class, and DO live in the
+  repo.** The bar above is on **per-ticket** planning — a plan for one piece of
+  work, which drifts from its ticket the moment either changes. A **glossary**
+  (`CONTEXT.md`) and an **ADR** (`docs/adr/NNNN-slug.md`) are neither: they are
+  cross-ticket, decision-level, and outlive the work that produced them. They also
+  have to be checked in to do their job — skills read them from the working tree
+  while exploring, which a Linear body can't support. Both are created **lazily**,
+  only when a term is actually resolved or a decision actually made; see
+  `docs/agents/domain.md`.
+  - An **ADR is 1–3 sentences** and earns its place only when all three hold:
+    hard to reverse, surprising without context, and the result of a real
+    trade-off. Miss one and skip it — an easily-reversed decision just gets
+    reversed, and an unsurprising one leaves nobody wondering why.
+  - **Don't duplicate what this file already says.** A convention documented here
+    at length (the DDD layout, raw-source column prefixes) does not also get an
+    ADR; two sources drift. ADRs are for decisions with no home here — especially
+    deliberate deviations from an outside authority.
 
 ### Automatic ticket status transitions
 
@@ -539,7 +556,7 @@ boundary named):
 | --- | --- | --- |
 | Planning done (TDD backlog appended) | `plan-slices` | **Todo** |
 | Execution begins (first slice for the ticket) | `tdd` | **In Progress** |
-| PR opened | `review:create-pr` | **In Review** |
+| PR opened | `review:create-pr`, then **verified** (see below) | **In Review** |
 | PR merged | Linear's native GitHub integration | **Done** |
 
 The lifecycle order is `Backlog < Todo < In Progress < In Review < Done`. Each
@@ -560,6 +577,80 @@ rather than restating it:
   at PR-open, every ticket the PR covers moves to In Review together.)
 - **Report, don't ask.** State the transition in one line; the change is
   automatic — never prompt for permission.
+
+### PR-open is contended — write, then verify
+
+At PR-open **both** `review:create-pr` and Linear's GitHub integration write the
+status, and the integration's default mapping for *opened* is In Progress — so our
+In Review write can be reverted milliseconds later, nondeterministically and
+silently. That one transition is therefore **write → read back → correct once**:
+`save_issue(state: "In Review")`, re-read with `get_issue` **after** the PR-created
+call returns, and re-apply once if it was reverted (say so in the report). A
+**second** revert means the integration is fighting the contract — stop, leave it,
+tell the user to fix the mapping, never loop. **The durable cure is one writer, not
+a better retry:** set the integration's PR-opened mapping to In Review in Linear's
+GitHub settings — a vendor-dashboard click, so offer `mattpocock-skills:wizard`.
+
+The incident behind the rule and the timing forensics:
+`docs/agents/linear-pr-open-contention.md`.
+
+## Agent skills
+
+Configuration the installed engineering skills read before they act —
+`mattpocock-skills:triage`, `:to-spec`, `:to-tickets`, `:wayfinder`,
+`:code-review`. They ship as the `mattpocock-skills` plugin, so **every one is
+invoked with that prefix**; the skill files' own cross-references to bare
+`/to-spec`-style names are upstream text and are stale here. Written by
+`mattpocock-skills:setup-matt-pocock-skills`; edit `docs/agents/*.md` directly to
+change the config.
+
+**`/map` is the router** — one user-invoked skill naming every skill, command,
+subagent, and flow here, and pointing at the phase-boundary tree beside it. Open it
+when you've forgotten what exists.
+
+### Borrowed practice carries a Source line
+
+Several native skills adapt practice from the AI Hero plugin rather than calling it,
+each borrowed section closing with a `**Source:**` line naming the upstream skill.
+Two reasons. **20 of the 35 upstream skills set `disable-model-invocation: true`**,
+so nothing here *can* call them — including the two inlined most directly:
+`wait-what` (Source of review-pipeline's Simplified Technical English section) and
+`ask-matt` (Source of `/map`). The rest are callable — `code-review`'s smell
+baseline, `writing-for-agents` — and are inlined anyway, because the practice has to
+be in context *before* the work starts: one Skill call per reviewer costs more than
+the text and lands too late to shape the finding. (A different set from the five
+config readers named above; these are skills whose *text* is adapted here.)
+
+**When you apply a section that carries one, offer to explain its origin** — the
+upstream skill, what it argues, and the file to read. One line, then continue:
+*"This is the seam contract, adapted from `mattpocock-skills:tdd` — want the
+original reasoning?"* Offer once, and paste upstream text only when asked.
+
+### Human-only steps → offer the wizard
+
+When a task needs steps only a human can take — provisioning a third-party
+credential, clicking through a vendor dashboard, setting a CI secret, a one-off
+cutover — offer `mattpocock-skills:wizard`. It generates an interactive bash script
+that opens each URL, captures each value, and writes it where it belongs, so the
+procedure stops being re-explained every time. Adding an API credential here is the
+standard case: the value must reach `.env.example`, the README key table, **and**
+the Conductor root `.env`. Do the work directly whenever you can; the wizard is for
+where a human is genuinely in the loop.
+
+### Issue tracker
+
+Linear, team `lundflix` (`FLIX-123`), via `mcp__linear-server__*` only — GitHub
+Issues are unused. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See
+`docs/agents/domain.md`.
 
 === foundation rules ===
 

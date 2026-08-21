@@ -40,6 +40,48 @@ description: >-
 - Test **behavior, not implementation**: assert response/DB/side-effects the caller
   observes, not internal method calls.
 
+## Anti-patterns
+
+- **Tautological.** The expected value is recomputed the way the code computes it,
+  so the test passes by construction and can never disagree with the code. A
+  `foreach` in the test that re-derives the sum, a `Str::slug()` call in the
+  assertion mirroring the one under test, an expectation built from the same enum
+  map. The expected value must come from an **independent** source: a literal you
+  worked out by hand, a value from the spec, a known-good capture.
+
+  ```php
+  // BAD — recomputes the implementation
+  expect($movie->displayTitle())->toBe($movie->_tmdb_title ?? $movie->_imdb_title);
+
+  // GOOD — an independent literal
+  expect($movie->displayTitle())->toBe('Blade Runner');
+  ```
+
+- **Implementation-coupled.** Mocking an internal collaborator, asserting on call
+  counts or ordering, or testing a private method. The tell: the test breaks under
+  a refactor that changed no behavior.
+- **Mock only at system seams** — a third-party HTTP API, a shelled process, the
+  clock, randomness. **Never mock our own classes.** A domain Action, a service, a
+  model: build the real thing. Our own collaborators are `in-process` or
+  `local-substitutable` dependencies (see `codebase-design`), and both are testable
+  for real.
+- **Test names describe WHAT, not HOW** — `it('rejects a duplicate title')`, not
+  `it('calls the uniqueness validator')`.
+
+**Source:** the tautological, implementation-coupled, and mock-only-at-seams rules
+are adapted from `mattpocock-skills:tdd` (`tests.md` and `mocking.md`). Offer to
+explain the upstream reasoning when one of them decides a review call.
+
+### Database assertions ARE behavior verification
+
+`assertDatabaseHas` / `assertDatabaseCount` / `assertDatabaseMissing` are the
+**correct** way to verify an ingest or sync module such as `SyncTmdbMovies`: the
+persisted row *is* the observable behavior, so assert it and treat that as testing
+at the seam — see `docs/adr/0002-database-assertions-verify-ingest-behavior.md`.
+
+Where a read interface *does* exist and is the thing under test, prefer it — assert
+on what the endpoint or accessor returns rather than re-querying the table behind it.
+
 ## External HTTP / API fixtures
 
 When a test fakes an external API, the faked response body must be a **byte-exact
@@ -71,6 +113,19 @@ shape (fabricated fixtures drift from what the API actually emits and still pass
   fields beyond what the captured/spliced members already carry.
 - NB: the "never raw inserts or fixtures" rule below is about **DB state** (use
   factories) — it does not apply to these external-response fixtures.
+
+### Design the client so one fake is one shape
+
+Give an API service **one named method per external operation** (`fetchMovie()`,
+`fetchChanges()`), not a single generic `request($endpoint, $options)` with
+conditional logic inside. A generic fetcher forces the *fake* to grow the same
+conditional — a `Http::fake` closure branching on the URL to decide which body to
+return — and a test setup that has to think is a test setup people fabricate
+bodies to avoid writing.
+
+With one method per operation: each fake returns one fixture, the test shows at a
+glance which endpoints it exercises, and a new endpoint can't silently change an
+existing test's behavior.
 
 ## Inertia assertions
 

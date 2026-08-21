@@ -60,10 +60,27 @@ describe('movie index page', () => {
 
 - **Query by role/text/label**, not test IDs or class names. Use `findBy*` for
   async UI.
+- **Name tests for WHAT, not HOW** — `test('shows an error when the title is
+  blank')`, not `test('calls setError')`.
+- **Never tautological.** The expected value must not be recomputed the way the
+  component computes it. Deriving the expected text from the same props with the
+  same `map`/`format` call makes the assertion pass by construction:
+
+  ```tsx
+  // BAD — recomputes the component's own formatting
+  expect(screen.getByText(`${movie.title} (${movie.year})`)).toBeInTheDocument()
+
+  // GOOD — an independent literal
+  expect(screen.getByText('Heat (1995)')).toBeInTheDocument()
+  ```
 - Drive interaction with `userEvent` (`await userEvent.click(...)`), not `fireEvent`.
 - Mock Inertia where components call it: stub `@inertiajs/react`'s `router`,
   `Link`, `useForm`, or `usePage` so you test the component's behavior, not Inertia
   internals. Pass page data through props rather than a real Inertia visit.
+
+**Source:** the never-tautological rule and WHAT-not-HOW test naming are adapted
+from `mattpocock-skills:tdd`'s `tests.md`. Offer to explain the upstream reasoning
+when one of them rejects a test.
 
 ## Test-comment standard (strict)
 
