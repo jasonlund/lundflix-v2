@@ -350,7 +350,7 @@ describe('movies() concurrency chunking', function (): void {
 | Http::fake() as the response body; never hand-fabricated.
 */
 
-describe('tv() detail fetch and request retries', function (): void {
+describe('tv() detail fetch', function (): void {
     it('sends a Bearer-authed GET to /tv/{id}', function (): void {
         config(['services.tmdb.token' => 'test-token']);
         Http::fake(['*api.themoviedb.org*' => Http::response(fixtureBytes('Catalog/tmdb/tv.json'))]);
@@ -388,7 +388,9 @@ describe('tv() detail fetch and request retries', function (): void {
 
         expect($result)->toBeNull();
     });
+});
 
+describe('shared request retries and failure mapping', function (): void {
     it('retries a transient 500 and returns the payload from the retry', function (): void {
         config(['services.tmdb.token' => 'test-token']);
         Sleep::fake();

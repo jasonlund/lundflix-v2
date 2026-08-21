@@ -148,6 +148,12 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
 - **Tests mirror the domain tree:** `tests/Feature/{Domain}/`,
   `tests/Unit/{Domain}/`, and `tests/Browser/{Domain}/` mirror
   `app/Domains/{Domain}/`.
+- **`tests/Support/` holds helper *classes*** (PSR-4 `Tests\Support\…`; `composer.json`
+  already maps `Tests\` → `tests/`) backing the self-policing guards, e.g.
+  `TestOrganizationScanner`. `tests/Pest.php` stays the home for global helper
+  *functions* (`fixtureBytes`, `staleShow`, …); a cohesive rule engine with its own
+  constants belongs in a class, which also sidesteps the suite-wide uniqueness rule
+  on global helper names.
 - **External-HTTP tests use real-data fixtures: byte-exact, in the API's native
   wire format**, committed under `tests/Fixtures/{Domain}/{source}/` in the exact
   extension the API returns (`.tsv.gz`, `.json`). Load via

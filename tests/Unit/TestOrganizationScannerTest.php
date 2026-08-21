@@ -135,6 +135,28 @@ describe('outline() labels', function (): void {
             'rejects a bad key' => 8,
         ]);
     });
+
+    it('captures the label of an it() call carrying postfix chained modifiers', function (): void {
+        // Arrange
+        $source = <<<'PHP'
+        <?php
+
+        describe('a group', function (): void {
+            it('rejects a bad key', fn () => throw new RuntimeException('x'))
+                ->with([1, 2])
+                ->throws(RuntimeException::class);
+        });
+        PHP;
+
+        // Act
+        $outline = TestOrganizationScanner::outline($source);
+
+        // Assert
+        expect(array_column($outline, 'line', 'label'))->toBe([
+            'a group' => 3,
+            'rejects a bad key' => 4,
+        ]);
+    });
 });
 
 describe('ungroupedTests()', function (): void {
@@ -457,6 +479,58 @@ describe('descriptionOffenders()', function (): void {
         expect($offenders)->toBe([]);
     });
 
+    it('accepts one description shared by two sibling nested groups', function (): void {
+        // Arrange
+        $source = <<<'PHP'
+        <?php
+
+        describe('an outer group', function (): void {
+            describe('the first inner group', function (): void {
+                it('returns a token', function (): void {
+                    //
+                });
+            });
+
+            describe('the second inner group', function (): void {
+                it('returns a token', function (): void {
+                    //
+                });
+            });
+        });
+        PHP;
+
+        // Act
+        $offenders = TestOrganizationScanner::descriptionOffenders($source);
+
+        // Assert
+        expect($offenders)->toBe([]);
+    });
+
+    it('flags a description repeated inside one nested describe group', function (): void {
+        // Arrange
+        $source = <<<'PHP'
+        <?php
+
+        describe('an outer group', function (): void {
+            describe('an inner group', function (): void {
+                it('returns a token', function (): void {
+                    //
+                });
+
+                it('returns a token', function (): void {
+                    //
+                });
+            });
+        });
+        PHP;
+
+        // Act
+        $offenders = TestOrganizationScanner::descriptionOffenders($source);
+
+        // Assert
+        expect($offenders)->toBe([['line' => 9, 'description' => 'returns a token']]);
+    });
+
     it('accepts a description leading with an all-caps http verb', function (): void {
         // Arrange
         $source = <<<'PHP'
@@ -515,7 +589,7 @@ describe('descriptionOffenders()', function (): void {
     });
 });
 
-describe('duplicateDescribeLabels() & helperDeclarations()', function (): void {
+describe('duplicateDescribeLabels()', function (): void {
     it('flags a describe label reused inside one file', function (): void {
         // Arrange
         $source = <<<'PHP'
@@ -565,7 +639,9 @@ describe('duplicateDescribeLabels() & helperDeclarations()', function (): void {
         // Assert
         expect($duplicates)->toBe([]);
     });
+});
 
+describe('helperDeclarations()', function (): void {
     it('collects each top-level helper function name with its line number', function (): void {
         // Arrange
         $source = <<<'PHP'
@@ -625,6 +701,69 @@ describe('duplicateDescribeLabels() & helperDeclarations()', function (): void {
 
         // Assert
         expect($helpers)->toBe([['line' => 3, 'name' => 'helper']]);
+    });
+});
+
+describe('duplicateHelperNames()', function (): void {
+    it('reports both sites of a helper name declared in two files', function (): void {
+        // Arrange
+        $sources = [
+            'tests/Pest.php' => <<<'PHP'
+            <?php
+
+            function fixtureBytes(string $path): string
+            {
+                return (string) file_get_contents($path);
+            }
+            PHP,
+            'tests/Feature/Catalog/ImportTest.php' => <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            function fixtureBytes(string $path): string
+            {
+                return '';
+            }
+            PHP,
+        ];
+
+        // Act
+        $duplicates = TestOrganizationScanner::duplicateHelperNames($sources);
+
+        // Assert
+        expect($duplicates)->toBe([
+            ['file' => 'tests/Pest.php', 'line' => 3, 'name' => 'fixtureBytes'],
+            ['file' => 'tests/Feature/Catalog/ImportTest.php', 'line' => 5, 'name' => 'fixtureBytes'],
+        ]);
+    });
+
+    it('reports nothing when every helper name is claimed by one file', function (): void {
+        // Arrange
+        $sources = [
+            'tests/Pest.php' => <<<'PHP'
+            <?php
+
+            function fixtureBytes(string $path): string
+            {
+                return (string) file_get_contents($path);
+            }
+            PHP,
+            'tests/Feature/Catalog/ImportTest.php' => <<<'PHP'
+            <?php
+
+            function makeShow(): array
+            {
+                return [];
+            }
+            PHP,
+        ];
+
+        // Act
+        $duplicates = TestOrganizationScanner::duplicateHelperNames($sources);
+
+        // Assert
+        expect($duplicates)->toBe([]);
     });
 });
 
@@ -719,6 +858,122 @@ describe('tsx sources', function (): void {
             ['line' => 9, 'description' => 'should render the password field'],
             ['line' => 17, 'description' => 'renders a submit button'],
         ]);
+    });
+
+    it('flags a top-level it.each() table call with its line number', function (): void {
+        // Arrange
+        $source = <<<'TSX'
+        import { expect, it } from 'vitest';
+
+        it.each([1, 2, 3])('handles %d', (n) => {
+            expect(n).toBe(n);
+        });
+        TSX;
+
+        // Act
+        $ungrouped = TestOrganizationScanner::ungroupedTests($source);
+
+        // Assert
+        expect($ungrouped)->toBe([3]);
+    });
+
+    it('ignores an it.each() table call nested inside a describe', function (): void {
+        // Arrange
+        $source = <<<'TSX'
+        import { describe, expect, it } from 'vitest';
+
+        describe('login page', () => {
+            it.each([1, 2, 3])('handles %d', (n) => {
+                expect(n).toBe(n);
+            });
+        });
+        TSX;
+
+        // Act
+        $ungrouped = TestOrganizationScanner::ungroupedTests($source);
+
+        // Assert
+        expect($ungrouped)->toBe([]);
+    });
+
+    it('flags a top-level test.each() table call', function (): void {
+        // Arrange
+        $source = <<<'TSX'
+        import { expect, test } from 'vitest';
+
+        test.each([1, 2, 3])('handles %d', (n) => {
+            expect(n).toBe(n);
+        });
+        TSX;
+
+        // Act
+        $ungrouped = TestOrganizationScanner::ungroupedTests($source);
+
+        // Assert
+        expect($ungrouped)->toBe([3]);
+    });
+
+    it('classifies a describe.skip group and the test it holds', function (): void {
+        // Arrange
+        $source = <<<'TSX'
+        import { describe, expect, it } from 'vitest';
+
+        describe.skip('login page', () => {
+            it('renders the email field', () => {
+                expect(true).toBe(true);
+            });
+        });
+        TSX;
+
+        // Act
+        $outline = TestOrganizationScanner::outline($source);
+
+        // Assert
+        expect($outline)->toBe([
+            ['kind' => 'describe', 'line' => 3, 'label' => 'login page', 'nested' => false],
+            ['kind' => 'it', 'line' => 4, 'label' => 'renders the email field', 'nested' => true],
+        ]);
+    });
+
+    it('reads no description from an it.each() table call', function (): void {
+        // A table call carries its description on the SECOND call, so the first
+        // argument is data, not prose. A null label keeps that shape out of the
+        // description rules entirely rather than judging the wrong string.
+        // Arrange
+        $source = <<<'TSX'
+        import { expect, it } from 'vitest';
+
+        it.each([1, 2, 3])('handles %d', (n) => {
+            expect(n).toBe(n);
+        });
+        TSX;
+
+        // Act
+        $outline = TestOrganizationScanner::outline($source);
+
+        // Assert
+        expect($outline)->toBe([
+            ['kind' => 'it', 'line' => 3, 'label' => null, 'nested' => false],
+        ]);
+    });
+
+    it('applies the description form rules inside a skipped group', function (): void {
+        // Arrange
+        $source = <<<'TSX'
+        import { describe, expect, it } from 'vitest';
+
+        describe.skip('login page', () => {
+            it.only('Renders the email field', () => {
+                expect(true).toBe(true);
+            });
+        });
+        TSX;
+
+        // Act
+        $offenders = TestOrganizationScanner::descriptionOffenders($source);
+
+        // Assert
+        expect($offenders)->toBe([['line' => 4, 'description' => 'Renders the email field']]);
     });
 });
 

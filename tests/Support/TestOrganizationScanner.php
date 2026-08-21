@@ -28,13 +28,18 @@ final class TestOrganizationScanner
     /**
      * Pest calls, matched at any indentation because describe() nests them.
      *
+     * A dot-chained modifier (`it.each(…)`, `describe.skip(…)`) still declares
+     * the construct, so any run of them is absorbed rather than enumerated: an
+     * unlisted modifier would make the declaration invisible, and a guard that
+     * silently stops guarding is worse than one that over-reports.
+     *
      * @var array<string, non-empty-string>
      */
     private const array NESTABLE_PATTERNS = [
         'uses' => '/^uses\s*\(/',
         'beforeEach' => '/^beforeEach\s*\(/',
-        'describe' => '/^describe\s*\(/',
-        'it' => '/^(?:it|test)\s*\(/',
+        'describe' => '/^describe(?:\.\w+)*\s*\(/',
+        'it' => '/^(?:it|test)(?:\.\w+)*\s*\(/',
     ];
 
     /**
@@ -157,6 +162,9 @@ final class TestOrganizationScanner
      *
      * Duplicates are judged per describe() group — the same wording in two
      * groups reads unambiguously, so only a repeat within one group offends.
+     * Nesting is allowed, and a nested group is a group of its own: EVERY
+     * describe() opens a fresh tally, so two sibling inner groups may each
+     * carry the same description.
      *
      * @return list<array{line: int, description: string}>
      */
@@ -166,7 +174,7 @@ final class TestOrganizationScanner
         $seen = [];
 
         foreach (self::outline($source) as $construct) {
-            if ($construct['kind'] === 'describe' && ! $construct['nested']) {
+            if ($construct['kind'] === 'describe') {
                 $seen = [];
 
                 continue;
@@ -222,7 +230,11 @@ final class TestOrganizationScanner
     }
 
     /**
-     * The file-level function declarations, in source order.
+     * The named file-level function declarations, in source order.
+     *
+     * Closures assigned to a variable are out of scope: a file-scoped variable is
+     * not a global name, so two files sharing `$report` collide in nothing, and one
+     * declared below a describe() already fails loudly via its null use() binding.
      *
      * @return list<array{line: int, name: string}>
      */
@@ -241,6 +253,37 @@ final class TestOrganizationScanner
         }
 
         return $helpers;
+    }
+
+    /**
+     * Every declaration site of a helper name declared in more than one file.
+     *
+     * A name declared once is fine; only a name claimed by two or more files
+     * collides at load time, so every site of such a name is reported — the
+     * pair is the offence, and either one of them could be the fix.
+     *
+     * @param  array<string, string>  $sourcesByFile  source text keyed by repo-relative path
+     * @return list<array{file: string, line: int, name: string}>
+     */
+    public static function duplicateHelperNames(array $sourcesByFile): array
+    {
+        $sites = [];
+
+        foreach ($sourcesByFile as $file => $source) {
+            foreach (self::helperDeclarations($source) as $helper) {
+                $sites[$helper['name']][] = [
+                    'file' => (string) $file,
+                    'line' => $helper['line'],
+                    'name' => $helper['name'],
+                ];
+            }
+        }
+
+        return collect($sites)
+            ->filter(fn (array $declarations): bool => count($declarations) > 1)
+            ->flatten(1)
+            ->values()
+            ->all();
     }
 
     /**
@@ -300,6 +343,11 @@ final class TestOrganizationScanner
     /**
      * A construct's label: a declaration's own name, or a call's string-literal
      * first argument.
+     *
+     * A table call (`it.each([1, 2])('handles %d', …)`) opens on data, not
+     * prose — its description belongs to the second call — so it falls through
+     * to null. Judging its first argument would feed the description rules a
+     * string the author never wrote as a description.
      */
     private static function label(string $body, string $kind): ?string
     {
@@ -309,7 +357,7 @@ final class TestOrganizationScanner
                 : null;
         }
 
-        if (preg_match('/^\w+\s*\(\s*([\'"])(.*?)\1/', $body, $matches) === 1) {
+        if (preg_match('/^\w+(?:\.\w+)*\s*\(\s*([\'"])(.*?)\1/', $body, $matches) === 1) {
             return $matches[2];
         }
 

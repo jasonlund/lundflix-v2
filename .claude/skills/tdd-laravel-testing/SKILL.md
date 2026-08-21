@@ -133,6 +133,9 @@ How a test **file** is laid out, enforced by `tests/Unit/TestOrganizationStandar
    sit anywhere in the header).
 3. **Helper function names are unique across the whole suite** — they share one
    global namespace. A helper wanted by a second file moves to `tests/Pest.php`.
+   Both helper rules govern named `function` declarations only; a closure assigned
+   to a variable (`$report = function () {…}`) is file-scoped, not global, so it is
+   deliberately out of scope.
 4. **`it()` descriptions** start lowercase, never start with "should", and are
    unique within their describe (the same description may repeat in another group).
 5. **`describe` labels are unique within a file.**
