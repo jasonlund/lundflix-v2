@@ -36,28 +36,88 @@ if ! COMMAND=$(printf '%s' "$INPUT" | jq -re '.tool_input.command // empty' 2>/d
   exit 2
 fi
 
-matches() {
-  printf '%s' "$COMMAND" | grep -qE "$1"
+# One shell line can hold several commands, and a rule only makes sense about
+# ONE of them: `git clean -ndf && git clean -fd` is a preview followed by a real
+# deletion, and grepping the whole line let the preview's `-n` withdraw the
+# force flag belonging to the *other* invocation — disarming the guard for the
+# most ordinary usage there is. So the line is split on shell separators and
+# every rule is evaluated per segment, which is what makes a flag's scope the
+# invocation that carries it.
+#
+# Splitting also replaces the old start-of-command anchor: a segment IS a
+# command position, so the patterns below just anchor to the segment start.
+# That is what keeps `echo "never run git reset --hard here"` allowed — the
+# segment starts at `echo`, and a git command merely *named* mid-segment is
+# never at a command position.
+#
+# Quotes are tracked while scanning, so a separator inside a quoted string does
+# NOT split. Otherwise `echo "warning; git reset --hard is bad"` would break
+# into a segment that begins with the quoted `git reset --hard` and be refused
+# as if it had been run — precisely the false positive the anchor existed to
+# prevent. `(` and `)` split too, so a command substitution such as
+# `$(git clean -fd)` is still reached.
+split_into_segments() {
+  local text=$1 quote='' segment='' char i
+
+  SEGMENTS=()
+
+  for ((i = 0; i < ${#text}; i++)); do
+    char=${text:i:1}
+
+    if [[ -n $quote ]]; then
+      segment+=$char
+      if [[ $char == "$quote" ]]; then
+        quote=''
+      fi
+      continue
+    fi
+
+    case $char in
+      '"' | "'")
+        quote=$char
+        segment+=$char
+        ;;
+      ';' | '&' | '|' | '(' | ')' | $'\n')
+        SEGMENTS+=("$segment")
+        segment=''
+        ;;
+      *)
+        segment+=$char
+        ;;
+    esac
+  done
+
+  SEGMENTS+=("$segment")
 }
 
-# Each pattern is anchored to a command position: the start of the line, or just
-# after a shell separator. Without the anchor, `grep -qE 'git reset --hard'` also
-# matches the string inside `echo "git reset --hard"`, so writing docs about the
-# command, or grepping for it, would be blocked as if it had been run.
-ANCHOR='(^|[;&|(]|&&|\|\|)[[:space:]]*'
+matches() {
+  printf '%s' "$1" | grep -qE "$2"
+}
+
+# A global option's value can be quoted, and a quoted value can contain spaces —
+# `git -C "/tmp/my worktree" reset --hard`. Consuming the value only up to the
+# first whitespace broke the prefix match there and let the subcommand behind it
+# escape, so a value is a run of non-space characters in which any quoted
+# stretch counts as one unit, spaces included.
+VALUE="([^[:space:]\"']|\"[^\"]*\"|'[^']*')+"
 
 # git takes global options between the binary and the subcommand, and none of
 # them make the subcommand any safer — `git -C ../other-worktree reset --hard`
 # wipes a whole second checkout. Matching a bare `git <subcommand>` let every
 # one of those spellings through, so the prefix skips any leading run of them,
 # including `-C <path>` / `-c <k=v>`, which carry their value as a separate word.
-GIT='git[[:space:]]+((-[cC][[:space:]]*[^[:space:]]+|--[a-z-]+(=[^[:space:]]+)?)[[:space:]]+)*'
+GIT="^[[:space:]]*git[[:space:]]+((-[cC][[:space:]]*${VALUE}|--[a-z-]+(=${VALUE})?)[[:space:]]+)*"
+
+# Any run of whole flag/argument words between the subcommand and the flag being
+# looked for. Each alternative ends in whitespace, so a flag can only be found
+# where a word actually starts — `git branch -d feature-fix` must not read the
+# `-fix` inside the branch name as a force flag.
+FLAGS='([^[:space:]]+[[:space:]]+)*'
 
 DESTRUCTIVE_PATTERNS=(
   # `--keep` belongs with `--hard`/`--merge`: it resets the index and rewrites
   # the working tree, so staged work is gone.
-  'reset[[:space:]]+[^;&|]*--(hard|merge|keep)'
-  'branch[[:space:]]+([^;&|]*[[:space:]])?(-[a-zA-Z]*D[a-zA-Z]*|--delete[[:space:]]+--force|--force[[:space:]]+--delete)([[:space:]]|$)'
+  "reset[[:space:]]+${FLAGS}--(hard|merge|keep)([[:space:]]|$)"
   # `--` only separates flags from pathspecs, so `checkout -- .` discards exactly
   # what `checkout .` discards.
   'checkout[[:space:]]+(--[[:space:]]+)?\.([[:space:]]|$)'
@@ -65,27 +125,45 @@ DESTRUCTIVE_PATTERNS=(
   'stash[[:space:]]+(drop|clear)'
 )
 
+# Force-deleting a branch throws away commits reachable from nowhere else, and
+# `-d` plus `-f` does it in any spelling or order — `-df`, `-fd`,
+# `--delete --force`, `-d --force`, `-f --delete`. An alternation of exact
+# spellings only ever covered a couple of them, so delete-intent and force are
+# matched independently and ANDed within the segment; `-D` satisfies both on its
+# own. `git branch -d merged-branch` stays allowed: the commit is still in the
+# reflog and this is the normal way branches go away.
+BRANCH_DELETE="branch[[:space:]]+${FLAGS}(-[a-zA-Z]*[dD][a-zA-Z]*|--delete)([[:space:]]|$)"
+BRANCH_FORCE="branch[[:space:]]+${FLAGS}(-[a-zA-Z]*[fD][a-zA-Z]*|--force)([[:space:]]|$)"
+
 # `clean` is the one subcommand whose destructiveness can be cancelled by a
 # later flag: `-n`/`--dry-run` only lists what would go, and git honours it even
 # alongside `-f`. So force is matched first and then withdrawn, which no single
 # ERE can express (POSIX has no negative lookahead). The flag may sit in a
 # combined group (`-ndf`) or on its own, hence the two spellings.
-CLEAN_FORCE='clean([[:space:]]+[^;&|]*)?[[:space:]]+(-[a-zA-Z]*f[a-zA-Z]*|--force)([[:space:]]|$)'
-CLEAN_DRY_RUN='clean([[:space:]]+[^;&|]*)?[[:space:]]+(-[a-zA-Z]*n[a-zA-Z]*|--dry-run)([[:space:]]|$)'
+CLEAN_FORCE="clean[[:space:]]+${FLAGS}(-[a-zA-Z]*f[a-zA-Z]*|--force)([[:space:]]|$)"
+CLEAN_DRY_RUN="clean[[:space:]]+${FLAGS}(-[a-zA-Z]*n[a-zA-Z]*|--dry-run)([[:space:]]|$)"
 
 block() {
   echo "BLOCKED: '$COMMAND' destroys uncommitted work and cannot be undone. Ask the user to run it themselves, or reach the same end another way (git stash, a fresh branch, git restore <specific-path>)." >&2
   exit 2
 }
 
-if matches "${ANCHOR}${GIT}${CLEAN_FORCE}" && ! matches "${ANCHOR}${GIT}${CLEAN_DRY_RUN}"; then
-  block
-fi
+split_into_segments "$COMMAND"
 
-for pattern in "${DESTRUCTIVE_PATTERNS[@]}"; do
-  if matches "${ANCHOR}${GIT}${pattern}"; then
+for segment in "${SEGMENTS[@]}"; do
+  if matches "$segment" "${GIT}${CLEAN_FORCE}" && ! matches "$segment" "${GIT}${CLEAN_DRY_RUN}"; then
     block
   fi
+
+  if matches "$segment" "${GIT}${BRANCH_DELETE}" && matches "$segment" "${GIT}${BRANCH_FORCE}"; then
+    block
+  fi
+
+  for pattern in "${DESTRUCTIVE_PATTERNS[@]}"; do
+    if matches "$segment" "${GIT}${pattern}"; then
+      block
+    fi
+  done
 done
 
 exit 0

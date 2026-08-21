@@ -39,8 +39,9 @@ stop and tell the user.
      its own severity: `🔴 BLOCKING` → `critical`, `🟠 SHOULD_FIX` → `major`,
      `🟡 CONSIDER` → `minor`. Its **Violates** field holds the quoted ticket line.
      An entry whose **File** reads `_no file_` (or is absent) is a finding about
-     code that does not exist — carry it with no file/line and post it in the
-     review body per Phase 2.3.
+     code that does not exist — carry it with no file/line, keep its quoted ticket
+     line as the finding's identity (Phase 3, **Body-finding ref key**), and post it
+     in the review body per Phase 2.3.
    - **Blocking Issues** → axis `standards`, severity `critical`
    - **Should Fix** → axis `standards`, severity `major`
    - **Consider** → axis `standards`, severity `minor`
@@ -111,7 +112,7 @@ a reader sees a spec defect even when the standards list is long:
 ## Spec — does it do what the ticket asked?
 
 ### 🟠 Should Fix · `spec`
-**File:** _no file — the ticket line has no implementation_
+**File:** _no file — the ticket line has no implementation_ (ref `no-file:{hash}`)
 **Issue:** …
 **Violates:** "{quoted ticket line}"
 **Recommendation:** …
@@ -134,6 +135,27 @@ Include a heading only when that axis has body findings. If every finding posted
 inline, set the body to a one-line note that all N findings are inline above —
 naming the spec count separately, e.g. "All 6 findings are inline above (1 spec,
 5 standards)."
+
+### Body-finding ref key
+
+Every body finding carries one **ref key** that identifies it across runs.
+`/review:process` records the key when it resolves the finding and matches on it to
+skip that finding next run (its Phase 0 step 4), so two distinct findings must
+produce two distinct keys and the same finding must produce the same key every run.
+The format — stated identically in `.claude/commands/review/process.md`:
+
+- **Has a file** → `{file}:{line}`, and `{file}:0` when the finding names no line.
+- **No file** → `no-file:{hash}`, where `{hash}` is the first 8 hex characters of
+  the SHA-256 of the quoted ticket line in that finding's **Violates** field, taken
+  verbatim without the surrounding quote marks:
+  ```bash
+  printf '%s' '{quoted ticket line}' | shasum -a 256 | cut -c1-8
+  ```
+
+The ticket line is what makes a no-file finding unique and it is copied verbatim
+from the ticket, so the hash is both finding-specific and stable run to run. Print
+the key in that finding's **File** line, as the template above shows, so
+`/review:process` reads it rather than recomputing it.
 
 ## Phase 4: Post the Review
 

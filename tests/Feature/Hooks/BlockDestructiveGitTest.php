@@ -33,6 +33,19 @@ function runDestructiveGitHook(string $command): int
 }
 
 /**
+ * The temp directories pathWithoutJq() has created but not yet removed. A
+ * registry rather than a glob over the temp dir: sibling workspaces run their
+ * own copy of this suite against the same /tmp, and a glob would delete a
+ * concurrent run's directory out from under it mid-test.
+ */
+function jqFreePathRegistry(): ArrayObject
+{
+    static $paths = null;
+
+    return $paths ??= new ArrayObject;
+}
+
+/**
  * A PATH holding only the externals the hook needs (`cat`, `grep`) and NOT jq,
  * so "jq is missing from this machine" can be reproduced deterministically on
  * macOS and CI alike — both ship jq, just from different directories, so
@@ -47,8 +60,26 @@ function pathWithoutJq(): string
         symlink(Str::trim(Process::run('command -v '.$binary)->output()), $dir.'/'.$binary);
     }
 
+    jqFreePathRegistry()->append($dir);
+
     return $dir;
 }
+
+// Teardown, not the test body, so a failed expectation still leaves no litter
+// behind — pathWithoutJq() writes outside the project and nothing else reaps it.
+afterEach(function (): void {
+    $registry = jqFreePathRegistry();
+
+    foreach ($registry as $dir) {
+        foreach ((array) glob($dir.'/*') as $link) {
+            unlink((string) $link);
+        }
+
+        rmdir((string) $dir);
+    }
+
+    $registry->exchangeArray([]);
+});
 
 it('blocks a git invocation that destroys uncommitted work', function (string $command): void {
     // Arrange
@@ -60,6 +91,22 @@ it('blocks a git invocation that destroys uncommitted work', function (string $c
     // Assert
     expect($exitCode)->toBe(2);
 })->with([
+    // A dry run only ever describes the invocation it was passed to, so a
+    // preview earlier on the line cannot make a later `clean -fd` safe — and
+    // preview-then-execute is the ordinary way people reach for clean.
+    'clean previewed then executed on one line' => 'git clean -ndf && git clean -fd',
+    'clean executed then previewed on one line' => 'git clean -f && git clean -n',
+    // `-d` plus `-f` in any spelling or order force-deletes an unmerged branch
+    // exactly as `-D` does, so every spelling has to land the same way.
+    'branch delete and force in one combined group' => 'git branch -df old-branch',
+    'branch force and delete in one combined group' => 'git branch -fd old-branch',
+    'branch --delete with a short force flag' => 'git branch --delete -f old-branch',
+    'branch -d with a long --force flag' => 'git branch -d --force old-branch',
+    'branch -f before a long --delete flag' => 'git branch -f --delete old-branch',
+    // A quoted global-option value may contain a space; the destructive
+    // subcommand still sits right behind it.
+    'quoted -C path containing a space' => 'git -C "/tmp/my worktree" reset --hard',
+    'quoted -c value containing a space' => 'git -c user.name="Jane Doe" reset --hard',
     '-C worktree option before reset --hard' => 'git -C /tmp/other-worktree reset --hard',
     '--git-dir option before clean -fd' => 'git --git-dir=/tmp/x/.git clean -fd',
     '-c config option before branch -D' => 'git -c core.pager=cat branch -D topic',
@@ -87,6 +134,10 @@ it('allows a command that destroys nothing', function (string $command): void {
     expect($exitCode)->toBe(0);
 })->with([
     'clean dry run' => 'git clean -ndf',
+    'clean dry run with no force flag at all' => 'git clean -n',
+    // Deleting a merged branch is the normal path and the commit stays in the
+    // reflog, so only the force spelling is worth refusing.
+    'branch delete without force' => 'git branch -d merged-branch',
     'push to a feature branch' => 'git push -u origin some-branch',
     'commit' => 'git commit -m "wip"',
     'status' => 'git status',

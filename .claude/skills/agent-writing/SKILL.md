@@ -34,7 +34,9 @@ that still fires unreliably.
 - Code comments and PHP docblocks (`app/**`, `resources/js/**`).
 
 **Out of scope**
-- Renaming, refactoring, or any behavior change.
+- The code itself. This skill rewrites prose and leaves behavior as it stands: an
+  edit inside a `.php` file changes the comment or docblock and leaves the code it
+  annotates exactly as written. Renaming and refactoring are a separate change.
 - The generated `<laravel-boost-guidelines>` block in `CLAUDE.md`/`AGENTS.md` — edit
   `.ai/guidelines/project.md` and regenerate with `php artisan boost:install --guidelines`.
 - Prose an agent writes **to a human** — a review finding, a plan summary. That
