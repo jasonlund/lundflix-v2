@@ -121,6 +121,12 @@ it('blocks a git invocation that destroys uncommitted work', function (string $c
     'branch -D' => 'git branch -D old-branch',
     'restore . after a shell separator' => 'cd /tmp && git restore .',
     'stash drop' => 'git stash drop',
+    // Closing a heredoc has to hand the scanner back to normal command reading.
+    // If the terminator were missed, everything after a documented command
+    // would be swallowed as data and the guard would be silently disarmed for
+    // the rest of the line.
+    'clean -fd after a closed heredoc' => "cat <<EOF\nnotes about git clean -fd\nEOF\n; git clean -fd",
+    'reset --hard after a closed tab-stripping heredoc' => "cat <<-END\n\tnotes\n\tEND\ngit reset --hard",
 ]);
 
 it('allows a command that destroys nothing', function (string $command): void {
@@ -145,6 +151,25 @@ it('allows a command that destroys nothing', function (string $command): void {
     'restore of one named file from the index' => 'git restore --staged path/to/one/file.php',
     'a mention inside a quoted string' => 'echo "never run git reset --hard here"',
     'a grep for the command rather than the command' => 'grep -rn "git clean -fd" docs/',
+    // A heredoc body is stdin data for the command in front of it, exactly like
+    // a quoted string is data — the shell never executes a line of it. This
+    // repo writes about these commands constantly (commit messages, ADRs, skill
+    // docs, this hook's own notes), and the reproduction below is a real
+    // `git commit -F -` that the guard refused.
+    'commit message documenting destructive commands' => <<<'BASH'
+        git commit -F - <<'EOF'
+        Guard notes:
+          git clean -ndf && git clean -fd    ->  allowed
+          git clean -f && git clean -n       ->  allowed
+        EOF
+        BASH,
+    'quoted heredoc delimiter' => "cat <<'EOF'\ngit clean -fd\nEOF",
+    'double-quoted heredoc delimiter' => "cat <<\"EOF\"\ngit reset --hard\nEOF",
+    'unquoted heredoc delimiter' => "cat <<EOF\ngit clean -fd\nEOF",
+    // `<<-` strips leading tabs from the body, so its terminator is indented
+    // too and an exact line match would never find it.
+    'tab-stripping heredoc with an indented terminator' => "cat <<-END\n\tgit clean -fd\n\tEND",
+    'heredoc delimiter word other than EOF' => "cat <<MESSAGE\ngit branch -D topic\nMESSAGE",
 ]);
 
 it('fails closed on stdin it cannot parse', function (string $stdin): void {

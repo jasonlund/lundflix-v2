@@ -56,13 +56,54 @@ fi
 # as if it had been run — precisely the false positive the anchor existed to
 # prevent. `(` and `)` split too, so a command substitution such as
 # `$(git clean -fd)` is still reached.
+#
+# A heredoc body is tracked for the same reason and is skipped whole. The shell
+# feeds those lines to the preceding command as stdin DATA — it never executes
+# one of them — so a line inside a body is no more a command position than a
+# line inside a quoted string; it is only a spelling the quote tracker cannot
+# see. Without this, `git commit -F - <<'EOF' … EOF` was refused for writing
+# `git clean -fd` in the commit MESSAGE, and this repo documents these commands
+# constantly (commit messages, ADRs, skill docs, the notes above). A guard that
+# refuses to let you write about a command is a guard people route around,
+# which costs more than the hole it closes.
 split_into_segments() {
   local text=$1 quote='' segment='' char i
+  local heredoc_delimiter='' heredoc_strips_indent='' heredoc_line=''
+  local pending_delimiter='' pending_strips_indent=''
+  local terminator delimiter_quote j
 
   SEGMENTS=()
 
   for ((i = 0; i < ${#text}; i++)); do
     char=${text:i:1}
+
+    # Inside the body: consume lines, emitting nothing, until one of them is the
+    # terminator. `<<-` strips leading tabs from the body, so ITS terminator is
+    # indented too and an exact line match would never find it — hence the trim
+    # for that form only. Trimming the plain form as well would be worse than
+    # useless: a body line that merely reads `  EOF` would end the body early
+    # and put the remaining prose back in command position, which is the bug
+    # being fixed here.
+    if [[ -n $heredoc_delimiter ]]; then
+      if [[ $char == $'\n' ]]; then
+        terminator=$heredoc_line
+
+        if [[ -n $heredoc_strips_indent ]]; then
+          terminator=${terminator#"${terminator%%[![:space:]]*}"}
+          terminator=${terminator%"${terminator##*[![:space:]]}"}
+        fi
+
+        if [[ $terminator == "$heredoc_delimiter" ]]; then
+          heredoc_delimiter=''
+        fi
+
+        heredoc_line=''
+      else
+        heredoc_line+=$char
+      fi
+
+      continue
+    fi
 
     if [[ -n $quote ]]; then
       segment+=$char
@@ -77,7 +118,64 @@ split_into_segments() {
         quote=$char
         segment+=$char
         ;;
+      # `<<` opens a heredoc, but only the delimiter is read here: the body does
+      # not start until the current line ends, so the rest of this line stays
+      # ordinary command text (`cat <<EOF | tee f` is still a pipeline). `<<<`
+      # is a here-string — one word on this line, no body — so it is left alone.
+      '<')
+        if [[ ${text:i:3} == '<<<' || ${text:i:2} != '<<' ]]; then
+          segment+=$char
+          continue
+        fi
+
+        j=$((i + 2))
+        pending_delimiter=''
+        pending_strips_indent=''
+
+        if [[ ${text:j:1} == '-' ]]; then
+          pending_strips_indent=1
+          ((j++))
+        fi
+
+        while [[ ${text:j:1} == ' ' || ${text:j:1} == $'\t' ]]; do
+          ((j++))
+        done
+
+        # Quoting the delimiter only turns off expansion of the body; quoted or
+        # bare, the body is the same data, so all three spellings are read the
+        # same way and only the word itself is kept.
+        if [[ ${text:j:1} == "'" || ${text:j:1} == '"' ]]; then
+          delimiter_quote=${text:j:1}
+          ((j++))
+
+          while ((j < ${#text})) && [[ ${text:j:1} != "$delimiter_quote" ]]; do
+            pending_delimiter+=${text:j:1}
+            ((j++))
+          done
+
+          ((j++))
+        else
+          while ((j < ${#text})) && [[ ${text:j:1} == [A-Za-z0-9_.-] ]]; do
+            pending_delimiter+=${text:j:1}
+            ((j++))
+          done
+        fi
+
+        if [[ -z $pending_delimiter ]]; then
+          pending_strips_indent=''
+        fi
+
+        segment+=${text:i:j-i}
+        i=$((j - 1))
+        ;;
       ';' | '&' | '|' | '(' | ')' | $'\n')
+        if [[ $char == $'\n' && -n $pending_delimiter ]]; then
+          heredoc_delimiter=$pending_delimiter
+          heredoc_strips_indent=$pending_strips_indent
+          pending_delimiter=''
+          pending_strips_indent=''
+        fi
+
         SEGMENTS+=("$segment")
         segment=''
         ;;
