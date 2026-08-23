@@ -2992,16 +2992,16 @@
         },
         {
             "name": "laravel/scout",
-            "version": "v11.2.0",
+            "version": "v11.5.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/scout.git",
-                "reference": "5a267813fe0d7bca58b993c3bae592b2c814591e"
+                "reference": "14bb75714813f6437adb5c07510be624cd4aef5f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/scout/zipball/5a267813fe0d7bca58b993c3bae592b2c814591e",
-                "reference": "5a267813fe0d7bca58b993c3bae592b2c814591e",
+                "url": "https://api.github.com/repos/laravel/scout/zipball/14bb75714813f6437adb5c07510be624cd4aef5f",
+                "reference": "14bb75714813f6437adb5c07510be624cd4aef5f",
                 "shasum": ""
             },
             "require": {
@@ -3068,7 +3068,7 @@
                 "issues": "https://github.com/laravel/scout/issues",
                 "source": "https://github.com/laravel/scout"
             },
-            "time": "2026-05-13T15:50:06+00:00"
+            "time": "2026-08-04T19:29:36+00:00"
         },
         {
             "name": "laravel/sentinel",
