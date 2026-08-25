@@ -43,111 +43,117 @@ use Illuminate\Support\Facades\Http;
 | failing second response is synthesized at the wire.
 */
 
-it('maps a section fetch ConnectionException to PlexRequestFailed when the walk is consumed', function (): void {
-    // Arrange
-    Http::fake([
-        '*/library/sections/1/all*' => fn () => throw new ConnectionException('Connection timed out'),
-    ]);
+describe('connection failure mapping', function (): void {
+    it('maps a section fetch ConnectionException to PlexRequestFailed when the walk is consumed', function (): void {
+        // Arrange
+        Http::fake([
+            '*/library/sections/1/all*' => fn () => throw new ConnectionException('Connection timed out'),
+        ]);
 
-    // Act & Assert
-    expect(fn (): array => iterator_to_array(resolve(PlexLibraryService::class)->fetchSectionItems('https://plex.test:6022', 'tok', '1')))
-        ->toThrow(PlexRequestFailed::class);
+        // Act & Assert
+        expect(fn (): array => iterator_to_array(resolve(PlexLibraryService::class)->fetchSectionItems('https://plex.test:6022', 'tok', '1')))
+            ->toThrow(PlexRequestFailed::class);
+    });
+
+    it('maps a metadata leaves fetch ConnectionException to PlexRequestFailed', function (): void {
+        // Arrange
+        Http::fake([
+            '*/library/metadata/34112/allLeaves*' => fn () => throw new ConnectionException('Connection timed out'),
+        ]);
+
+        // Act & Assert
+        expect(fn () => resolve(PlexLibraryService::class)->fetchShowLeaves('https://plex.test:6022', 'tok', '34112'))
+            ->toThrow(PlexRequestFailed::class);
+    });
 });
 
-it('maps a metadata leaves fetch ConnectionException to PlexRequestFailed', function (): void {
-    // Arrange
-    Http::fake([
-        '*/library/metadata/34112/allLeaves*' => fn () => throw new ConnectionException('Connection timed out'),
-    ]);
+describe('failed status mapping', function (): void {
+    it('maps a sections fetch 500 to PlexRequestFailed', function (): void {
+        // Arrange
+        Http::fake([
+            '*/library/sections' => Http::response('', 500),
+        ]);
 
-    // Act & Assert
-    expect(fn () => resolve(PlexLibraryService::class)->fetchShowLeaves('https://plex.test:6022', 'tok', '34112'))
-        ->toThrow(PlexRequestFailed::class);
+        // Act & Assert
+        expect(fn () => resolve(PlexLibraryService::class)->fetchSections('https://plex.test:6022', 'tok'))
+            ->toThrow(PlexRequestFailed::class);
+    });
+
+    it('maps a section items fetch 503 to PlexRequestFailed when the walk is consumed', function (): void {
+        // Arrange
+        Http::fake([
+            '*/library/sections/1/all*' => Http::response('', 503),
+        ]);
+
+        // Act & Assert
+        expect(fn (): array => iterator_to_array(resolve(PlexLibraryService::class)->fetchSectionItems('https://plex.test:6022', 'tok', '1')))
+            ->toThrow(PlexRequestFailed::class);
+    });
+
+    it('yields the first section page intact before a second page 503 past retries throws PlexRequestFailed', function (): void {
+        // Arrange
+        // The 503 is pushed three times because the global retry middleware re-sends
+        // a 5xx twice more, and each attempt draws the next item of the sequence.
+        // whenEmpty keeps a raised retry cap returning the same 503 rather than
+        // exhausting the sequence into an unrelated OutOfBoundsException.
+        Http::fake([
+            '*/library/sections/1/all*' => Http::sequence()
+                ->push(fixtureBytes('PlexLibrary/plex/section_all_page1.json'))
+                ->push('', 503)
+                ->push('', 503)
+                ->push('', 503)
+                ->whenEmpty(Http::response('', 503)),
+        ]);
+        $pages = resolve(PlexLibraryService::class)->fetchSectionItems('https://plex.test:6022', 'tok', '1');
+
+        // Act & Assert
+        expect(collect($pages->current())->pluck('ratingKey')->all())->toBe(['26278', '36080']);
+        expect(fn (): null => $pages->next())->toThrow(PlexRequestFailed::class);
+    });
+
+    it('maps a metadata children fetch 429 past retries to PlexRequestFailed', function (): void {
+        // Arrange
+        Http::fake([
+            '*/library/metadata/34112/children*' => Http::response('', 429, ['Retry-After' => '0']),
+        ]);
+
+        // Act & Assert
+        expect(fn () => resolve(PlexLibraryService::class)->fetchShowChildren('https://plex.test:6022', 'tok', '34112'))
+            ->toThrow(PlexRequestFailed::class);
+    });
+
+    it('maps a metadata leaves fetch 403 to PlexRequestFailed', function (): void {
+        // Arrange
+        Http::fake([
+            '*/library/metadata/34112/allLeaves*' => Http::response('', 403),
+        ]);
+
+        // Act & Assert
+        expect(fn () => resolve(PlexLibraryService::class)->fetchShowLeaves('https://plex.test:6022', 'tok', '34112'))
+            ->toThrow(PlexRequestFailed::class);
+    });
+
+    it('maps a metadata leaves fetch 404 to PlexRequestFailed', function (): void {
+        // Arrange
+        Http::fake([
+            '*/library/metadata/34112/allLeaves*' => Http::response('', 404),
+        ]);
+
+        // Act & Assert
+        expect(fn () => resolve(PlexLibraryService::class)->fetchShowLeaves('https://plex.test:6022', 'tok', '34112'))
+            ->toThrow(PlexRequestFailed::class);
+    });
 });
 
-it('maps a sections fetch 500 to PlexRequestFailed', function (): void {
-    // Arrange
-    Http::fake([
-        '*/library/sections' => Http::response('', 500),
-    ]);
+describe('401 authentication mapping', function (): void {
+    it('maps a sections fetch 401 to PlexAuthenticationFailed', function (): void {
+        // Arrange
+        Http::fake([
+            '*/library/sections' => Http::response('', 401),
+        ]);
 
-    // Act & Assert
-    expect(fn () => resolve(PlexLibraryService::class)->fetchSections('https://plex.test:6022', 'tok'))
-        ->toThrow(PlexRequestFailed::class);
-});
-
-it('maps a section items fetch 503 to PlexRequestFailed when the walk is consumed', function (): void {
-    // Arrange
-    Http::fake([
-        '*/library/sections/1/all*' => Http::response('', 503),
-    ]);
-
-    // Act & Assert
-    expect(fn (): array => iterator_to_array(resolve(PlexLibraryService::class)->fetchSectionItems('https://plex.test:6022', 'tok', '1')))
-        ->toThrow(PlexRequestFailed::class);
-});
-
-it('yields the first section page intact before a second page 503 past retries throws PlexRequestFailed', function (): void {
-    // Arrange
-    // The 503 is pushed three times because the global retry middleware re-sends
-    // a 5xx twice more, and each attempt draws the next item of the sequence.
-    // whenEmpty keeps a raised retry cap returning the same 503 rather than
-    // exhausting the sequence into an unrelated OutOfBoundsException.
-    Http::fake([
-        '*/library/sections/1/all*' => Http::sequence()
-            ->push(fixtureBytes('PlexLibrary/plex/section_all_page1.json'))
-            ->push('', 503)
-            ->push('', 503)
-            ->push('', 503)
-            ->whenEmpty(Http::response('', 503)),
-    ]);
-    $pages = resolve(PlexLibraryService::class)->fetchSectionItems('https://plex.test:6022', 'tok', '1');
-
-    // Act & Assert
-    expect(collect($pages->current())->pluck('ratingKey')->all())->toBe(['26278', '36080']);
-    expect(fn (): null => $pages->next())->toThrow(PlexRequestFailed::class);
-});
-
-it('maps a metadata children fetch 429 past retries to PlexRequestFailed', function (): void {
-    // Arrange
-    Http::fake([
-        '*/library/metadata/34112/children*' => Http::response('', 429, ['Retry-After' => '0']),
-    ]);
-
-    // Act & Assert
-    expect(fn () => resolve(PlexLibraryService::class)->fetchShowChildren('https://plex.test:6022', 'tok', '34112'))
-        ->toThrow(PlexRequestFailed::class);
-});
-
-it('maps a metadata leaves fetch 403 to PlexRequestFailed', function (): void {
-    // Arrange
-    Http::fake([
-        '*/library/metadata/34112/allLeaves*' => Http::response('', 403),
-    ]);
-
-    // Act & Assert
-    expect(fn () => resolve(PlexLibraryService::class)->fetchShowLeaves('https://plex.test:6022', 'tok', '34112'))
-        ->toThrow(PlexRequestFailed::class);
-});
-
-it('maps a metadata leaves fetch 404 to PlexRequestFailed', function (): void {
-    // Arrange
-    Http::fake([
-        '*/library/metadata/34112/allLeaves*' => Http::response('', 404),
-    ]);
-
-    // Act & Assert
-    expect(fn () => resolve(PlexLibraryService::class)->fetchShowLeaves('https://plex.test:6022', 'tok', '34112'))
-        ->toThrow(PlexRequestFailed::class);
-});
-
-it('maps a sections fetch 401 to PlexAuthenticationFailed', function (): void {
-    // Arrange
-    Http::fake([
-        '*/library/sections' => Http::response('', 401),
-    ]);
-
-    // Act & Assert
-    expect(fn () => resolve(PlexLibraryService::class)->fetchSections('https://plex.test:6022', 'tok'))
-        ->toThrow(PlexAuthenticationFailed::class);
+        // Act & Assert
+        expect(fn () => resolve(PlexLibraryService::class)->fetchSections('https://plex.test:6022', 'tok'))
+            ->toThrow(PlexAuthenticationFailed::class);
+    });
 });

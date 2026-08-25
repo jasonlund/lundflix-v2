@@ -173,6 +173,36 @@ by `tests/Unit/TestCommentStandardTest.php`:
    - **Inline why-comments** for non-obvious mechanics (binding-drop bugs,
      leak-under-test, on-demand-parsing proofs).
 
+## Test-organization standard (strict)
+
+How a test **file** is laid out, enforced by `tests/Unit/TestOrganizationStandardTest.php`
+(which scans `tests/**/*.php` + `resources/js/**/*.test.ts(x)` through
+`Tests\Support\TestOrganizationScanner`). Machine-checked rules first:
+
+1. **Every `it()` lives inside a `describe()`.** Several top-level describes per
+   file are fine — one per behavior area; nesting allowed. Never a top-level test.
+2. **Canonical file skeleton**, in this order:
+   `declare(strict_types=1)` → `use` imports → `uses(...)` → provenance banner →
+   helper `function` declarations → file-level `beforeEach` → `describe`s.
+   Helpers go **above** the tests that call them; a banner is rank-neutral (it may
+   sit anywhere in the header).
+3. **Helper function names are unique across the whole suite** — they share one
+   global namespace. A helper wanted by a second file moves to `tests/Pest.php`.
+   Both helper rules govern named `function` declarations only; a closure assigned
+   to a variable (`$report = function () {…}`) is file-scoped, not global, so it is
+   deliberately out of scope.
+4. **`it()` descriptions** start lowercase, never start with "should", and are
+   unique within their describe (the same description may repeat in another group).
+5. **`describe` labels are unique within a file.**
+
+Judgment rules the scanner can't check:
+
+- **Label style: subject + facet**, method names keeping their parens —
+  `describe('series() JWT auth', …)`, `describe('episodes() pagination', …)`.
+- **Happy path first**, edge cases and failures last within a describe.
+- **`beforeEach` may be file-level or per-`describe`**; prefer a per-`describe`
+  one over repeating the same arrange in every `it()` of that group.
+
 ## RED checklist (for tdd-test-writer)
 
 - A small cohesive set (2–6) of failing tests for one behavior slice; each describes

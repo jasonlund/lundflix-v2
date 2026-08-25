@@ -33,182 +33,186 @@ uses(RefreshDatabase::class);
 | and tt0007189 are left unseeded so unmatched titleIds are always in play.
 */
 
-it('groups a title\'s contiguous rows into a single stored array', function (): void {
-    // Arrange
-    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
-    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+describe('catalog:sync-akas title grouping', function (): void {
+    it('groups a title\'s contiguous rows into a single stored array', function (): void {
+        // Arrange
+        $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
 
-    // Act
-    $this->artisan('catalog:sync-akas');
+        // Act
+        $this->artisan('catalog:sync-akas');
 
-    // Assert
-    $matrix->refresh();
-    expect($matrix->_imdb_akas)->toBeArray()->toHaveCount(67)
-        ->and($matrix->_imdb_akas[0])->toBe([
-            'ordering' => '1', 'title' => 'The Matrix', 'region' => null, 'language' => null, 'types' => ['original'], 'attributes' => null, 'isOriginalTitle' => '1',
-        ])
-        ->and($matrix->_imdb_akas[66])->toBe([
-            'ordering' => '9', 'title' => 'Matrix', 'region' => 'ES', 'language' => null, 'types' => ['imdbDisplay'], 'attributes' => null, 'isOriginalTitle' => '0',
-        ])
-        ->and(array_column($matrix->_imdb_akas, 'title'))->not->toContain('Fight Club', 'Plain Jane');
+        // Assert
+        $matrix->refresh();
+        expect($matrix->_imdb_akas)->toBeArray()->toHaveCount(67)
+            ->and($matrix->_imdb_akas[0])->toBe([
+                'ordering' => '1', 'title' => 'The Matrix', 'region' => null, 'language' => null, 'types' => ['original'], 'attributes' => null, 'isOriginalTitle' => '1',
+            ])
+            ->and($matrix->_imdb_akas[66])->toBe([
+                'ordering' => '9', 'title' => 'Matrix', 'region' => 'ES', 'language' => null, 'types' => ['imdbDisplay'], 'attributes' => null, 'isOriginalTitle' => '0',
+            ])
+            ->and(array_column($matrix->_imdb_akas, 'title'))->not->toContain('Fight Club', 'Plain Jane');
+    });
+
+    // The last group in the file never sees a titleId change, so it lands only if
+    // the buffer is flushed after the stream ends.
+    it('stores the final title in the file', function (): void {
+        // Arrange
+        $interstellar = Movie::factory()->create(['_imdb_id' => 'tt0816692']);
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+
+        // Act
+        $this->artisan('catalog:sync-akas');
+
+        // Assert
+        $interstellar->refresh();
+        expect($interstellar->_imdb_akas)->toBeArray()->toHaveCount(66)
+            ->and($interstellar->_imdb_akas[0])->toBe([
+                'ordering' => '1', 'title' => 'Interstellar', 'region' => null, 'language' => null, 'types' => ['original'], 'attributes' => null, 'isOriginalTitle' => '1',
+            ])
+            ->and($interstellar->_imdb_akas[65])->toBe([
+                'ordering' => '9', 'title' => 'Interstellar', 'region' => 'GB', 'language' => null, 'types' => ['imdbDisplay'], 'attributes' => null, 'isOriginalTitle' => '0',
+            ]);
+    });
+
+    // The seeded control proves the run really streamed the fixture, so the absent
+    // titles' missing rows can only mean they were skipped — not that the command
+    // did nothing.
+    it('stores nothing for titles absent from the catalog', function (): void {
+        // Arrange
+        $control = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+
+        // Act
+        $this->artisan('catalog:sync-akas');
+
+        // Assert
+        $control->refresh();
+        expect($control->_imdb_akas)->toBeArray()->toHaveCount(67)
+            ->and(Movie::query()->count())->toBe(1)
+            ->and(Show::query()->count())->toBe(0)
+            ->and(Movie::query()->whereIn('_imdb_id', ['tt0000001', 'tt0007189', 'tt0137523', 'tt0816692'])->exists())->toBeFalse();
+    });
+
+    // Three matched titles at --batch=2 puts a flush inside the stream: the buffer
+    // fills the moment tt0137523's group closes, which is the first row of
+    // tt0816692 — so the write happens with two thirds of the file still unread,
+    // and the run's tail is written by the after-loop flush. tt0137523 is the group
+    // that closes on the boundary, so a buffer that captured a title mid-group
+    // would land it here split across the two writes; its complete ordering
+    // sequence, in file order, is what proves it didn't.
+    it('keeps each title\'s group whole across a mid-stream flush', function (): void {
+        // Arrange
+        $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        $fightClub = Movie::factory()->create(['_imdb_id' => 'tt0137523']);
+        $interstellar = Movie::factory()->create(['_imdb_id' => 'tt0816692']);
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+
+        // Act
+        Artisan::call('catalog:sync-akas', ['--batch' => 2]);
+
+        // Assert
+        $output = Artisan::output();
+        expect(substr_count($output, '[imdb akas'))->toBe(2)
+            ->and($output)->toContain('[imdb akas 2]')
+            ->and($output)->toContain('[imdb akas 3]');
+
+        $fightClub->refresh();
+        expect($fightClub->_imdb_akas)->toBeArray()->toHaveCount(68)
+            ->and(array_column($fightClub->_imdb_akas, 'ordering'))->toBe([
+                '1', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19',
+                '2', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29',
+                '3', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39',
+                '4', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49',
+                '5', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59',
+                '6', '60', '61', '62', '63', '64', '65', '66', '67', '68',
+                '7', '8', '9',
+            ])
+            ->and($fightClub->_imdb_akas[0])->toBe([
+                'ordering' => '1', 'title' => 'Fight Club', 'region' => null, 'language' => null, 'types' => ['original'], 'attributes' => null, 'isOriginalTitle' => '1',
+            ])
+            ->and($fightClub->_imdb_akas[67])->toBe([
+                'ordering' => '9', 'title' => 'Fight Club', 'region' => 'FI', 'language' => null, 'types' => ['imdbDisplay'], 'attributes' => null, 'isOriginalTitle' => '0',
+            ])
+            ->and(array_column($fightClub->_imdb_akas, 'title'))->not->toContain('The Matrix', 'Interstellar');
+
+        $matrix->refresh();
+        $interstellar->refresh();
+        expect($matrix->_imdb_akas)->toHaveCount(67)
+            ->and($interstellar->_imdb_akas)->toHaveCount(66);
+    });
 });
 
-// The last group in the file never sees a titleId change, so it lands only if
-// the buffer is flushed after the stream ends.
-it('stores the final title in the file', function (): void {
-    // Arrange
-    $interstellar = Movie::factory()->create(['_imdb_id' => 'tt0816692']);
-    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+describe('catalog:sync-akas streaming and fetch', function (): void {
+    // title.akas is tens of millions of rows, so the run must never hold the
+    // catalog's whole _imdb_id column in memory: every id read is a bounded `in (…)`
+    // probe of the titles currently in hand. The non-empty check keeps the guard
+    // from passing for a run that read nothing at all.
+    it('never reads the catalog\'s ids unbounded', function (): void {
+        // Arrange
+        Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+        $idColumnSelects = fn (): array => collect(DB::getQueryLog())
+            ->pluck('query')
+            ->map(fn (mixed $query): string => (string) $query)
+            ->filter(fn (string $query): bool => Str::startsWith($query, 'select') && Str::contains($query, '_imdb_id'))
+            ->values()
+            ->all();
+        DB::enableQueryLog();
 
-    // Act
-    $this->artisan('catalog:sync-akas');
+        // Act
+        $this->artisan('catalog:sync-akas');
 
-    // Assert
-    $interstellar->refresh();
-    expect($interstellar->_imdb_akas)->toBeArray()->toHaveCount(66)
-        ->and($interstellar->_imdb_akas[0])->toBe([
-            'ordering' => '1', 'title' => 'Interstellar', 'region' => null, 'language' => null, 'types' => ['original'], 'attributes' => null, 'isOriginalTitle' => '1',
-        ])
-        ->and($interstellar->_imdb_akas[65])->toBe([
-            'ordering' => '9', 'title' => 'Interstellar', 'region' => 'GB', 'language' => null, 'types' => ['imdbDisplay'], 'attributes' => null, 'isOriginalTitle' => '0',
-        ]);
-});
+        // Assert
+        expect($idColumnSelects())->not->toBeEmpty();
+        foreach ($idColumnSelects() as $query) {
+            expect($query)->toContain('in (');
+        }
+    });
 
-// The seeded control proves the run really streamed the fixture, so the absent
-// titles' missing rows can only mean they were skipped — not that the command
-// did nothing.
-it('stores nothing for titles absent from the catalog', function (): void {
-    // Arrange
-    $control = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
-    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+    // A real run buffers ~10k groups the catalog has no title for, and a heartbeat
+    // per zero-match flush would bury the ones that wrote something — so a flush
+    // that resolves to nothing stays silent and never reaches the importer. The
+    // phase line proves the command really streamed the fixture, so the absent
+    // heartbeat can't mean the run never started.
+    it('emits no heartbeat and writes nothing when the catalog matches no title in the dataset', function (): void {
+        // Arrange
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
 
-    // Act
-    $this->artisan('catalog:sync-akas');
+        // Act
+        Artisan::call('catalog:sync-akas', ['--batch' => 2]);
 
-    // Assert
-    $control->refresh();
-    expect($control->_imdb_akas)->toBeArray()->toHaveCount(67)
-        ->and(Movie::query()->count())->toBe(1)
-        ->and(Show::query()->count())->toBe(0)
-        ->and(Movie::query()->whereIn('_imdb_id', ['tt0000001', 'tt0007189', 'tt0137523', 'tt0816692'])->exists())->toBeFalse();
-});
+        // Assert
+        $output = Artisan::output();
+        expect($output)->toContain('Importing IMDb akas')
+            ->and($output)->not->toContain('[imdb akas')
+            ->and(Movie::query()->count())->toBe(0)
+            ->and(Show::query()->count())->toBe(0)
+            ->and(Movie::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse()
+            ->and(Show::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse();
+    });
 
-// Three matched titles at --batch=2 puts a flush inside the stream: the buffer
-// fills the moment tt0137523's group closes, which is the first row of
-// tt0816692 — so the write happens with two thirds of the file still unread,
-// and the run's tail is written by the after-loop flush. tt0137523 is the group
-// that closes on the boundary, so a buffer that captured a title mid-group
-// would land it here split across the two writes; its complete ordering
-// sequence, in file order, is what proves it didn't.
-it('keeps each title\'s group whole across a mid-stream flush', function (): void {
-    // Arrange
-    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
-    $fightClub = Movie::factory()->create(['_imdb_id' => 'tt0137523']);
-    $interstellar = Movie::factory()->create(['_imdb_id' => 'tt0816692']);
-    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+    // Asserting the fetch alongside the cleanup keeps "no leftover temp file" from
+    // passing for the wrong reason (a run that never downloaded anything).
+    it('downloads the akas dataset and removes the temp file when it finishes', function (): void {
+        // The sink option the stub handler receives IS the tempnam() path the
+        // download just created, so capturing it pins the one file under test — a
+        // glob over the shared temp dir also matches files other processes leave
+        // behind.
+        // Arrange
+        $sinkPath = null;
+        Http::fake(['*datasets.imdbws.com*' => function (Request $request, array $options) use (&$sinkPath) {
+            $sinkPath = $options['sink'];
 
-    // Act
-    Artisan::call('catalog:sync-akas', ['--batch' => 2]);
+            return Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'));
+        }]);
 
-    // Assert
-    $output = Artisan::output();
-    expect(substr_count($output, '[imdb akas'))->toBe(2)
-        ->and($output)->toContain('[imdb akas 2]')
-        ->and($output)->toContain('[imdb akas 3]');
+        // Act
+        $this->artisan('catalog:sync-akas');
 
-    $fightClub->refresh();
-    expect($fightClub->_imdb_akas)->toBeArray()->toHaveCount(68)
-        ->and(array_column($fightClub->_imdb_akas, 'ordering'))->toBe([
-            '1', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19',
-            '2', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29',
-            '3', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39',
-            '4', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49',
-            '5', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59',
-            '6', '60', '61', '62', '63', '64', '65', '66', '67', '68',
-            '7', '8', '9',
-        ])
-        ->and($fightClub->_imdb_akas[0])->toBe([
-            'ordering' => '1', 'title' => 'Fight Club', 'region' => null, 'language' => null, 'types' => ['original'], 'attributes' => null, 'isOriginalTitle' => '1',
-        ])
-        ->and($fightClub->_imdb_akas[67])->toBe([
-            'ordering' => '9', 'title' => 'Fight Club', 'region' => 'FI', 'language' => null, 'types' => ['imdbDisplay'], 'attributes' => null, 'isOriginalTitle' => '0',
-        ])
-        ->and(array_column($fightClub->_imdb_akas, 'title'))->not->toContain('The Matrix', 'Interstellar');
-
-    $matrix->refresh();
-    $interstellar->refresh();
-    expect($matrix->_imdb_akas)->toHaveCount(67)
-        ->and($interstellar->_imdb_akas)->toHaveCount(66);
-});
-
-// title.akas is tens of millions of rows, so the run must never hold the
-// catalog's whole _imdb_id column in memory: every id read is a bounded `in (…)`
-// probe of the titles currently in hand. The non-empty check keeps the guard
-// from passing for a run that read nothing at all.
-it('never reads the catalog\'s ids unbounded', function (): void {
-    // Arrange
-    Movie::factory()->create(['_imdb_id' => 'tt0133093']);
-    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
-    $idColumnSelects = fn (): array => collect(DB::getQueryLog())
-        ->pluck('query')
-        ->map(fn (mixed $query): string => (string) $query)
-        ->filter(fn (string $query): bool => Str::startsWith($query, 'select') && Str::contains($query, '_imdb_id'))
-        ->values()
-        ->all();
-    DB::enableQueryLog();
-
-    // Act
-    $this->artisan('catalog:sync-akas');
-
-    // Assert
-    expect($idColumnSelects())->not->toBeEmpty();
-    foreach ($idColumnSelects() as $query) {
-        expect($query)->toContain('in (');
-    }
-});
-
-// A real run buffers ~10k groups the catalog has no title for, and a heartbeat
-// per zero-match flush would bury the ones that wrote something — so a flush
-// that resolves to nothing stays silent and never reaches the importer. The
-// phase line proves the command really streamed the fixture, so the absent
-// heartbeat can't mean the run never started.
-it('emits no heartbeat and writes nothing when the catalog matches no title in the dataset', function (): void {
-    // Arrange
-    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
-
-    // Act
-    Artisan::call('catalog:sync-akas', ['--batch' => 2]);
-
-    // Assert
-    $output = Artisan::output();
-    expect($output)->toContain('Importing IMDb akas')
-        ->and($output)->not->toContain('[imdb akas')
-        ->and(Movie::query()->count())->toBe(0)
-        ->and(Show::query()->count())->toBe(0)
-        ->and(Movie::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse()
-        ->and(Show::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse();
-});
-
-// Asserting the fetch alongside the cleanup keeps "no leftover temp file" from
-// passing for the wrong reason (a run that never downloaded anything).
-it('downloads the akas dataset and removes the temp file when it finishes', function (): void {
-    // The sink option the stub handler receives IS the tempnam() path the
-    // download just created, so capturing it pins the one file under test — a
-    // glob over the shared temp dir also matches files other processes leave
-    // behind.
-    // Arrange
-    $sinkPath = null;
-    Http::fake(['*datasets.imdbws.com*' => function (Request $request, array $options) use (&$sinkPath) {
-        $sinkPath = $options['sink'];
-
-        return Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'));
-    }]);
-
-    // Act
-    $this->artisan('catalog:sync-akas');
-
-    // Assert
-    Http::assertSent(fn (Request $request): bool => Str::endsWith($request->url(), '/title.akas.tsv.gz'));
-    expect($sinkPath)->toBeString();
-    expect(file_exists($sinkPath))->toBeFalse();
+        // Assert
+        Http::assertSent(fn (Request $request): bool => Str::endsWith($request->url(), '/title.akas.tsv.gz'));
+        expect($sinkPath)->toBeString();
+        expect(file_exists($sinkPath))->toBeFalse();
+    });
 });
