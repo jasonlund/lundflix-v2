@@ -96,91 +96,93 @@ beforeEach(function (): void {
     config(['services.tvdb.key' => 'test-key']);
 });
 
-it('reports no failure and no failed ids when every id hydrates', function (): void {
-    // Arrange
-    Http::fake([
-        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/series/70327/extended*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
-    ]);
-    $host = new TvdbShowsCommandTestHost([70327], collects: false);
+describe('syncIds() failure reporting', function (): void {
+    it('reports no failure and no failed ids when every id hydrates', function (): void {
+        // Arrange
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/70327/extended*' => Http::response(fixtureBytes('Catalog/tvdb/series_extended.json')),
+        ]);
+        $host = new TvdbShowsCommandTestHost([70327], collects: false);
 
-    // Act
-    $result = $host->sync();
+        // Act
+        $result = $host->sync();
 
-    // Assert
-    expect($result->failed)->toBeFalse()
-        ->and($result->failedIds)->toBe([]);
-});
+        // Assert
+        expect($result->failed)->toBeFalse()
+            ->and($result->failedIds)->toBe([]);
+    });
 
-it('reports a per-id hydrate failure without listing the id when collection is off', function (): void {
-    // Arrange
-    // The load-bearing case: the 500 fails id 70327 through the pooled arm, and the
-    // failure must still surface as the boolean even though the ids are suppressed.
-    // Sleep is faked because the global retry middleware retries a 5xx.
-    Sleep::fake();
-    Exceptions::fake();
-    Http::fake([
-        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/series/70327/extended*' => Http::response('', 500),
-    ]);
-    $host = new TvdbShowsCommandTestHost([70327], collects: false);
+    it('reports a per-id hydrate failure without listing the id when collection is off', function (): void {
+        // Arrange
+        // The load-bearing case: the 500 fails id 70327 through the pooled arm, and the
+        // failure must still surface as the boolean even though the ids are suppressed.
+        // Sleep is faked because the global retry middleware retries a 5xx.
+        Sleep::fake();
+        Exceptions::fake();
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/70327/extended*' => Http::response('', 500),
+        ]);
+        $host = new TvdbShowsCommandTestHost([70327], collects: false);
 
-    // Act
-    $result = $host->sync();
+        // Act
+        $result = $host->sync();
 
-    // Assert
-    expect($result->failed)->toBeTrue()
-        ->and($result->failedIds)->toBe([]);
-});
+        // Assert
+        expect($result->failed)->toBeTrue()
+            ->and($result->failedIds)->toBe([]);
+    });
 
-it('lists the per-id hydrate failure when collection is on', function (): void {
-    // Arrange
-    Sleep::fake();
-    Exceptions::fake();
-    Http::fake([
-        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/series/70327/extended*' => Http::response('', 500),
-    ]);
-    $host = new TvdbShowsCommandTestHost([70327], collects: true);
+    it('lists the per-id hydrate failure when collection is on', function (): void {
+        // Arrange
+        Sleep::fake();
+        Exceptions::fake();
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/70327/extended*' => Http::response('', 500),
+        ]);
+        $host = new TvdbShowsCommandTestHost([70327], collects: true);
 
-    // Act
-    $result = $host->sync();
+        // Act
+        $result = $host->sync();
 
-    // Assert
-    expect($result->failed)->toBeTrue()
-        ->and($result->failedIds)->toBe([70327]);
-});
+        // Assert
+        expect($result->failed)->toBeTrue()
+            ->and($result->failedIds)->toBe([70327]);
+    });
 
-it('reports a chunk-level authentication failure without listing the chunk when collection is off', function (): void {
-    // Arrange
-    // A 401 forgets the JWT and throws out of the pool, so syncChunkSafely() fans the
-    // WHOLE chunk in — the other failure arm, which must set the boolean too.
-    Http::fake([
-        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => Http::response('', 401),
-    ]);
-    $host = new TvdbShowsCommandTestHost([70327, 81189, 121361], collects: false);
+    it('reports a chunk-level authentication failure without listing the chunk when collection is off', function (): void {
+        // Arrange
+        // A 401 forgets the JWT and throws out of the pool, so syncChunkSafely() fans the
+        // WHOLE chunk in — the other failure arm, which must set the boolean too.
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/*/extended*' => Http::response('', 401),
+        ]);
+        $host = new TvdbShowsCommandTestHost([70327, 81189, 121361], collects: false);
 
-    // Act
-    $result = $host->sync();
+        // Act
+        $result = $host->sync();
 
-    // Assert
-    expect($result->failed)->toBeTrue()
-        ->and($result->failedIds)->toBe([]);
-});
+        // Assert
+        expect($result->failed)->toBeTrue()
+            ->and($result->failedIds)->toBe([]);
+    });
 
-it('lists every id of the chunk on a chunk-level authentication failure when collection is on', function (): void {
-    // Arrange
-    Http::fake([
-        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => Http::response('', 401),
-    ]);
-    $host = new TvdbShowsCommandTestHost([70327, 81189, 121361], collects: true);
+    it('lists every id of the chunk on a chunk-level authentication failure when collection is on', function (): void {
+        // Arrange
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/*/extended*' => Http::response('', 401),
+        ]);
+        $host = new TvdbShowsCommandTestHost([70327, 81189, 121361], collects: true);
 
-    // Act
-    $result = $host->sync();
+        // Act
+        $result = $host->sync();
 
-    // Assert
-    expect($result->failed)->toBeTrue()
-        ->and($result->failedIds)->toBe([70327, 81189, 121361]);
+        // Assert
+        expect($result->failed)->toBeTrue()
+            ->and($result->failedIds)->toBe([70327, 81189, 121361]);
+    });
 });

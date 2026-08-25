@@ -33,149 +33,155 @@ function anchorColumn(): array
     return ['Field' => 'id', 'Type' => 'bigint unsigned', 'Collation' => null, 'Null' => 'NO', 'Key' => 'PRI', 'Default' => null, 'Extra' => 'auto_increment', 'Comment' => ''];
 }
 
-it('chains each moved column after the one preceding it in the target order', function (): void {
-    // Arrange
-    $columns = showFullColumns();
-    $targetOrder = ['id', 'title', 'created_at', 'updated_at'];
+describe('alterStatement() AFTER anchoring', function (): void {
+    it('chains each moved column after the one preceding it in the target order', function (): void {
+        // Arrange
+        $columns = showFullColumns();
+        $targetOrder = ['id', 'title', 'created_at', 'updated_at'];
 
-    // Act
-    $statement = ColumnOrder::alterStatement('movies', $columns, $targetOrder);
+        // Act
+        $statement = ColumnOrder::alterStatement('movies', $columns, $targetOrder);
 
-    // Assert
-    expect($statement)
-        ->toStartWith('ALTER TABLE `movies` ')
-        ->toMatch('/MODIFY COLUMN `title` [^,]*AFTER `id`/')
-        ->toMatch('/MODIFY COLUMN `created_at` [^,]*AFTER `title`/')
-        ->toMatch('/MODIFY COLUMN `updated_at` [^,]*AFTER `created_at`/')
-        ->and(substr_count($statement, 'ALTER TABLE'))->toBe(1);
+        // Assert
+        expect($statement)
+            ->toStartWith('ALTER TABLE `movies` ')
+            ->toMatch('/MODIFY COLUMN `title` [^,]*AFTER `id`/')
+            ->toMatch('/MODIFY COLUMN `created_at` [^,]*AFTER `title`/')
+            ->toMatch('/MODIFY COLUMN `updated_at` [^,]*AFTER `created_at`/')
+            ->and(substr_count($statement, 'ALTER TABLE'))->toBe(1);
+    });
+
+    it('emits no clause for the first column in the target order', function (): void {
+        // Arrange
+        // nothing precedes `id`, so it has no AFTER anchor and must never be modified
+        $columns = showFullColumns();
+        $targetOrder = ['id', 'title', 'created_at', 'updated_at'];
+
+        // Act
+        $statement = ColumnOrder::alterStatement('movies', $columns, $targetOrder);
+
+        // Assert
+        expect($statement)
+            ->toContain('MODIFY COLUMN `title`')
+            ->not->toContain('MODIFY COLUMN `id`')
+            ->and(substr_count($statement, 'MODIFY COLUMN'))->toBe(3);
+    });
 });
 
-it('emits no clause for the first column in the target order', function (): void {
-    // Arrange
-    // nothing precedes `id`, so it has no AFTER anchor and must never be modified
-    $columns = showFullColumns();
-    $targetOrder = ['id', 'title', 'created_at', 'updated_at'];
+describe('alterStatement() target-order validation', function (): void {
+    it('rejects a target order naming a column the table does not have', function (): void {
+        // Arrange
+        $columns = showFullColumns();
+        $targetOrder = ['id', 'title', 'created_at', 'updated_at', 'released_at'];
 
-    // Act
-    $statement = ColumnOrder::alterStatement('movies', $columns, $targetOrder);
+        // Act & Assert
+        expect(fn (): string => ColumnOrder::alterStatement('movies', $columns, $targetOrder))
+            ->toThrow(ColumnOrderMismatch::class);
+    });
 
-    // Assert
-    expect($statement)
-        ->toContain('MODIFY COLUMN `title`')
-        ->not->toContain('MODIFY COLUMN `id`')
-        ->and(substr_count($statement, 'MODIFY COLUMN'))->toBe(3);
+    it('rejects a target order omitting a column the table does have', function (): void {
+        // Arrange
+        $columns = showFullColumns();
+        $targetOrder = ['id', 'title', 'created_at'];
+
+        // Act & Assert
+        expect(fn (): string => ColumnOrder::alterStatement('movies', $columns, $targetOrder))
+            ->toThrow(ColumnOrderMismatch::class);
+    });
+
+    it('rejects a target order naming a column twice even though every column is covered', function (): void {
+        // Arrange
+        // a repeat anchors a column after itself (`AFTER `title``), which MySQL rejects
+        $columns = showFullColumns();
+        $targetOrder = ['id', 'title', 'title', 'created_at', 'updated_at'];
+
+        // Act & Assert
+        expect(fn (): string => ColumnOrder::alterStatement('movies', $columns, $targetOrder))
+            ->toThrow(ColumnOrderMismatch::class);
+    });
 });
 
-it('rejects a target order naming a column the table does not have', function (): void {
-    // Arrange
-    $columns = showFullColumns();
-    $targetOrder = ['id', 'title', 'created_at', 'updated_at', 'released_at'];
+describe('alterStatement() emitted column DDL', function (): void {
+    it('rebuilds a nullable column with its exact type text and keeps it nullable', function (): void {
+        // Arrange
+        $columns = [
+            anchorColumn(),
+            ['Field' => '_tvdb_remoteIds', 'Type' => 'json', 'Collation' => null, 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+        ];
 
-    // Act & Assert
-    expect(fn (): string => ColumnOrder::alterStatement('movies', $columns, $targetOrder))
-        ->toThrow(ColumnOrderMismatch::class);
-});
+        // Act
+        $statement = ColumnOrder::alterStatement('shows', $columns, ['id', '_tvdb_remoteIds']);
 
-it('rejects a target order omitting a column the table does have', function (): void {
-    // Arrange
-    $columns = showFullColumns();
-    $targetOrder = ['id', 'title', 'created_at'];
+        // Assert
+        expect($statement)
+            ->toContain('MODIFY COLUMN `_tvdb_remoteIds` json NULL AFTER `id`')
+            ->not->toContain('NOT NULL');
+    });
 
-    // Act & Assert
-    expect(fn (): string => ColumnOrder::alterStatement('movies', $columns, $targetOrder))
-        ->toThrow(ColumnOrderMismatch::class);
-});
+    it('rebuilds a not-null column with its default as a quoted literal', function (): void {
+        // Arrange
+        $columns = [
+            anchorColumn(),
+            ['Field' => 'is_active', 'Type' => 'tinyint(1)', 'Collation' => null, 'Null' => 'NO', 'Key' => '', 'Default' => '1', 'Extra' => '', 'Comment' => ''],
+        ];
 
-it('rejects a target order naming a column twice even though every column is covered', function (): void {
-    // Arrange
-    // a repeat anchors a column after itself (`AFTER `title``), which MySQL rejects
-    $columns = showFullColumns();
-    $targetOrder = ['id', 'title', 'title', 'created_at', 'updated_at'];
+        // Act
+        $statement = ColumnOrder::alterStatement('movies', $columns, ['id', 'is_active']);
 
-    // Act & Assert
-    expect(fn (): string => ColumnOrder::alterStatement('movies', $columns, $targetOrder))
-        ->toThrow(ColumnOrderMismatch::class);
-});
+        // Assert
+        expect($statement)
+            ->toContain("MODIFY COLUMN `is_active` tinyint(1) NOT NULL DEFAULT '1' AFTER `id`");
+    });
 
-it('rebuilds a nullable column with its exact type text and keeps it nullable', function (): void {
-    // Arrange
-    $columns = [
-        anchorColumn(),
-        ['Field' => '_tvdb_remoteIds', 'Type' => 'json', 'Collation' => null, 'Null' => 'YES', 'Key' => '', 'Default' => null, 'Extra' => '', 'Comment' => ''],
-    ];
+    it('carries an on-update extra through and emits a CURRENT_TIMESTAMP default unquoted', function (): void {
+        // Arrange
+        // a quoted 'CURRENT_TIMESTAMP' would be a string literal, not the function, and
+        // MySQL rejects the informational DEFAULT_GENERATED token in DDL
+        $columns = [
+            anchorColumn(),
+            ['Field' => 'updated_at', 'Type' => 'timestamp', 'Collation' => null, 'Null' => 'NO', 'Key' => '', 'Default' => 'CURRENT_TIMESTAMP', 'Extra' => 'DEFAULT_GENERATED on update CURRENT_TIMESTAMP', 'Comment' => ''],
+        ];
 
-    // Act
-    $statement = ColumnOrder::alterStatement('shows', $columns, ['id', '_tvdb_remoteIds']);
+        // Act
+        $statement = ColumnOrder::alterStatement('plex_episodes', $columns, ['id', 'updated_at']);
 
-    // Assert
-    expect($statement)
-        ->toContain('MODIFY COLUMN `_tvdb_remoteIds` json NULL AFTER `id`')
-        ->not->toContain('NOT NULL');
-});
+        // Assert
+        expect($statement)
+            ->toContain('MODIFY COLUMN `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP AFTER `id`')
+            ->not->toContain("'CURRENT_TIMESTAMP'")
+            ->not->toContain('DEFAULT_GENERATED');
+    });
 
-it('rebuilds a not-null column with its default as a quoted literal', function (): void {
-    // Arrange
-    $columns = [
-        anchorColumn(),
-        ['Field' => 'is_active', 'Type' => 'tinyint(1)', 'Collation' => null, 'Null' => 'NO', 'Key' => '', 'Default' => '1', 'Extra' => '', 'Comment' => ''],
-    ];
+    it('carries a non-default collation and a column comment through', function (): void {
+        // Arrange
+        $columns = [
+            anchorColumn(),
+            ['Field' => '_imdb_id', 'Type' => 'varchar(255)', 'Collation' => 'utf8mb4_bin', 'Null' => 'NO', 'Key' => 'UNI', 'Default' => null, 'Extra' => '', 'Comment' => 'raw source value'],
+        ];
 
-    // Act
-    $statement = ColumnOrder::alterStatement('movies', $columns, ['id', 'is_active']);
+        // Act
+        $statement = ColumnOrder::alterStatement('movies', $columns, ['id', '_imdb_id']);
 
-    // Assert
-    expect($statement)
-        ->toContain("MODIFY COLUMN `is_active` tinyint(1) NOT NULL DEFAULT '1' AFTER `id`");
-});
+        // Assert
+        expect($statement)
+            ->toContain('varchar(255) COLLATE utf8mb4_bin NOT NULL')
+            ->toContain("COMMENT 'raw source value'");
+    });
 
-it('carries an on-update extra through and emits a CURRENT_TIMESTAMP default unquoted', function (): void {
-    // Arrange
-    // a quoted 'CURRENT_TIMESTAMP' would be a string literal, not the function, and
-    // MySQL rejects the informational DEFAULT_GENERATED token in DDL
-    $columns = [
-        anchorColumn(),
-        ['Field' => 'updated_at', 'Type' => 'timestamp', 'Collation' => null, 'Null' => 'NO', 'Key' => '', 'Default' => 'CURRENT_TIMESTAMP', 'Extra' => 'DEFAULT_GENERATED on update CURRENT_TIMESTAMP', 'Comment' => ''],
-    ];
+    it('backtick-quotes the table, the modified column and the AFTER anchor', function (): void {
+        // Arrange
+        $columns = [
+            anchorColumn(),
+            ['Field' => 'type', 'Type' => 'varchar(255)', 'Collation' => 'utf8mb4_unicode_ci', 'Null' => 'NO', 'Key' => '', 'Default' => null, 'Extra' => '', 'Comment' => ''],
+        ];
 
-    // Act
-    $statement = ColumnOrder::alterStatement('plex_episodes', $columns, ['id', 'updated_at']);
+        // Act
+        $statement = ColumnOrder::alterStatement('media', $columns, ['id', 'type']);
 
-    // Assert
-    expect($statement)
-        ->toContain('MODIFY COLUMN `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP AFTER `id`')
-        ->not->toContain("'CURRENT_TIMESTAMP'")
-        ->not->toContain('DEFAULT_GENERATED');
-});
-
-it('carries a non-default collation and a column comment through', function (): void {
-    // Arrange
-    $columns = [
-        anchorColumn(),
-        ['Field' => '_imdb_id', 'Type' => 'varchar(255)', 'Collation' => 'utf8mb4_bin', 'Null' => 'NO', 'Key' => 'UNI', 'Default' => null, 'Extra' => '', 'Comment' => 'raw source value'],
-    ];
-
-    // Act
-    $statement = ColumnOrder::alterStatement('movies', $columns, ['id', '_imdb_id']);
-
-    // Assert
-    expect($statement)
-        ->toContain('varchar(255) COLLATE utf8mb4_bin NOT NULL')
-        ->toContain("COMMENT 'raw source value'");
-});
-
-it('backtick-quotes the table, the modified column and the AFTER anchor', function (): void {
-    // Arrange
-    $columns = [
-        anchorColumn(),
-        ['Field' => 'type', 'Type' => 'varchar(255)', 'Collation' => 'utf8mb4_unicode_ci', 'Null' => 'NO', 'Key' => '', 'Default' => null, 'Extra' => '', 'Comment' => ''],
-    ];
-
-    // Act
-    $statement = ColumnOrder::alterStatement('media', $columns, ['id', 'type']);
-
-    // Assert
-    expect($statement)
-        ->toStartWith('ALTER TABLE `media` ')
-        ->toContain('MODIFY COLUMN `type` ')
-        ->toContain(' AFTER `id`');
+        // Assert
+        expect($statement)
+            ->toStartWith('ALTER TABLE `media` ')
+            ->toContain('MODIFY COLUMN `type` ')
+            ->toContain(' AFTER `id`');
+    });
 });

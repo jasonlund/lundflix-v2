@@ -63,17 +63,19 @@ function expectNoAnnotatedClassViolates(callable $violates, string $message): vo
         ->toBe([], $message);
 }
 
-it('only annotates spatie Data classes with the TypeScript attribute', function (): void {
-    expectNoAnnotatedClassViolates(
-        fn (ReflectionClass $class): bool => ! $class->isSubclassOf(Data::class),
-        'Every #[TypeScript] class must extend '.Data::class.'.',
-    );
-});
+describe('TypeScript attribute placement', function (): void {
+    it('only annotates spatie Data classes with the TypeScript attribute', function (): void {
+        expectNoAnnotatedClassViolates(
+            fn (ReflectionClass $class): bool => ! $class->isSubclassOf(Data::class),
+            'Every #[TypeScript] class must extend '.Data::class.'.',
+        );
+    });
 
-it('only annotates classes living in a domain Data namespace with the TypeScript attribute', function (): void {
-    expectNoAnnotatedClassViolates(
-        fn (ReflectionClass $class): bool => ! Str::startsWith($class->getName(), 'App\\Domains\\')
-            || ! Str::contains($class->getName(), '\\Data\\'),
-        'Every #[TypeScript] class must live under App\\Domains\\...\\Data\\.',
-    );
+    it('only annotates classes living in a domain Data namespace with the TypeScript attribute', function (): void {
+        expectNoAnnotatedClassViolates(
+            fn (ReflectionClass $class): bool => ! Str::startsWith($class->getName(), 'App\\Domains\\')
+                || ! Str::contains($class->getName(), '\\Data\\'),
+            'Every #[TypeScript] class must live under App\\Domains\\...\\Data\\.',
+        );
+    });
 });
