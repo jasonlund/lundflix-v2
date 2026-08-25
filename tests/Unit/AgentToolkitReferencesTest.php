@@ -78,32 +78,34 @@ $scanReferences = function (): array {
     return $references;
 };
 
-it('references only toolkit paths that exist', function () use ($scanReferences): void {
-    // Arrange
-    $root = dirname(__DIR__, 2);
+describe('toolkit reference graph', function () use ($scanReferences): void {
+    it('references only toolkit paths that exist', function () use ($scanReferences): void {
+        // Arrange
+        $root = dirname(__DIR__, 2);
 
-    // Act
-    $dangling = collect($scanReferences())
-        ->reject(fn (array $r): bool => file_exists($root.'/'.$r['path']))
-        ->map(fn (array $r): string => sprintf('%s:%d  →  %s', $r['file'], $r['line'], $r['path']))
-        ->unique()
-        ->values()
-        ->all();
+        // Act
+        $dangling = collect($scanReferences())
+            ->reject(fn (array $r): bool => file_exists($root.'/'.$r['path']))
+            ->map(fn (array $r): string => sprintf('%s:%d  →  %s', $r['file'], $r['line'], $r['path']))
+            ->unique()
+            ->values()
+            ->all();
 
-    // Assert
-    expect($dangling)->toBe([]);
-});
+        // Assert
+        expect($dangling)->toBe([]);
+    });
 
-it('actually scans the toolkit rather than silently finding nothing', function () use ($scanReferences): void {
-    // A guard that scans an empty set passes forever. Pin a floor so a broken
-    // finder or regex fails here instead of masquerading as a clean graph.
-    // Arrange
-    $references = $scanReferences();
+    it('actually scans the toolkit rather than silently finding nothing', function () use ($scanReferences): void {
+        // A guard that scans an empty set passes forever. Pin a floor so a broken
+        // finder or regex fails here instead of masquerading as a clean graph.
+        // Arrange
+        $references = $scanReferences();
 
-    // Act
-    $files = collect($references)->pluck('file')->unique();
+        // Act
+        $files = collect($references)->pluck('file')->unique();
 
-    // Assert
-    expect($references)->not->toBeEmpty()
-        ->and($files->count())->toBeGreaterThan(5);
+        // Assert
+        expect($references)->not->toBeEmpty()
+            ->and($files->count())->toBeGreaterThan(5);
+    });
 });
