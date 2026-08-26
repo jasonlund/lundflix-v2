@@ -2,7 +2,7 @@
 name: missing-defect-hunter
 description: Fresh-eyes review of a PR looking for issues all other agents missed — subtle bugs, security, performance, and coverage gaps. Used in the verification phase.
 tools: Read, Grep, Glob
-model: sonnet
+model: inherit
 ---
 
 # Missing Defect Hunter

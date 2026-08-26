@@ -34,61 +34,65 @@ use Illuminate\Support\Facades\Http;
 | clients host.
 */
 
-it('returns a PlexAccount from GET plex.tv/api/v2/user', function (): void {
-    // Arrange
-    Http::fake([
-        'https://plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
-    ]);
+describe('getUserInfo() account read', function (): void {
+    it('returns a PlexAccount from GET plex.tv/api/v2/user', function (): void {
+        // Arrange
+        Http::fake([
+            'https://plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
+        ]);
 
-    // Act
-    $account = resolve(PlexApiService::class)->getUserInfo('the-token');
+        // Act
+        $account = resolve(PlexApiService::class)->getUserInfo('the-token');
 
-    // Assert
-    expect($account)->toBeInstanceOf(PlexAccount::class)
-        ->and($account->id)->toBe(1001)
-        ->and($account->uuid)->toBe('0000000000000001')
-        ->and($account->username)->toBe('plexuser1')
-        ->and($account->email)->toBe('user1@example.com')
-        ->and($account->thumb)->toBe('https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1');
+        // Assert
+        expect($account)->toBeInstanceOf(PlexAccount::class)
+            ->and($account->id)->toBe(1001)
+            ->and($account->uuid)->toBe('0000000000000001')
+            ->and($account->username)->toBe('plexuser1')
+            ->and($account->email)->toBe('user1@example.com')
+            ->and($account->thumb)->toBe('https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1');
+    });
+
+    it('nulls every PlexAccount field the account body omits', function (): void {
+        // Arrange
+        Http::fake([
+            'https://plex.tv/api/v2/user*' => Http::response(['id' => 1001]),
+        ]);
+
+        // Act
+        $account = resolve(PlexApiService::class)->getUserInfo('the-token');
+
+        // Assert
+        expect($account)->toBeInstanceOf(PlexAccount::class)
+            ->and($account->id)->toBe(1001)
+            ->and($account->uuid)->toBeNull()
+            ->and($account->username)->toBeNull()
+            ->and($account->email)->toBeNull()
+            ->and($account->thumb)->toBeNull();
+    });
+
+    it('sends the user request with X-Plex-Token and no Authorization header', function (): void {
+        Http::fake([
+            'https://plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
+        ]);
+
+        resolve(PlexApiService::class)->getUserInfo('the-token');
+
+        Http::assertSent(fn ($request): bool => $request->hasHeader('X-Plex-Token', 'the-token')
+            && ! $request->hasHeader('Authorization'));
+    });
 });
 
-it('nulls every PlexAccount field the account body omits', function (): void {
-    // Arrange
-    Http::fake([
-        'https://plex.tv/api/v2/user*' => Http::response(['id' => 1001]),
-    ]);
+describe('getFriends() friend list', function (): void {
+    it('returns a Collection of the 3 friends from GET clients.plex.tv/api/v2/friends', function (): void {
+        Http::fake([
+            '*clients.plex.tv/api/v2/friends*' => Http::response(fixtureBytes('Common/plex/friends.json')),
+        ]);
 
-    // Act
-    $account = resolve(PlexApiService::class)->getUserInfo('the-token');
+        $friends = resolve(PlexApiService::class)->getFriends('the-token');
 
-    // Assert
-    expect($account)->toBeInstanceOf(PlexAccount::class)
-        ->and($account->id)->toBe(1001)
-        ->and($account->uuid)->toBeNull()
-        ->and($account->username)->toBeNull()
-        ->and($account->email)->toBeNull()
-        ->and($account->thumb)->toBeNull();
-});
-
-it('sends the user request with X-Plex-Token and no Authorization header', function (): void {
-    Http::fake([
-        'https://plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
-    ]);
-
-    resolve(PlexApiService::class)->getUserInfo('the-token');
-
-    Http::assertSent(fn ($request): bool => $request->hasHeader('X-Plex-Token', 'the-token')
-        && ! $request->hasHeader('Authorization'));
-});
-
-it('returns a Collection of the 3 friends from GET clients.plex.tv/api/v2/friends', function (): void {
-    Http::fake([
-        '*clients.plex.tv/api/v2/friends*' => Http::response(fixtureBytes('Common/plex/friends.json')),
-    ]);
-
-    $friends = resolve(PlexApiService::class)->getFriends('the-token');
-
-    expect($friends)->toBeInstanceOf(Collection::class)
-        ->and($friends->count())->toBe(3)
-        ->and($friends->first()['username'])->toBe('plexuser2');
+        expect($friends)->toBeInstanceOf(Collection::class)
+            ->and($friends->count())->toBe(3)
+            ->and($friends->first()['username'])->toBe('plexuser2');
+    });
 });

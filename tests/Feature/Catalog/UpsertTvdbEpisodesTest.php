@@ -11,105 +11,107 @@ use App\Domains\Catalog\Models\Show;
 // ['data']['episodes'] is a 3-entry list; the first is _tvdb_id 4350173, name
 // "Good Night", aired 1987-04-19, seasonNumber 0, number 1.
 
-it('persists each episode raw with show_id', function (): void {
-    // Arrange
-    $show = Show::factory()->create();
-    $episodes = json_decode(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), true)['data']['episodes'];
+describe('handle() tvdb episode upsert', function (): void {
+    it('persists each episode raw with show_id', function (): void {
+        // Arrange
+        $show = Show::factory()->create();
+        $episodes = json_decode(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), true)['data']['episodes'];
 
-    // Act
-    (new UpsertTvdbEpisodes)->handle($show, $episodes);
+        // Act
+        (new UpsertTvdbEpisodes)->handle($show, $episodes);
 
-    // Assert
-    $this->assertDatabaseHas('episodes', [
-        '_tvdb_id' => 4350173,
-        'show_id' => $show->id,
-        '_tvdb_name' => 'Good Night',
-        '_tvdb_seasonNumber' => 0,
-        '_tvdb_number' => 1,
-    ]);
-    $episode = Episode::where('_tvdb_id', 4350173)->firstOrFail();
-    expect($episode->_tvdb_aired->format('Y-m-d'))->toBe('1987-04-19');
-    $this->assertDatabaseCount('episodes', 3);
-});
+        // Assert
+        $this->assertDatabaseHas('episodes', [
+            '_tvdb_id' => 4350173,
+            'show_id' => $show->id,
+            '_tvdb_name' => 'Good Night',
+            '_tvdb_seasonNumber' => 0,
+            '_tvdb_number' => 1,
+        ]);
+        $episode = Episode::where('_tvdb_id', 4350173)->firstOrFail();
+        expect($episode->_tvdb_aired->format('Y-m-d'))->toBe('1987-04-19');
+        $this->assertDatabaseCount('episodes', 3);
+    });
 
-it('stamps tvdb_synced_at and returns count', function (): void {
-    // Arrange
-    $show = Show::factory()->create();
-    $episodes = json_decode(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), true)['data']['episodes'];
+    it('stamps tvdb_synced_at and returns count', function (): void {
+        // Arrange
+        $show = Show::factory()->create();
+        $episodes = json_decode(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), true)['data']['episodes'];
 
-    // Act
-    $count = (new UpsertTvdbEpisodes)->handle($show, $episodes);
+        // Act
+        $count = (new UpsertTvdbEpisodes)->handle($show, $episodes);
 
-    // Assert
-    expect($count)->toBe(3);
-    expect(Episode::whereNotNull('tvdb_synced_at')->count())->toBe(3);
-});
+        // Assert
+        expect($count)->toBe(3);
+        expect(Episode::whereNotNull('tvdb_synced_at')->count())->toBe(3);
+    });
 
-it('does not duplicate episodes on re-run', function (): void {
-    // Arrange
-    $show = Show::factory()->create();
-    $episodes = json_decode(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), true)['data']['episodes'];
+    it('does not duplicate episodes on re-run', function (): void {
+        // Arrange
+        $show = Show::factory()->create();
+        $episodes = json_decode(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), true)['data']['episodes'];
 
-    // Act
-    $action = new UpsertTvdbEpisodes;
-    $action->handle($show, $episodes);
-    $action->handle($show, $episodes);
+        // Act
+        $action = new UpsertTvdbEpisodes;
+        $action->handle($show, $episodes);
+        $action->handle($show, $episodes);
 
-    // Assert
-    $this->assertDatabaseCount('episodes', 3);
-});
+        // Assert
+        $this->assertDatabaseCount('episodes', 3);
+    });
 
-it('skips an episode whose _tvdb_id normalizes to null', function (): void {
-    // Arrange
-    $show = Show::factory()->create();
-    $episodes = json_decode(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), true)['data']['episodes'];
-    $episodes[0]['id'] = 99999999999999; // oversized id SourceId::positiveInt() rejects
+    it('skips an episode whose _tvdb_id normalizes to null', function (): void {
+        // Arrange
+        $show = Show::factory()->create();
+        $episodes = json_decode(fixtureBytes('Catalog/tvdb/series_episodes_page1.json'), true)['data']['episodes'];
+        $episodes[0]['id'] = 99999999999999; // oversized id SourceId::positiveInt() rejects
 
-    // Act
-    (new UpsertTvdbEpisodes)->handle($show, $episodes);
+        // Act
+        (new UpsertTvdbEpisodes)->handle($show, $episodes);
 
-    // Assert
-    expect(Episode::where('_tvdb_id', 99999999999999)->exists())->toBeFalse();
-    $this->assertDatabaseCount('episodes', 2);
-});
+        // Assert
+        expect(Episode::where('_tvdb_id', 99999999999999)->exists())->toBeFalse();
+        $this->assertDatabaseCount('episodes', 2);
+    });
 
-it('nulls an unparseable aired date instead of crashing the run', function (): void {
-    // Arrange
-    $show = Show::factory()->create();
-    $episode = ['id' => 8675309, 'name' => 'Unaired', 'aired' => 'TBA', 'seasonNumber' => 1, 'number' => 1];
+    it('nulls an unparseable aired date instead of crashing the run', function (): void {
+        // Arrange
+        $show = Show::factory()->create();
+        $episode = ['id' => 8675309, 'name' => 'Unaired', 'aired' => 'TBA', 'seasonNumber' => 1, 'number' => 1];
 
-    // Act
-    (new UpsertTvdbEpisodes)->handle($show, [$episode]);
+        // Act
+        (new UpsertTvdbEpisodes)->handle($show, [$episode]);
 
-    // Assert
-    $persisted = Episode::where('_tvdb_id', 8675309)->firstOrFail();
-    expect($persisted->_tvdb_aired)->toBeNull();
-});
+        // Assert
+        $persisted = Episode::where('_tvdb_id', 8675309)->firstOrFail();
+        expect($persisted->_tvdb_aired)->toBeNull();
+    });
 
-it('returns only the accepted count, not the raw input count, when a row is skipped', function (): void {
-    // Arrange
-    $show = Show::factory()->create();
-    $episodes = [
-        ['id' => 4350173, 'seriesId' => 71663, 'seasonNumber' => 0, 'number' => 1],
-        ['id' => '1335814-slug', 'seriesId' => 71663, 'seasonNumber' => 0, 'number' => 2],
-    ];
+    it('returns only the accepted count, not the raw input count, when a row is skipped', function (): void {
+        // Arrange
+        $show = Show::factory()->create();
+        $episodes = [
+            ['id' => 4350173, 'seriesId' => 71663, 'seasonNumber' => 0, 'number' => 1],
+            ['id' => '1335814-slug', 'seriesId' => 71663, 'seasonNumber' => 0, 'number' => 2],
+        ];
 
-    // Act
-    $count = (new UpsertTvdbEpisodes)->handle($show, $episodes);
+        // Act
+        $count = (new UpsertTvdbEpisodes)->handle($show, $episodes);
 
-    // Assert
-    expect($count)->toBe(1);
-    $this->assertDatabaseCount('episodes', 1);
-});
+        // Assert
+        expect($count)->toBe(1);
+        $this->assertDatabaseCount('episodes', 1);
+    });
 
-it('returns 0 and persists nothing for empty episodes', function (): void {
-    // Arrange
-    $show = Show::factory()->create();
+    it('returns 0 and persists nothing for empty episodes', function (): void {
+        // Arrange
+        $show = Show::factory()->create();
 
-    // Act
-    $count = (new UpsertTvdbEpisodes)->handle($show, []);
+        // Act
+        $count = (new UpsertTvdbEpisodes)->handle($show, []);
 
-    // Assert
-    expect($count)->toBe(0);
-    $this->assertDatabaseCount('episodes', 0);
+        // Assert
+        expect($count)->toBe(0);
+        $this->assertDatabaseCount('episodes', 0);
+    });
 });

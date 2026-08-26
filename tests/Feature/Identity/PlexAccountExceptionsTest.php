@@ -23,41 +23,43 @@ use App\Domains\Identity\Exceptions\PlexAccountLacksServerAccess;
 | the input under test rather than anything a fixture would produce.
 */
 
-it('names the Plex account in the lacks-server-access message', function (): void {
-    // Arrange
-    $account = new PlexAccount(1001, '0000000000000001', 'plexuser1', 'user1@example.com', null);
+describe('::for() message wording', function (): void {
+    it('names the Plex account in the lacks-server-access message', function (): void {
+        // Arrange
+        $account = new PlexAccount(1001, '0000000000000001', 'plexuser1', 'user1@example.com', null);
 
-    // Act
-    $exception = PlexAccountLacksServerAccess::for($account);
+        // Act
+        $exception = PlexAccountLacksServerAccess::for($account);
 
-    // Assert
-    expect($exception->getMessage())->toBe(
-        'Plex auth failed: account has no server access (plex_id=1001, plex_username=plexuser1, plex_email=user1@example.com).'
-    );
-});
+        // Assert
+        expect($exception->getMessage())->toBe(
+            'Plex auth failed: account has no server access (plex_id=1001, plex_username=plexuser1, plex_email=user1@example.com).'
+        );
+    });
 
-it('names the account fields as null when the Plex account carries none', function (): void {
-    // Arrange
-    $account = new PlexAccount(null, null, null, null, null);
+    it('names the account fields as null when the Plex account carries none', function (): void {
+        // Arrange
+        $account = new PlexAccount(null, null, null, null, null);
 
-    // Act
-    $exception = PlexAccountLacksServerAccess::for($account);
+        // Act
+        $exception = PlexAccountLacksServerAccess::for($account);
 
-    // Assert
-    expect($exception->getMessage())->toBe(
-        'Plex auth failed: account has no server access (plex_id=null, plex_username=null, plex_email=null).'
-    );
-});
+        // Assert
+        expect($exception->getMessage())->toBe(
+            'Plex auth failed: account has no server access (plex_id=null, plex_username=null, plex_email=null).'
+        );
+    });
 
-it('names the Plex account and the existing user in the already-registered message', function (): void {
-    // Arrange
-    $account = new PlexAccount(1001, '0000000000000001', 'plexuser1', 'user1@example.com', null);
+    it('names the Plex account and the existing user in the already-registered message', function (): void {
+        // Arrange
+        $account = new PlexAccount(1001, '0000000000000001', 'plexuser1', 'user1@example.com', null);
 
-    // Act
-    $exception = PlexAccountAlreadyRegistered::for($account, 7);
+        // Act
+        $exception = PlexAccountAlreadyRegistered::for($account, 7);
 
-    // Assert
-    expect($exception->getMessage())->toBe(
-        'Plex auth failed: account already registered (plex_id=1001, plex_username=plexuser1, plex_email=user1@example.com, existing_user_id=7).'
-    );
+        // Assert
+        expect($exception->getMessage())->toBe(
+            'Plex auth failed: account already registered (plex_id=1001, plex_username=plexuser1, plex_email=user1@example.com, existing_user_id=7).'
+        );
+    });
 });

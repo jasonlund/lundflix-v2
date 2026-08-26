@@ -43,155 +43,161 @@ $verifiedPlexIdentity = fn (): VerifiedPlexIdentity => new VerifiedPlexIdentity(
     token: 'sxWpYzQ1TkxAbCdEfGhI',
 );
 
-it('redirects a guest with no verified plex session away from the registration form', function (): void {
-    // Arrange
-    // no plex_registration stashed in the session
+describe('GET /register form access', function () use ($verifiedPlexIdentity): void {
+    it('redirects a guest with no verified plex session away from the registration form', function (): void {
+        // Arrange
+        // no plex_registration stashed in the session
 
-    // Act
-    $response = $this->get('/register');
+        // Act
+        $response = $this->get('/register');
 
-    // Assert
-    $response->assertRedirect('/login');
+        // Assert
+        $response->assertRedirect('/login');
+    });
+
+    // A stash the session cannot turn back into a verified identity — truncated by a
+    // deploy, or half-written — must degrade to the no-identity path rather than
+    // fatal on the keys it is missing.
+    it('redirects a guest whose stashed identity is incomplete away from the registration form', function (): void {
+        // Arrange
+        $incompleteStash = ['id' => 1001];
+
+        // Act
+        $response = $this->withSession(['plex_registration' => $incompleteStash])->get('/register');
+
+        // Assert
+        $response->assertRedirect('/login');
+    });
+
+    // The session serializes to JSON (config session.serialization), so a stashed
+    // PHP object comes back from the handler as a plain array on the next request —
+    // the identity has to survive that round trip or /register sees no identity at
+    // all. The test driver never writes through a handler, so the encode/decode the
+    // real one performs is applied to the stashed value by hand.
+    it('reads back a stashed verified identity that has been through the session serializer', function () use ($verifiedPlexIdentity): void {
+        // Arrange
+        $identity = $verifiedPlexIdentity();
+        PlexSession::stashVerifiedIdentity($identity);
+        session(['plex_registration' => json_decode((string) json_encode(session('plex_registration')), true)]);
+
+        // Act
+        $hydrated = PlexSession::verifiedIdentity();
+
+        // Assert
+        expect($hydrated)->toBeInstanceOf(VerifiedPlexIdentity::class)
+            ->and($hydrated->account->id)->toBe(1001)
+            ->and($hydrated->account->uuid)->toBe('0000000000000001')
+            ->and($hydrated->account->username)->toBe('plexuser1')
+            ->and($hydrated->account->email)->toBe('user1@example.com')
+            ->and($hydrated->account->thumb)->toBe('https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1')
+            ->and($hydrated->token)->toBe('sxWpYzQ1TkxAbCdEfGhI');
+    });
+
+    it('renders the registration form with the verified plex username and email', function () use ($verifiedPlexIdentity): void {
+        // Arrange
+        $plex = $verifiedPlexIdentity();
+
+        // Act
+        $response = $this->withSession(['plex_registration' => $plex])->get('/register');
+
+        // Assert
+        $response->assertInertia(fn (Assert $page): Assert => $page
+            ->component('identity/Register')
+            ->where('plexUsername', 'plexuser1')
+            ->where('plexEmail', 'user1@example.com')
+        );
+    });
 });
 
-// A stash the session cannot turn back into a verified identity — truncated by a
-// deploy, or half-written — must degrade to the no-identity path rather than
-// fatal on the keys it is missing.
-it('redirects a guest whose stashed identity is incomplete away from the registration form', function (): void {
-    // Arrange
-    $incompleteStash = ['id' => 1001];
+describe('POST /register account creation', function () use ($verifiedPlexIdentity): void {
+    it('creates the plex user, logs them in, and sends them home', function () use ($verifiedPlexIdentity): void {
+        // Arrange
+        $plex = $verifiedPlexIdentity();
 
-    // Act
-    $response = $this->withSession(['plex_registration' => $incompleteStash])->get('/register');
+        // Act
+        $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
+            'name' => 'Jason',
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]);
 
-    // Assert
-    $response->assertRedirect('/login');
+        // Assert
+        $response->assertRedirect(route('home'));
+        $this->assertDatabaseHas('users', [
+            'name' => 'Jason',
+            'email' => 'user1@example.com',
+            '_plex_id' => '1001',
+            '_plex_uuid' => '0000000000000001',
+            '_plex_username' => 'plexuser1',
+            '_plex_thumb' => 'https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1',
+        ]);
+        $this->assertAuthenticatedAs(User::query()->where('email', 'user1@example.com')->sole());
+    });
+
+    it('logs the new user in for the session only, issuing no remember-me cookie', function () use ($verifiedPlexIdentity): void {
+        // Arrange
+        $plex = $verifiedPlexIdentity();
+
+        // Act
+        $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
+            'name' => 'Jason',
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]);
+
+        // Assert
+        $response->assertCookieMissing(Auth::guard()->getRecallerName());
+        $this->assertAuthenticated();
+    });
+
+    it('clears the stashed plex identity once the account is created', function () use ($verifiedPlexIdentity): void {
+        // Arrange
+        $plex = $verifiedPlexIdentity();
+
+        // Act
+        $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
+            'name' => 'Jason',
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]);
+
+        // Assert
+        $response->assertSessionMissing('plex_registration');
+    });
 });
 
-// The session serializes to JSON (config session.serialization), so a stashed
-// PHP object comes back from the handler as a plain array on the next request —
-// the identity has to survive that round trip or /register sees no identity at
-// all. The test driver never writes through a handler, so the encode/decode the
-// real one performs is applied to the stashed value by hand.
-it('reads back a stashed verified identity that has been through the session serializer', function () use ($verifiedPlexIdentity): void {
-    // Arrange
-    $identity = $verifiedPlexIdentity();
-    PlexSession::stashVerifiedIdentity($identity);
-    session(['plex_registration' => json_decode((string) json_encode(session('plex_registration')), true)]);
+describe('POST /register refusals', function () use ($verifiedPlexIdentity): void {
+    it('rejects a submission whose password is not confirmed', function () use ($verifiedPlexIdentity): void {
+        // Arrange
+        $plex = $verifiedPlexIdentity();
 
-    // Act
-    $hydrated = PlexSession::verifiedIdentity();
+        // Act
+        $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
+            'name' => 'Jason',
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'mismatched-confirmation',
+        ]);
 
-    // Assert
-    expect($hydrated)->toBeInstanceOf(VerifiedPlexIdentity::class)
-        ->and($hydrated->account->id)->toBe(1001)
-        ->and($hydrated->account->uuid)->toBe('0000000000000001')
-        ->and($hydrated->account->username)->toBe('plexuser1')
-        ->and($hydrated->account->email)->toBe('user1@example.com')
-        ->and($hydrated->account->thumb)->toBe('https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1')
-        ->and($hydrated->token)->toBe('sxWpYzQ1TkxAbCdEfGhI');
-});
+        // Assert
+        $response->assertSessionHasErrors('password');
+        expect(User::query()->count())->toBe(0);
+        $this->assertGuest();
+    });
 
-it('renders the registration form with the verified plex username and email', function () use ($verifiedPlexIdentity): void {
-    // Arrange
-    $plex = $verifiedPlexIdentity();
+    it('refuses a submission with no verified plex session', function (): void {
+        // Arrange
+        // no plex_registration stashed in the session
 
-    // Act
-    $response = $this->withSession(['plex_registration' => $plex])->get('/register');
+        // Act
+        $response = $this->post('/register', [
+            'name' => 'Jason',
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]);
 
-    // Assert
-    $response->assertInertia(fn (Assert $page): Assert => $page
-        ->component('identity/Register')
-        ->where('plexUsername', 'plexuser1')
-        ->where('plexEmail', 'user1@example.com')
-    );
-});
-
-it('creates the plex user, logs them in, and sends them home', function () use ($verifiedPlexIdentity): void {
-    // Arrange
-    $plex = $verifiedPlexIdentity();
-
-    // Act
-    $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
-        'name' => 'Jason',
-        'password' => 'correct-horse-battery-staple',
-        'password_confirmation' => 'correct-horse-battery-staple',
-    ]);
-
-    // Assert
-    $response->assertRedirect(route('home'));
-    $this->assertDatabaseHas('users', [
-        'name' => 'Jason',
-        'email' => 'user1@example.com',
-        '_plex_id' => '1001',
-        '_plex_uuid' => '0000000000000001',
-        '_plex_username' => 'plexuser1',
-        '_plex_thumb' => 'https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1',
-    ]);
-    $this->assertAuthenticatedAs(User::query()->where('email', 'user1@example.com')->sole());
-});
-
-it('logs the new user in for the session only, issuing no remember-me cookie', function () use ($verifiedPlexIdentity): void {
-    // Arrange
-    $plex = $verifiedPlexIdentity();
-
-    // Act
-    $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
-        'name' => 'Jason',
-        'password' => 'correct-horse-battery-staple',
-        'password_confirmation' => 'correct-horse-battery-staple',
-    ]);
-
-    // Assert
-    $response->assertCookieMissing(Auth::guard()->getRecallerName());
-    $this->assertAuthenticated();
-});
-
-it('clears the stashed plex identity once the account is created', function () use ($verifiedPlexIdentity): void {
-    // Arrange
-    $plex = $verifiedPlexIdentity();
-
-    // Act
-    $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
-        'name' => 'Jason',
-        'password' => 'correct-horse-battery-staple',
-        'password_confirmation' => 'correct-horse-battery-staple',
-    ]);
-
-    // Assert
-    $response->assertSessionMissing('plex_registration');
-});
-
-it('rejects a submission whose password is not confirmed', function () use ($verifiedPlexIdentity): void {
-    // Arrange
-    $plex = $verifiedPlexIdentity();
-
-    // Act
-    $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
-        'name' => 'Jason',
-        'password' => 'correct-horse-battery-staple',
-        'password_confirmation' => 'mismatched-confirmation',
-    ]);
-
-    // Assert
-    $response->assertSessionHasErrors('password');
-    expect(User::query()->count())->toBe(0);
-    $this->assertGuest();
-});
-
-it('refuses a submission with no verified plex session', function (): void {
-    // Arrange
-    // no plex_registration stashed in the session
-
-    // Act
-    $response = $this->post('/register', [
-        'name' => 'Jason',
-        'password' => 'correct-horse-battery-staple',
-        'password_confirmation' => 'correct-horse-battery-staple',
-    ]);
-
-    // Assert
-    $response->assertRedirect('/login');
-    expect(User::query()->count())->toBe(0);
-    $this->assertGuest();
+        // Assert
+        $response->assertRedirect('/login');
+        expect(User::query()->count())->toBe(0);
+        $this->assertGuest();
+    });
 });

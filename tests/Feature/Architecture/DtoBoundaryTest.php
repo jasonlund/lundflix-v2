@@ -239,39 +239,43 @@ function dtoBoundaryTypeIsArray(?ReflectionType $type): bool
     return $type instanceof ReflectionNamedType && $type->getName() === 'array';
 }
 
-it('flags an array-typed public method on a domain boundary', function (): void {
-    // Arrange
-    $double = new class
-    {
-        public function handle(array $rows): void {}
-    };
+describe('arrayTypedBoundaryMethods() offender detection', function (): void {
+    it('flags an array-typed public method on a domain boundary', function (): void {
+        // Arrange
+        $double = new class
+        {
+            public function handle(array $rows): void {}
+        };
 
-    // Act
-    $offenders = arrayTypedBoundaryMethods([new ReflectionClass($double)]);
+        // Act
+        $offenders = arrayTypedBoundaryMethods([new ReflectionClass($double)]);
 
-    // Assert
-    expect($offenders)->toHaveCount(1);
-    expect($offenders[0])->toEndWith('::handle');
+        // Assert
+        expect($offenders)->toHaveCount(1);
+        expect($offenders[0])->toEndWith('::handle');
+    });
+
+    it('does not flag a documented exemption', function (): void {
+        // Arrange
+        $exempt = new ReflectionClass(UpsertTmdbMovies::class);
+
+        // Act
+        $offenders = arrayTypedBoundaryMethods([$exempt]);
+
+        // Assert
+        expect($offenders)->toBe([], UpsertTmdbMovies::class.'::handle takes raw TMDB payloads and is exempt.');
+    });
 });
 
-it('does not flag a documented exemption', function (): void {
-    // Arrange
-    $exempt = new ReflectionClass(UpsertTmdbMovies::class);
+describe('the app/Domains boundary fence', function (): void {
+    it('has no domain boundary method typed array outside the exemption list', function (): void {
+        // Arrange
+        // the real app/Domains tree is the subject, no state to set up
 
-    // Act
-    $offenders = arrayTypedBoundaryMethods([$exempt]);
+        // Act
+        $offenders = arrayTypedBoundaryMethods(dtoBoundaryClasses());
 
-    // Assert
-    expect($offenders)->toBe([], UpsertTmdbMovies::class.'::handle takes raw TMDB payloads and is exempt.');
-});
-
-it('has no domain boundary method typed array outside the exemption list', function (): void {
-    // Arrange
-    // the real app/Domains tree is the subject, no state to set up
-
-    // Act
-    $offenders = arrayTypedBoundaryMethods(dtoBoundaryClasses());
-
-    // Assert
-    expect($offenders)->toBe([], 'Actions/Services boundaries must speak in DTOs, not array. Offenders: '.implode(', ', $offenders));
+        // Assert
+        expect($offenders)->toBe([], 'Actions/Services boundaries must speak in DTOs, not array. Offenders: '.implode(', ', $offenders));
+    });
 });

@@ -40,6 +40,48 @@ description: >-
 - Test **behavior, not implementation**: assert response/DB/side-effects the caller
   observes, not internal method calls.
 
+## Anti-patterns
+
+- **Tautological.** The expected value is recomputed the way the code computes it,
+  so the test passes by construction and can never disagree with the code. A
+  `foreach` in the test that re-derives the sum, a `Str::slug()` call in the
+  assertion mirroring the one under test, an expectation built from the same enum
+  map. The expected value must come from an **independent** source: a literal you
+  worked out by hand, a value from the spec, a known-good capture.
+
+  ```php
+  // BAD — recomputes the implementation
+  expect($movie->displayTitle())->toBe($movie->_tmdb_title ?? $movie->_imdb_title);
+
+  // GOOD — an independent literal
+  expect($movie->displayTitle())->toBe('Blade Runner');
+  ```
+
+- **Implementation-coupled.** Mocking an internal collaborator, asserting on call
+  counts or ordering, or testing a private method. The tell: the test breaks under
+  a refactor that changed no behavior.
+- **Mock only at system seams** — a third-party HTTP API, a shelled process, the
+  clock, randomness. **Never mock our own classes.** A domain Action, a service, a
+  model: build the real thing. Our own collaborators are `in-process` or
+  `local-substitutable` dependencies (see `codebase-design`), and both are testable
+  for real.
+- **Test names describe WHAT, not HOW** — `it('rejects a duplicate title')`, not
+  `it('calls the uniqueness validator')`.
+
+**Source:** the tautological, implementation-coupled, and mock-only-at-seams rules
+are adapted from `mattpocock-skills:tdd` (`tests.md` and `mocking.md`). Offer to
+explain the upstream reasoning when one of them decides a review call.
+
+### Database assertions ARE behavior verification
+
+`assertDatabaseHas` / `assertDatabaseCount` / `assertDatabaseMissing` are the
+**correct** way to verify an ingest or sync module such as `SyncTmdbMovies`: the
+persisted row *is* the observable behavior, so assert it and treat that as testing
+at the seam — see `docs/adr/0002-database-assertions-verify-ingest-behavior.md`.
+
+Where a read interface *does* exist and is the thing under test, prefer it — assert
+on what the endpoint or accessor returns rather than re-querying the table behind it.
+
 ## External HTTP / API fixtures
 
 When a test fakes an external API, the faked response body must be a **byte-exact
@@ -71,6 +113,19 @@ shape (fabricated fixtures drift from what the API actually emits and still pass
   fields beyond what the captured/spliced members already carry.
 - NB: the "never raw inserts or fixtures" rule below is about **DB state** (use
   factories) — it does not apply to these external-response fixtures.
+
+### Design the client so one fake is one shape
+
+Give an API service **one named method per external operation** (`fetchMovie()`,
+`fetchChanges()`), not a single generic `request($endpoint, $options)` with
+conditional logic inside. A generic fetcher forces the *fake* to grow the same
+conditional — a `Http::fake` closure branching on the URL to decide which body to
+return — and a test setup that has to think is a test setup people fabricate
+bodies to avoid writing.
+
+With one method per operation: each fake returns one fixture, the test shows at a
+glance which endpoints it exercises, and a new endpoint can't silently change an
+existing test's behavior.
 
 ## Inertia assertions
 
@@ -117,6 +172,36 @@ by `tests/Unit/TestCommentStandardTest.php`:
      counts, why-faked-per-file.
    - **Inline why-comments** for non-obvious mechanics (binding-drop bugs,
      leak-under-test, on-demand-parsing proofs).
+
+## Test-organization standard (strict)
+
+How a test **file** is laid out, enforced by `tests/Unit/TestOrganizationStandardTest.php`
+(which scans `tests/**/*.php` + `resources/js/**/*.test.ts(x)` through
+`Tests\Support\TestOrganizationScanner`). Machine-checked rules first:
+
+1. **Every `it()` lives inside a `describe()`.** Several top-level describes per
+   file are fine — one per behavior area; nesting allowed. Never a top-level test.
+2. **Canonical file skeleton**, in this order:
+   `declare(strict_types=1)` → `use` imports → `uses(...)` → provenance banner →
+   helper `function` declarations → file-level `beforeEach` → `describe`s.
+   Helpers go **above** the tests that call them; a banner is rank-neutral (it may
+   sit anywhere in the header).
+3. **Helper function names are unique across the whole suite** — they share one
+   global namespace. A helper wanted by a second file moves to `tests/Pest.php`.
+   Both helper rules govern named `function` declarations only; a closure assigned
+   to a variable (`$report = function () {…}`) is file-scoped, not global, so it is
+   deliberately out of scope.
+4. **`it()` descriptions** start lowercase, never start with "should", and are
+   unique within their describe (the same description may repeat in another group).
+5. **`describe` labels are unique within a file.**
+
+Judgment rules the scanner can't check:
+
+- **Label style: subject + facet**, method names keeping their parens —
+  `describe('series() JWT auth', …)`, `describe('episodes() pagination', …)`.
+- **Happy path first**, edge cases and failures last within a describe.
+- **`beforeEach` may be file-level or per-`describe`**; prefer a per-`describe`
+  one over repeating the same arrange in every `it()` of that group.
 
 ## RED checklist (for tdd-test-writer)
 
