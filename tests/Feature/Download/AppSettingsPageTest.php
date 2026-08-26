@@ -23,15 +23,27 @@ describe('AppSettings form load', function (): void {
         expect($page->get('data')['pass'])->toBe('');
     });
 
-    it('never ships the plaintext pass in the livewire snapshot', function (): void {
+    it('never ships a stored plaintext credential in the livewire snapshot', function (): void {
+        // The sentinels must actually be persisted first: a leak can only ship a value the
+        // page could read, so asserting against a credential that was never stored would
+        // hold no matter what mount() fills into the public $data.
         // Arrange
         $this->actingAs(User::factory()->create());
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'stored-uid-h4rd1e';
+        $settings->pass = 'sentinel-pass-qz7w2k';
+        $settings->rss_key = 'sentinel-rss-vm9x4t';
+        $settings->save();
 
         // Act
         $html = Livewire::test(AppSettings::class)->html();
 
         // Assert
-        expect($html)->not->toContain('test-pass');
+        expect($html)->not->toContain('sentinel-pass-qz7w2k');
+        expect($html)->not->toContain('sentinel-rss-vm9x4t');
+        // Non-vacuity guard: the uid proves the page really rendered the persisted
+        // settings, so "neither sentinel present" cannot pass on an empty render.
+        expect($html)->toContain('stored-uid-h4rd1e');
     });
 });
 
