@@ -560,10 +560,11 @@ describe('catalog:sync-movies changes-feed update phase', function (): void {
         // Arrange
         Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
-        // Marker at 04:00 (time-of-day < the 6h overlap): marker − 6h crosses to the
-        // previous calendar day, so start_date must floor to 2026-07-15. A bare marker
-        // (overlap dropped) would floor to today, 2026-07-16, and fail the assertion.
-        Cache::put(SyncFeed::TmdbMovies->cacheKey(), now()->subHours(8)->toImmutable());
+        // Marker at 2026-07-14 04:00 — under 6h into its day, so the three candidate
+        // window starts fall on three different calendar days, the only granularity
+        // the assertion compares: marker − 6h → 2026-07-13; overlap dropped →
+        // 2026-07-14; marker ignored for the 24h fallback → 2026-07-15.
+        Cache::put(SyncFeed::TmdbMovies->cacheKey(), now()->subDays(2)->subHours(8)->toImmutable());
         Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
         fakeTmdbUpdateSync();
 
@@ -571,7 +572,7 @@ describe('catalog:sync-movies changes-feed update phase', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        assertRequestedChangesWindow('2026-07-15', '2026-07-16');
+        assertRequestedChangesWindow('2026-07-13', '2026-07-16');
     });
 
     it('falls back to a 24h changes window when no marker is cached', function (): void {
