@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domains\Catalog\Support;
+namespace App\Domains\Catalog\Data;
 
 use Carbon\CarbonImmutable;
 

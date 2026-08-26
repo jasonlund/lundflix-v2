@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domains\Catalog\Actions\ImportImdbAkas;
+use App\Domains\Catalog\Data\TitleImportCounts;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Support\Facades\DB;
@@ -162,6 +163,8 @@ it('inserts nothing for a titleId with no matching title', function (): void {
     expect(Movie::query()->count())->toBe(1)
         ->and(Show::query()->count())->toBe(0)
         ->and(Movie::query()->where('_imdb_id', 'tt0000001')->exists())->toBeFalse()
-        ->and($result)->toBe(['movies' => 1, 'shows' => 0])
+        ->and($result)->toBeInstanceOf(TitleImportCounts::class)
+        ->and($result->movies)->toBe(1)
+        ->and($result->shows)->toBe(0)
         ->and(Movie::query()->find($movie->id)->_imdb_akas)->toBeArray()->toHaveCount(1);
 });

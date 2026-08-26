@@ -6,13 +6,13 @@ namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Actions\UpsertTmdbMovies;
+use App\Domains\Catalog\Data\SyncWindow;
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Services\TmdbExportService;
 use App\Domains\Catalog\Support\Batches;
 use App\Domains\Catalog\Support\SyncMarker;
-use App\Domains\Catalog\Support\SyncWindow;
 use Carbon\CarbonImmutable;
 use Generator;
 use Illuminate\Console\Attributes\Description;

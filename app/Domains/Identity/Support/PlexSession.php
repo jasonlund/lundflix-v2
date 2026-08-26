@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domains\Identity\Support;
 
+use App\Domains\Common\Data\PlexAccount;
+use App\Domains\Identity\Data\VerifiedPlexIdentity;
+
 /**
  * The Plex sign-in flow spans three requests and hands state between them
  * through the session: /auth/plex stashes the PIN, the callback trades it for a
@@ -11,6 +14,12 @@ namespace App\Domains\Identity\Support;
  * key is written by one controller and read by another, and a mistyped literal
  * fails silently — the read returns null and the guest is simply bounced to
  * /login — so the keys and their shapes live here, at neither end.
+ *
+ * The verified identity is marshalled to a plain payload on the way in and
+ * hydrated on the way out because `config('session.serialization')` is `json`:
+ * an object handed to the session is JSON-encoded when the handler writes it
+ * and decodes back as a bare array on the next request, so stashing the DTO
+ * itself would hand /register an array and bounce every guest to /login.
  */
 final class PlexSession
 {
@@ -34,24 +43,75 @@ final class PlexSession
         return $pinId === null ? null : (int) $pinId;
     }
 
-    /**
-     * @param  array{id: int|null, uuid: string|null, username: string|null, email: string|null, thumb: string|null, token: string}  $identity  the Plex account behind a claimed PIN, plus that PIN's token
-     */
-    public static function stashVerifiedIdentity(array $identity): void
+    public static function stashVerifiedIdentity(VerifiedPlexIdentity $identity): void
     {
-        session([self::VERIFIED_IDENTITY => $identity]);
+        session([self::VERIFIED_IDENTITY => [
+            'account' => [
+                'id' => $identity->account->id,
+                'uuid' => $identity->account->uuid,
+                'username' => $identity->account->username,
+                'email' => $identity->account->email,
+                'thumb' => $identity->account->thumb,
+            ],
+            'token' => $identity->token,
+        ]]);
     }
 
-    /**
-     * @return array{id: int|null, uuid: string|null, username: string|null, email: string|null, thumb: string|null, token: string}|null
-     */
-    public static function verifiedIdentity(): ?array
+    public static function verifiedIdentity(): ?VerifiedPlexIdentity
     {
-        return session(self::VERIFIED_IDENTITY);
+        $stash = session(self::VERIFIED_IDENTITY);
+
+        // The stash is only JSON-encoded when the handler writes the session out
+        // at the end of the request, so within the request that stashed it the
+        // store still hands back the object itself. Both shapes therefore reach
+        // this read: the identity before that round trip, the payload after it.
+        if ($stash instanceof VerifiedPlexIdentity) {
+            return $stash;
+        }
+
+        return is_array($stash) ? self::hydrate($stash) : null;
     }
 
     public static function forgetVerifiedIdentity(): void
     {
         session()->forget(self::VERIFIED_IDENTITY);
+    }
+
+    /**
+     * The mirror of stashVerifiedIdentity(): the same two keys, then the same
+     * five account fields in the same order.
+     *
+     * A payload it cannot rebuild an identity from — no account, no token, a
+     * field the stash never carried, or a value of the wrong type — reads as no
+     * identity at all, so a stash truncated by a deploy or half-written bounces
+     * the guest to /login instead of reaching the constructor as a TypeError.
+     *
+     * @param  array<array-key, mixed>  $stash
+     */
+    private static function hydrate(array $stash): ?VerifiedPlexIdentity
+    {
+        $account = $stash['account'] ?? null;
+        $token = $stash['token'] ?? null;
+
+        if (! is_array($account) || ! is_string($token)) {
+            return null;
+        }
+
+        foreach (['id', 'uuid', 'username', 'email', 'thumb'] as $field) {
+            if (! array_key_exists($field, $account)) {
+                return null;
+            }
+        }
+
+        return new VerifiedPlexIdentity(
+            new PlexAccount(
+                id: is_int($account['id']) ? $account['id'] : null,
+                uuid: is_string($account['uuid']) ? $account['uuid'] : null,
+                username: is_string($account['username']) ? $account['username'] : null,
+                email: is_string($account['email']) ? $account['email'] : null,
+                thumb: is_string($account['thumb']) ? $account['thumb'] : null,
+            ),
+            token: $token,
+        );
     }
 }

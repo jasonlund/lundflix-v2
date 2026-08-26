@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Common\Data\PlexServerConnection;
 use App\Domains\Common\Services\PlexApiService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -13,7 +14,9 @@ use Illuminate\Support\Facades\Http;
 | getOnlineServers($token) calls getUserResources under the hood (GET
 | clients.plex.tv/api/v2/resources), then filters to present server resources
 | that expose at least one usable (non-local) connection, and projects each to
-| a slim shape with the best reachable uri.
+| a PlexServerConnection carrying the best reachable uri. Every prop is
+| non-nullable: the projection already reads name/accessToken/owned unguarded
+| and drops any server whose best uri resolves to null.
 |
 | Fixtures:
 |   tests/Fixtures/Common/plex/resources.json — byte-exact real capture of 3
@@ -30,7 +33,7 @@ use Illuminate\Support\Facades\Http;
 |     resolve to the IPv4 connection.
 */
 
-it('filters to present servers and projects each to the slim shape', function (): void {
+it('filters to present servers and projects each to a PlexServerConnection', function (): void {
     // Arrange
     Http::fake([
         '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
@@ -42,8 +45,12 @@ it('filters to present servers and projects each to the slim shape', function ()
     // Assert
     expect($result)->toBeInstanceOf(Collection::class)
         ->and($result->count())->toBe(1)
-        ->and($result->first()['clientIdentifier'])->toBe('servermachineidentifier000000000')
-        ->and(array_keys($result->first()))->toBe(['name', 'clientIdentifier', 'accessToken', 'owned', 'uri'])
+        ->and($result->first())->toBeInstanceOf(PlexServerConnection::class)
+        ->and($result->first()->name)->toBe('lundflix')
+        ->and($result->first()->clientIdentifier)->toBe('servermachineidentifier000000000')
+        ->and($result->first()->accessToken)->toBe('REDACTED-accessToken')
+        ->and($result->first()->owned)->toBeTrue()
+        ->and($result->first()->uri)->toBe('https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022')
         ->and($result->pluck('clientIdentifier')->all())->not->toContain('clientslappy');
 });
 
@@ -57,7 +64,7 @@ it('prefers IPv4 over IPv6 over relay when choosing the best connection', functi
     $result = resolve(PlexApiService::class)->getOnlineServers('the-token');
 
     // Assert
-    expect($result->first()['uri'] ?? null)->toBe('https://ipv4-9.mix.plex.direct:32400');
+    expect($result->first()?->uri)->toBe('https://ipv4-9.mix.plex.direct:32400');
 });
 
 it('skips local connections and prefers an https uri over an earlier http one in the same class', function (): void {
@@ -72,7 +79,7 @@ it('skips local connections and prefers an https uri over an earlier http one in
     $result = resolve(PlexApiService::class)->getOnlineServers('the-token');
 
     // Assert
-    expect($result->first()['uri'] ?? null)->toBe('https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022');
+    expect($result->first()?->uri)->toBe('https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022');
 });
 
 it('treats an unflagged plex.direct host with a stray hex letter as a direct (IPv4-class) connection', function (): void {
@@ -88,7 +95,7 @@ it('treats an unflagged plex.direct host with a stray hex letter as a direct (IP
     $result = resolve(PlexApiService::class)->getOnlineServers('the-token');
 
     // Assert
-    expect($result->first()['uri'] ?? null)->toBe('https://deadbox.unflagged.plex.direct:32400');
+    expect($result->first()?->uri)->toBe('https://deadbox.unflagged.plex.direct:32400');
 });
 
 it('drops a server with no usable (non-local) connection', function (): void {

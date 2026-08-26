@@ -26,18 +26,18 @@ final readonly class PlexAuthorizationController
             return $this->refuse();
         }
 
-        $code = $pin['code'];
+        $code = $pin->code;
 
         // Plex can answer 2xx without a code; that value is the whole point of the
         // hand-off, so an unusable one is a Plex failure like any transport error —
         // without this guard it reaches getAuthUrl(string) as null and 500s.
         if (! is_string($code) || $code === '') {
-            report(PlexPinMissingCode::onStart($pin['id']));
+            report(PlexPinMissingCode::onStart($pin->id));
 
             return $this->refuse();
         }
 
-        PlexSession::rememberPin($pin['id']);
+        PlexSession::rememberPin($pin->id);
 
         // The Plex auth url carries a `#` fragment, which Inertia's middleware turns
         // into a 409 X-Inertia-Redirect — the client then XHRs app.plex.tv instead of

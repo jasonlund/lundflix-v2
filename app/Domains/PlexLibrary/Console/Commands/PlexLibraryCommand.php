@@ -40,8 +40,8 @@ abstract class PlexLibraryCommand extends Command
     {
         $this->output->writeln('Connecting to Plex server…');
         $connection = $this->library->serverConnection();
-        $uri = $connection['uri'];
-        $token = $connection['accessToken'];
+        $uri = $connection->uri;
+        $token = $connection->accessToken;
 
         $server = $this->upsertServer->handle($connection);
 

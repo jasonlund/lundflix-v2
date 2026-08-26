@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Common\Data\PlexServerConnection;
 use App\Domains\PlexLibrary\Exceptions\ConfiguredPlexServerUnavailable;
 use App\Domains\PlexLibrary\Services\PlexLibraryService;
 use Illuminate\Support\Facades\Http;
@@ -13,9 +14,10 @@ use Illuminate\Support\Str;
 |--------------------------------------------------------------------------
 | Mirrors tests/Feature/Common/PlexServerAccessTest.php (host-pattern
 | Http::fake, resolve() the service, Http::assertSent). serverConnection()
-| resolves the configured online server to its uri+accessToken via the config
-| OWNER token, throwing typed when that server isn't online. The container
-| injects the real PlexApiService, whose discovery HTTP is faked at the wire.
+| resolves the configured online server via the config OWNER token and hands
+| back the discovery PlexServerConnection unchanged, throwing typed when that
+| server isn't online. The container injects the real PlexApiService, whose
+| discovery HTTP is faked at the wire.
 |
 | Fixture (byte-exact real capture):
 |   tests/Fixtures/Common/plex/resources.json — top-level array of 3 server
@@ -42,7 +44,7 @@ it('sends the configured owner token as X-Plex-Token on discovery', function ():
         && $request->header('X-Plex-Token')[0] === 'owner-token-xyz');
 });
 
-it('returns the matching server uri and access token', function (): void {
+it('returns the matching server as a PlexServerConnection with its uri and access token', function (): void {
     // Arrange
     config([
         'services.plex.token' => 'owner-token-xyz',
@@ -56,8 +58,10 @@ it('returns the matching server uri and access token', function (): void {
     $connection = resolve(PlexLibraryService::class)->serverConnection();
 
     // Assert
-    expect($connection['uri'])->toBe('https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022')
-        ->and($connection['accessToken'])->not->toBeEmpty();
+    expect($connection)->toBeInstanceOf(PlexServerConnection::class)
+        ->and($connection->clientIdentifier)->toBe('servermachineidentifier000000000')
+        ->and($connection->uri)->toBe('https://203-0-113-2.servermachineidentifier000000000.plex.direct:6022')
+        ->and($connection->accessToken)->not->toBeEmpty();
 });
 
 it('throws when no online server matches the configured id', function (): void {
