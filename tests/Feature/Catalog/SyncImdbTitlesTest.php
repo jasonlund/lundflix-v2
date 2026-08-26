@@ -157,10 +157,11 @@ it('downloads the basics dataset and deletes the temp file afterward', function 
     expect(file_exists($sinkPath))->toBeFalse();
 });
 
-// Four matched, non-adult titles at --batch=2 must flush twice: the buffer
-// hits the boundary on the 2nd and 4th kept row, and the trailing flush of an
-// empty buffer emits nothing. The per-flush heartbeat is the observable signal.
-it('flushes once per batch', function (): void {
+// The beat counts dataset rows SCANNED, not titles written: at --batch=2 the
+// pre-filter closes a probe batch after the fixture's 2nd, 4th and 6th row, so
+// the two rows this run never writes — the unseeded tt0000001 and the adult
+// tt0064057 — still show up in the count.
+it('heartbeats cumulative scanned rows at each probe boundary', function (): void {
     // Arrange
     Movie::factory()->create(['_imdb_id' => 'tt0133093']);
     Movie::factory()->create(['_imdb_id' => 'tt0137523']);
@@ -173,8 +174,42 @@ it('flushes once per batch', function (): void {
 
     // Assert
     $output = Artisan::output();
-    expect(substr_count($output, '[imdb titles'))->toBe(2)
-        ->and($output)->toContain('[imdb titles 4]');
+    expect(substr_count($output, '[imdb titles'))->toBe(3)
+        ->and($output)->toContain('[imdb titles 2]')
+        ->and($output)->toContain('[imdb titles 4]')
+        ->and($output)->toContain('[imdb titles 6]');
+});
+
+// A run that writes nothing is exactly the long catalog-miss stretch the beat
+// exists for. The seeded tt9999999 is absent from the fixture, so its null
+// basics columns prove the run wrote nothing — an empty-table count would pass
+// for a run that never streamed a row.
+it('keeps beating through a zero-match run', function (): void {
+    // Arrange
+    $unmatched = Movie::factory()->create(['_imdb_id' => 'tt9999999']);
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
+
+    // Act
+    Artisan::call('catalog:sync-titles', ['--batch' => 2]);
+
+    // Assert
+    expect(Artisan::output())
+        ->toContain('[imdb titles 2]')
+        ->toContain('[imdb titles 4]')
+        ->toContain('[imdb titles 6]');
+    expect($unmatched->refresh()->_imdb_titleType)->toBeNull()
+        ->and($unmatched->_imdb_primaryTitle)->toBeNull()
+        ->and($unmatched->_imdb_startYear)->toBeNull();
+});
+
+it('prints an elapsed phase line on completion', function (): void {
+    // Shape only: the elapsed seconds are real wall clock around a streaming
+    // read, so there is no value to freeze and assert.
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
+
+    // Act & Assert
+    $this->artisan('catalog:sync-titles')->expectsOutputToContain('[elapsed');
 });
 
 /*

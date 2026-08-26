@@ -321,3 +321,29 @@ it('returns 0 and persists nothing for empty input', function (): void {
     expect($count)->toBe(0)
         ->and(Show::query()->count())->toBe(0);
 });
+
+it('sends nothing to the search engine when upserting new shows', function (): void {
+    // Arrange
+    $series = json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)['data'];
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([$series]);
+
+    // Assert
+    expect($capturedChunks())->toBe([]);
+});
+
+it('sends nothing to the search engine when re-upserting an already-persisted show', function (): void {
+    // Arrange
+    $series = json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)['data'];
+    Show::factory()->withTvdb()->create(['_tvdb_id' => $series['id']]);
+    // Registered after the factory save so that row's own auto-sync isn't captured.
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act
+    resolve(UpsertTvdbShows::class)->handle([$series]);
+
+    // Assert
+    expect($capturedChunks())->toBe([]);
+});

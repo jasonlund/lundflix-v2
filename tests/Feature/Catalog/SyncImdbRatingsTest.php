@@ -186,3 +186,53 @@ it('downloads despite a matching marker when forced', function (): void {
     Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && Str::contains($request->url(), 'title.ratings.tsv.gz'));
     expect($matrix->refresh()->_imdb_numVotes)->toBe(2252453);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Scanned-row heartbeat
+|--------------------------------------------------------------------------
+| The counts asserted below are dataset rows SCANNED, not ratings applied:
+| at --batch=2 the pre-filter closes a probe batch after the fixture's first
+| two rows and again after its last two, so a catalog-miss stretch still
+| moves the number.
+*/
+
+it('heartbeats cumulative scanned rows at each probe boundary', function (): void {
+    // Arrange
+    Movie::factory()->create(['_imdb_id' => 'tt0133093', '_imdb_numVotes' => 1, '_imdb_averageRating' => 1.0]);
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
+
+    // Act
+    Artisan::call('catalog:sync-ratings', ['--batch' => 2]);
+
+    // Assert
+    expect(Artisan::output())
+        ->toContain('[imdb ratings 2]')
+        ->toContain('[imdb ratings 4]');
+});
+
+it('keeps beating through a run that matches nothing', function (): void {
+    // Arrange
+    $unmatched = Movie::factory()->create(['_imdb_id' => 'tt9999999', '_imdb_numVotes' => 1, '_imdb_averageRating' => 1.0]);
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
+
+    // Act
+    Artisan::call('catalog:sync-ratings', ['--batch' => 2]);
+
+    // Assert
+    expect(Artisan::output())
+        ->toContain('[imdb ratings 2]')
+        ->toContain('[imdb ratings 4]');
+    expect($unmatched->refresh()->_imdb_numVotes)->toBe(1);
+    expect($unmatched->_imdb_averageRating)->toBe(1.0);
+});
+
+it('prints an elapsed phase line on completion', function (): void {
+    // Shape only: the elapsed seconds are real wall clock around a streaming
+    // read, so there is no value to freeze and assert.
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
+
+    // Act & Assert
+    $this->artisan('catalog:sync-ratings')->expectsOutputToContain('[elapsed');
+});

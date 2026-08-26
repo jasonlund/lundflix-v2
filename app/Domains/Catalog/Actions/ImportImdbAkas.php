@@ -65,12 +65,6 @@ final readonly class ImportImdbAkas
 
         $matchedIds = $this->bulkCaseUpdate->handle($query, $valuesById, [self::COLUMN]);
 
-        if ($matchedIds === []) {
-            return 0;
-        }
-
-        (clone $query)->whereIn('_imdb_id', $matchedIds)->searchable();
-
         return count($matchedIds);
     }
 

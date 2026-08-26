@@ -146,6 +146,57 @@ it('returns the matched imdb ids', function (): void {
     expect($matchedIds)->toEqualCanonicalizing([$first->_imdb_id, $second->_imdb_id]);
 });
 
+it('advances updated_at on every row it writes', function (): void {
+    // `updated_at` is the watermark the end-of-job reindex selects on
+    // (`where('updated_at', '>=', $watermark)`), so a bulk write that leaves it
+    // stale makes every row it touched invisible to the reindex.
+    // Arrange
+    $this->freezeTime();
+    $stale = '2020-01-01 00:00:00';
+    $first = Movie::factory()->create(['_imdb_numVotes' => 1]);
+    $second = Movie::factory()->create(['_imdb_numVotes' => 2]);
+    Movie::query()->whereKey([$first->id, $second->id])->toBase()->update(['updated_at' => $stale]);
+
+    // Act
+    resolve(BulkCaseUpdate::class)->handle(
+        Movie::query(),
+        [
+            $first->_imdb_id => ['_imdb_numVotes' => 2252453],
+            $second->_imdb_id => ['_imdb_numVotes' => 987654],
+        ],
+        ['_imdb_numVotes'],
+    );
+
+    // The stale precondition must differ from the frozen now, or the assertion
+    // below passes without the write having touched anything.
+    // Assert
+    expect($stale)->not->toBe(now()->toDateTimeString())
+        ->and(Movie::query()->find($first->id)->updated_at->toDateTimeString())->toBe(now()->toDateTimeString())
+        ->and(Movie::query()->find($second->id)->updated_at->toDateTimeString())->toBe(now()->toDateTimeString());
+});
+
+it('leaves updated_at stale on a row it does not write', function (): void {
+    // The watermark only holds if the write is precise: bumping unmatched rows
+    // would drag untouched titles into every reindex.
+    // Arrange
+    $this->freezeTime();
+    $stale = '2020-01-01 00:00:00';
+    $written = Movie::factory()->create(['_imdb_numVotes' => 1]);
+    $unmatched = Movie::factory()->create(['_imdb_numVotes' => 2]);
+    Movie::query()->whereKey([$written->id, $unmatched->id])->toBase()->update(['updated_at' => $stale]);
+
+    // Act
+    resolve(BulkCaseUpdate::class)->handle(
+        Movie::query(),
+        [$written->_imdb_id => ['_imdb_numVotes' => 2252453]],
+        ['_imdb_numVotes'],
+    );
+
+    // Assert
+    expect(Movie::query()->find($written->id)->updated_at->toDateTimeString())->toBe(now()->toDateTimeString())
+        ->and(Movie::query()->find($unmatched->id)->updated_at->toDateTimeString())->toBe($stale);
+});
+
 it('issues no update and returns no ids when nothing matches', function (): void {
     // Arrange
     $movie = Movie::factory()->create(['_imdb_numVotes' => 100]);

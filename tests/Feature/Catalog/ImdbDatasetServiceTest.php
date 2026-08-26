@@ -359,3 +359,127 @@ it('returns null when the probe fails with a non-2xx response', function (): voi
     // Assert
     expect($lastModified)->toBeNull();
 });
+
+it('yields only the probe-admitted rows cast identically to rows', function (): void {
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
+    $service = resolve(ImdbDatasetService::class);
+    $path = $service->download(ImdbDataset::TitleBasics);
+    $admitted = ['tt0133093' => true, 'tt0137523' => true];
+    $existing = fn (array $ids): array => array_intersect_key($admitted, array_flip($ids));
+
+    // Act
+    $rows = $service->matchedRows($path, ImdbDataset::TitleBasics, $existing, 10)->all();
+
+    // Assert
+    $expected = $service->rows($path, ImdbDataset::TitleBasics)
+        ->filter(fn (array $row): bool => array_key_exists($row['tconst'], $admitted))
+        ->values()
+        ->all();
+    expect($rows)->toHaveCount(2);
+    expect($rows)->toBe($expected);
+
+    @unlink($path);
+});
+
+it('probes in batches of at most the batch size covering every scanned id', function (): void {
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
+    $service = resolve(ImdbDatasetService::class);
+    $path = $service->download(ImdbDataset::TitleBasics);
+    $probes = [];
+    $existing = function (array $ids) use (&$probes): array {
+        $probes[] = $ids;
+
+        return [];
+    };
+
+    // Act
+    $service->matchedRows($path, ImdbDataset::TitleBasics, $existing, 2)->all();
+
+    // Assert
+    expect($probes)->toHaveCount(3);
+    expect(collect($probes)->map(fn (array $ids): int => count($ids))->max())->toBeLessThanOrEqual(2);
+    expect(collect($probes)->flatten()->all())->toEqualCanonicalizing(
+        ['tt0000001', 'tt0064057', 'tt0133093', 'tt0137523', 'tt0816692', 'tt0903747']
+    );
+
+    @unlink($path);
+});
+
+it('never splits one ids contiguous run across two probes', function (): void {
+    // The akas fixture repeats each titleId over dozens of consecutive rows, so a
+    // batch that closed on a raw row count instead of an id change would land the
+    // same id in two probe calls — the run has to close the batch, not the count.
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+    $service = resolve(ImdbDatasetService::class);
+    $path = $service->download(ImdbDataset::TitleAkas);
+    $probes = [];
+    $existing = function (array $ids) use (&$probes): array {
+        $probes[] = $ids;
+
+        return [];
+    };
+
+    // Act
+    $service->matchedRows($path, ImdbDataset::TitleAkas, $existing, 2)->all();
+
+    // Assert
+    $occurrences = collect($probes)
+        ->flatMap(fn (array $ids): array => array_unique($ids))
+        ->countBy()
+        ->all();
+    expect($occurrences)->toBe([
+        'tt0000001' => 1,
+        'tt0007189' => 1,
+        'tt0133093' => 1,
+        'tt0137523' => 1,
+        'tt0816692' => 1,
+    ]);
+
+    @unlink($path);
+});
+
+it('discards an unmatched malformed line without parsing it', function (): void {
+    // The malformed line is short a column, so mapRow()'s array_combine would raise
+    // a ValueError on it (see the full-consumption test above). Surviving a full
+    // consumption is therefore the proof that an unmatched line only ever gave up
+    // its tconst — it was never split into columns at all.
+    // Arrange
+    $header = "tconst\taverageRating\tnumVotes";
+    $row = "tt0133093\t8.7\t2252453";
+    $malformed = "tt0000000\ttoo few columns";
+    Http::fake(['*datasets.imdbws.com*' => Http::response(gzencode($header."\n".$row."\n".$malformed."\n"))]);
+    $service = resolve(ImdbDatasetService::class);
+    $path = $service->download(ImdbDataset::TitleRatings);
+    $existing = fn (array $ids): array => array_intersect_key(['tt0133093' => true], array_flip($ids));
+
+    // Act
+    $rows = $service->matchedRows($path, ImdbDataset::TitleRatings, $existing, 10)->all();
+
+    // Assert
+    expect($rows)->toHaveCount(1);
+    expect($rows[0]['tconst'])->toBe('tt0133093');
+
+    @unlink($path);
+});
+
+it('reports the cumulative scanned data rows once per probe batch', function (): void {
+    // Arrange
+    Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
+    $service = resolve(ImdbDatasetService::class);
+    $path = $service->download(ImdbDataset::TitleBasics);
+    $reported = [];
+    $scanned = function (int $count) use (&$reported): void {
+        $reported[] = $count;
+    };
+
+    // Act
+    $service->matchedRows($path, ImdbDataset::TitleBasics, fn (array $ids): array => [], 2, $scanned)->all();
+
+    // Assert
+    expect($reported)->toBe([2, 4, 6]);
+
+    @unlink($path);
+});

@@ -75,3 +75,24 @@ it('updates a mixed batch across both tables in one call', function (): void {
         ->and($freshShow->_imdb_averageRating)->toBe(9.2)
         ->and($result)->toBe(['movies' => 1, 'shows' => 1]);
 });
+
+it('passes nothing to the search engine while still applying the ratings', function (): void {
+    // Arrange
+    $movie = Movie::factory()->create(['_imdb_numVotes' => 100, '_imdb_averageRating' => 1.0]);
+    $show = Show::factory()->create(['_imdb_numVotes' => 200, '_imdb_averageRating' => 2.0]);
+    // Registered last so the factory saves' own create-time syncs aren't captured
+    // — otherwise every row looks reindexed and nothing can ever look quiet.
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act
+    $result = resolve(UpdateImdbRatings::class)->handle([
+        $movie->_imdb_id => ['numVotes' => 2252453, 'averageRating' => 8.7],
+        $show->_imdb_id => ['numVotes' => 987654, 'averageRating' => 9.2],
+    ]);
+
+    // Assert
+    expect(reindexedIds($capturedChunks()))->toBe([])
+        ->and(Movie::query()->find($movie->id)->_imdb_numVotes)->toBe(2252453)
+        ->and(Show::query()->find($show->id)->_imdb_numVotes)->toBe(987654)
+        ->and($result)->toBe(['movies' => 1, 'shows' => 1]);
+});

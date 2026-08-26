@@ -178,3 +178,42 @@ it('returns the matched counts per table for a mixed batch', function (): void {
     // Assert
     expect($result)->toBe(['movies' => 1, 'shows' => 1]);
 });
+
+it('passes nothing to the search engine while still writing the basics columns', function (): void {
+    // Arrange
+    $movie = Movie::factory()->create();
+    $show = Show::factory()->create();
+    // Registered last so the factory saves' own create-time syncs aren't captured
+    // — otherwise every row looks reindexed and nothing can ever look quiet.
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act
+    $result = resolve(ImportImdbTitles::class)->handle([
+        $movie->_imdb_id => [
+            'tconst' => $movie->_imdb_id,
+            'titleType' => 'movie',
+            'primaryTitle' => 'The Matrix',
+            'originalTitle' => 'The Matrix',
+            'startYear' => 1999,
+            'endYear' => null,
+            'runtimeMinutes' => 136,
+            'genres' => ['Action', 'Sci-Fi'],
+        ],
+        $show->_imdb_id => [
+            'tconst' => $show->_imdb_id,
+            'titleType' => 'tvSeries',
+            'primaryTitle' => 'Breaking Bad',
+            'originalTitle' => 'Breaking Bad',
+            'startYear' => 2008,
+            'endYear' => 2013,
+            'runtimeMinutes' => 48,
+            'genres' => ['Crime', 'Drama', 'Thriller'],
+        ],
+    ]);
+
+    // Assert
+    expect(reindexedIds($capturedChunks()))->toBe([])
+        ->and(Movie::query()->find($movie->id)->_imdb_primaryTitle)->toBe('The Matrix')
+        ->and(Show::query()->find($show->id)->_imdb_primaryTitle)->toBe('Breaking Bad')
+        ->and($result)->toBe(['movies' => 1, 'shows' => 1]);
+});

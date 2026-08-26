@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
@@ -459,10 +462,12 @@ it('selects only id and _tvdb_id when resolving the upserted shows', function ()
     $this->artisan('catalog:seed-shows-tvdb');
 
     // Assert
-    // Asserting the exact narrowed select list, because the log already carries a
-    // `select id from shows where _tvdb_id in (…)` (the upsert's own id lookup) and a
-    // wide `select *` from Scout's reindex — so "no select *" and "a narrow _tvdb_id
-    // select" are both green today and would prove nothing.
+    // Asserting the exact narrowed select list, because the log already carries two other
+    // reads of `shows`: a narrow `select _tvdb_id, _tmdb_id from shows where _tmdb_id in
+    // (…)` (the upsert's own crosswalk lookup) and a wide `select * from shows where
+    // updated_at >= ?` (the end-of-leg reindex walking the rows the leg touched) — so
+    // neither "no select *" nor "some narrow select on shows" would prove anything about
+    // the lookup under test.
     $lookups = collect(DB::getQueryLog())
         ->filter(fn (array $entry): bool => Str::contains(
             Str::replace(['"', '`'], '', (string) $entry['query']),
@@ -506,4 +511,91 @@ it('fails fast when --ids-file yields no valid ids', function (): void {
     Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/extended'));
 
     unlink($path);
+});
+
+/*
+|--------------------------------------------------------------------------
+| End-of-leg reindex
+|--------------------------------------------------------------------------
+| The ingest upserts through `Show::upsert()`, which fires no model events, so
+| nothing is indexed during the leg; the leg reindexes exactly the rows it
+| touched (updated_at >= run start) once, at the END of the leg — after the
+| in-run retry pass, so a row the retry healed rides the same single pass rather
+| than needing a second one. Every test below freezes the clock, which both pins
+| the elapsed phase lines at `0s` and makes the run-start watermark exactly equal
+| to the `updated_at` the upsert writes.
+*/
+
+/**
+ * Stamp a row's `updated_at` without the model touching timestamps itself.
+ */
+$stampUpdatedAt = function (Show $row, CarbonImmutable $updatedAt): void {
+    $row->newQuery()->whereKey($row->getKey())->update(['updated_at' => $updatedAt]);
+};
+
+it('passes exactly the crawled-and-upserted shows to the engine once at end of leg', function () use ($stampUpdatedAt): void {
+    // Arrange
+    // 9_000_001 is in neither the crawl page nor the extended payload, so this row is
+    // never re-upserted — only its stale updated_at keeps it out of the reindex.
+    Date::setTestNow('2026-07-16 12:00:00');
+    $stale = Show::factory()->withTvdb()->create(['_tvdb_id' => 9_000_001]);
+    $stampUpdatedAt($stale, CarbonImmutable::now()->subDay());
+    fakeTvdbSeedCrawl();
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act
+    $this->artisan('catalog:seed-shows-tvdb')->run();
+
+    // Assert
+    $touched = Show::query()->where('_tvdb_id', 81189)->firstOrFail();
+    expect($capturedChunks())->toBe([[$touched->id]]);
+});
+
+it('includes a show recovered by the in-run retry pass in the one end-of-leg reindex', function (): void {
+    // Arrange
+    // An undecodable 200 is non-retryable, so the crawl pass fails 70327 with exactly one
+    // request and the retry pass heals it to 81189 — a row that only exists because of the
+    // second pass, so a reindex placed before it would miss the row entirely.
+    Date::setTestNow('2026-07-16 12:00:00');
+    Sleep::fake();
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/series?page=0*' => Http::response(fixtureBytes('Catalog/tvdb/series_page1.json')),
+        '*api4.thetvdb.com/v4/series?page=1*' => Http::response(fixtureBytes('Catalog/tvdb/series_empty.json')),
+        '*api4.thetvdb.com/v4/series/70327/extended*' => Http::sequence()
+            ->push('not json', 200)
+            ->push(fixtureBytes('Catalog/tvdb/series_extended.json'), 200),
+        '*api4.thetvdb.com/v4/series/*/extended*' => Http::response('', 404),
+    ]);
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act
+    Artisan::call('catalog:seed-shows-tvdb');
+
+    // Assert
+    // The whole output buffer, not expectsOutputToContain(): "the phase ran once" is a
+    // count, and a per-pass reindex would satisfy any containment assertion just as well.
+    $healed = Show::query()->where('_tvdb_id', 81189)->firstOrFail();
+    expect($capturedChunks())->toBe([[$healed->id]]);
+    expect(Str::substrCount(Artisan::output(), 'Reindexing shows…'))->toBe(1);
+});
+
+it('emits the reindex heartbeat and completion line', function (): void {
+    // Arrange
+    Date::setTestNow('2026-07-16 12:00:00');
+    fakeTvdbSeedCrawl();
+
+    // Act & Assert
+    $this->artisan('catalog:seed-shows-tvdb')
+        ->expectsOutputToContain('  [reindex 1]')
+        ->expectsOutputToContain('Reindexed 1 show in 0s');
+});
+
+it('prints the ingest completion line with elapsed time once both passes complete', function (): void {
+    // Arrange
+    Date::setTestNow('2026-07-16 12:00:00');
+    fakeTvdbSeedCrawl();
+
+    // Act & Assert
+    $this->artisan('catalog:seed-shows-tvdb')->expectsOutputToContain('Synced shows in 0s');
 });

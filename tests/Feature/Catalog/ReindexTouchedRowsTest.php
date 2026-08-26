@@ -6,56 +6,9 @@ use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Laravel\Scout\EngineManager;
-use Laravel\Scout\Engines\Engine;
 
 uses(RefreshDatabase::class);
-
-/**
- * Point Scout at a spy engine and hand back a getter for the model keys the
- * engine has been handed, each `update()` call kept in its own group.
- *
- * The suite runs `SCOUT_DRIVER=collection`, whose engine writes nothing a DB
- * assertion can see — the ids the engine receives are the only observable
- * evidence of what was reindexed. The groups are kept unflattened because the
- * call boundaries ARE the chunking under test: a flat list of ids can't tell
- * one 5-row call from three smaller ones. Tests that only care about *which*
- * rows were reindexed flatten with `$reindexedIds()`.
- *
- * Call this AFTER the rows are arranged: the `Searchable` trait syncs on every
- * factory save, so a spy registered earlier also captures the create-time syncs
- * and every row looks reindexed.
- *
- * @return Closure(): list<list<int|string>>
- */
-$spyOnScoutEngine = function (): Closure {
-    $captured = [];
-
-    $spy = Mockery::spy(Engine::class);
-
-    $spy->shouldReceive('update')->andReturnUsing(
-        function (EloquentCollection $models) use (&$captured): void {
-            $captured[] = $models->modelKeys();
-        },
-    );
-
-    resolve(EngineManager::class)->extend('spy', fn (): Engine => $spy);
-    config(['scout.driver' => 'spy']);
-
-    return function () use (&$captured): array {
-        return $captured;
-    };
-};
-
-/**
- * Every key the engine was handed, in call order, with the chunk grouping dropped.
- *
- * @param  list<list<int|string>>  $chunks
- * @return list<int|string>
- */
-$reindexedIds = fn (array $chunks): array => collect($chunks)->flatten()->all();
 
 /**
  * Stamp a row's `updated_at` without the model touching timestamps itself.
@@ -69,91 +22,91 @@ $stampUpdatedAt = function (Movie|Show $row, CarbonImmutable $updatedAt): void {
  */
 $write = function (string $line): void {};
 
-it('passes every movie touched after the watermark to the engine and returns their count', function () use ($spyOnScoutEngine, $reindexedIds, $write): void {
+it('passes every movie touched after the watermark to the engine and returns their count', function () use ($write): void {
     // Arrange
     $watermark = CarbonImmutable::now()->startOfSecond()->subHour();
     $touched = Movie::factory()->withTmdb()->count(3)->create();
     // Registered after the factory saves so their auto-syncs aren't captured.
-    $capturedChunks = $spyOnScoutEngine();
+    $capturedChunks = spyOnScoutEngine();
 
     // Act
     $count = new ReindexTouchedRows()->handle(Movie::class, $watermark, $write);
 
     // Assert
-    expect($reindexedIds($capturedChunks()))->toEqualCanonicalizing($touched->modelKeys());
+    expect(reindexedIds($capturedChunks()))->toEqualCanonicalizing($touched->modelKeys());
     expect($count)->toBe(3);
 });
 
-it('includes the row whose updated_at equals the watermark exactly', function () use ($spyOnScoutEngine, $reindexedIds, $stampUpdatedAt, $write): void {
+it('includes the row whose updated_at equals the watermark exactly', function () use ($stampUpdatedAt, $write): void {
     // Arrange
     $watermark = CarbonImmutable::now()->startOfSecond()->subHour();
     $onTheBoundary = Movie::factory()->withTmdb()->create();
     $justBefore = Movie::factory()->withTmdb()->create();
     $stampUpdatedAt($onTheBoundary, $watermark);
     $stampUpdatedAt($justBefore, $watermark->subSecond());
-    $capturedChunks = $spyOnScoutEngine();
+    $capturedChunks = spyOnScoutEngine();
 
     // Act
     $count = new ReindexTouchedRows()->handle(Movie::class, $watermark, $write);
 
     // Assert
-    expect($reindexedIds($capturedChunks()))->toEqualCanonicalizing([$onTheBoundary->id]);
+    expect(reindexedIds($capturedChunks()))->toEqualCanonicalizing([$onTheBoundary->id]);
     expect($count)->toBe(1);
 });
 
-it('excludes rows untouched since the watermark', function () use ($spyOnScoutEngine, $reindexedIds, $stampUpdatedAt, $write): void {
+it('excludes rows untouched since the watermark', function () use ($stampUpdatedAt, $write): void {
     // Arrange
     $watermark = CarbonImmutable::now()->startOfSecond()->subHour();
     $touched = Movie::factory()->withTmdb()->create();
     $stale = Movie::factory()->withTmdb()->create();
     $stampUpdatedAt($stale, $watermark->subDay());
-    $capturedChunks = $spyOnScoutEngine();
+    $capturedChunks = spyOnScoutEngine();
 
     // Act
     $count = new ReindexTouchedRows()->handle(Movie::class, $watermark, $write);
 
     // Assert
-    expect($reindexedIds($capturedChunks()))->toEqualCanonicalizing([$touched->id]);
+    expect(reindexedIds($capturedChunks()))->toEqualCanonicalizing([$touched->id]);
     expect($count)->toBe(1);
 });
 
-it('reindexes a show class the same way', function () use ($spyOnScoutEngine, $reindexedIds, $stampUpdatedAt, $write): void {
+it('reindexes a show class the same way', function () use ($stampUpdatedAt, $write): void {
     // Arrange
     $watermark = CarbonImmutable::now()->startOfSecond()->subHour();
     $touched = Show::factory()->withTvdb()->create();
     $stale = Show::factory()->withTvdb()->create();
     $stampUpdatedAt($stale, $watermark->subDay());
-    $capturedChunks = $spyOnScoutEngine();
+    $capturedChunks = spyOnScoutEngine();
 
     // Act
     $count = new ReindexTouchedRows()->handle(Show::class, $watermark, $write);
 
     // Assert
-    expect($reindexedIds($capturedChunks()))->toEqualCanonicalizing([$touched->id]);
+    expect(reindexedIds($capturedChunks()))->toEqualCanonicalizing([$touched->id]);
     expect($count)->toBe(1);
 });
 
-it('passes nothing to the engine and returns 0 when no rows are touched', function () use ($spyOnScoutEngine, $reindexedIds, $stampUpdatedAt, $write): void {
+it('passes nothing to the engine and returns 0 when no rows are touched', function () use ($stampUpdatedAt, $write): void {
     // Arrange
     $watermark = CarbonImmutable::now()->startOfSecond()->subHour();
     $stale = Movie::factory()->withTmdb()->create();
     $stampUpdatedAt($stale, $watermark->subDay());
-    $capturedChunks = $spyOnScoutEngine();
+    $capturedChunks = spyOnScoutEngine();
 
     // Act
     $count = new ReindexTouchedRows()->handle(Movie::class, $watermark, $write);
 
     // Assert
-    expect($reindexedIds($capturedChunks()))->toBe([]);
+    expect(reindexedIds($capturedChunks()))->toBe([]);
     expect($count)->toBe(0);
 });
 
-it('walks the touched rows in id-ordered chunks sized by the scout chunk config', function () use ($spyOnScoutEngine, $write): void {
+it('walks the touched rows in id-ordered chunks sized by the scout chunk config', function () use ($write): void {
     // Arrange
     config(['scout.chunk.searchable' => 2]);
     $watermark = CarbonImmutable::now()->startOfSecond()->subHour();
     $touched = Movie::factory()->withTmdb()->count(5)->create();
-    $capturedChunks = $spyOnScoutEngine();
+    $capturedChunks = spyOnScoutEngine();
 
     // Act
     new ReindexTouchedRows()->handle(Movie::class, $watermark, $write);

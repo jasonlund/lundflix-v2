@@ -168,6 +168,99 @@ it('emits a phase line and an elapsed heartbeat per leg', function (): void {
         ->expectsOutputToContain('[elapsed');
 });
 
+it('reindexes each touched movie and show exactly once at the end of the run', function (): void {
+    // Arrange
+    // The spy captures bare model keys, so a movie and a show that both fell on
+    // id 1 would read as an ambiguous [1, 1] — the keys are pinned apart here so
+    // "one movie call and one show call" stays distinguishable from "one row
+    // pushed twice".
+    $matrix = Movie::factory()->create(['id' => 101, '_imdb_id' => 'tt0133093']);
+    $breakingBad = Show::factory()->create(['id' => 202, '_imdb_id' => 'tt0903747']);
+    fakeImdbDatasets();
+    // Registered after the factory saves so their auto-syncs aren't captured.
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act
+    $this->artisan('catalog:sync-imdb');
+
+    // Assert
+    expect($capturedChunks())->toEqualCanonicalizing([[$matrix->id], [$breakingBad->id]]);
+});
+
+it('leaves a row untouched by the run out of the reindex', function (): void {
+    // Arrange
+    Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    $untouched = Movie::factory()->create(['_imdb_id' => 'tt1375666']);
+    // updated_at is second-precision, so a row merely created just before the Act
+    // can still satisfy a job-start watermark; the stale stamp is written
+    // explicitly, and through the base query so the model doesn't re-stamp it.
+    $untouched->newQuery()->whereKey($untouched->getKey())->toBase()->update(['updated_at' => '2020-01-01 00:00:00']);
+    fakeImdbDatasets();
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act
+    $this->artisan('catalog:sync-imdb');
+
+    // Assert
+    // A negative control: it also holds with no reindex at all, so it pins the
+    // watermark's polarity rather than driving the wiring.
+    expect(reindexedIds($capturedChunks()))->not->toContain($untouched->id);
+});
+
+it('emits a reindex heartbeat in the wrapper output', function (): void {
+    // Arrange
+    Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    fakeImdbDatasets();
+
+    // Act & Assert
+    // Shape only — the cumulative counts and their exact format belong to
+    // ReindexTouchedRows, which pins them in its own test.
+    $this->artisan('catalog:sync-imdb')->expectsOutputToContain('[reindex');
+});
+
+it('still reindexes the rows a surviving leg touched when another leg fails', function (): void {
+    // Arrange
+    Sleep::fake();
+    Exceptions::fake();
+    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    // Http::fake merges stubs and the first registered match wins, so this 500
+    // registered ahead of the happy-path helper overrides only the basics fetch.
+    Http::fake(['*title.basics*' => Http::response('', 500)]);
+    fakeImdbDatasets();
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act & Assert
+    $this->artisan('catalog:sync-imdb')->assertExitCode(Command::FAILURE);
+
+    // Assert
+    expect(reindexedIds($capturedChunks()))->toContain($matrix->id);
+});
+
+it('sends nothing to the engine when every leg is skipped', function (): void {
+    // Arrange
+    $header = 'Tue, 12 Aug 2026 01:02:03 GMT';
+    $marker = resolve(ImdbDatasetMarker::class);
+    $marker->advance(ImdbDataset::TitleRatings, $header);
+    $marker->advance(ImdbDataset::TitleBasics, $header);
+    $marker->advance(ImdbDataset::TitleAkas, $header);
+    $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+    // Same second-precision trap as above: without an explicit stale stamp the
+    // seeded row could satisfy the watermark and mask a skipped run.
+    $matrix->newQuery()->whereKey($matrix->getKey())->toBase()->update(['updated_at' => '2020-01-01 00:00:00']);
+    Http::fake(fn (Request $request) => $request->method() === 'HEAD'
+        ? Http::response('', 200, ['Last-Modified' => $header])
+        : Http::response(fixtureBytes('Catalog/imdb/'.Str::afterLast($request->url(), '/'))));
+    $capturedChunks = spyOnScoutEngine();
+
+    // Act
+    $this->artisan('catalog:sync-imdb');
+
+    // Assert
+    // The second negative control: nothing reaching the engine is also today's
+    // behavior, so this guards the skip path against a future epoch watermark.
+    expect(reindexedIds($capturedChunks()))->toBe([]);
+});
+
 it('forwards --force so every dataset downloads despite matching markers', function (): void {
     // Arrange
     $header = 'Tue, 12 Aug 2026 01:02:03 GMT';
