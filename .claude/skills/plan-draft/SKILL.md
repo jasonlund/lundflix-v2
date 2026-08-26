@@ -5,9 +5,11 @@ description: >-
   decision-locked implementation plan through an interactive interview. Use when a
   ticket names WHAT is wanted but leaves every HOW open — endpoints, model columns,
   service signatures, data shapes, cadence — and needs those pinned down before it
-  can be decomposed or sliced. Architecture/files/decisions only: zero TDD concern,
-  zero ticket-splitting. The front-most of the three planning skills; its output
-  feeds `plan-breakdown` or `plan-slices`.
+  can be decomposed or sliced. Also runs in synthesis mode — on explicit request —
+  to assemble the plan from a conversation that already settled the decisions.
+  Architecture/files/decisions only: zero TDD concern, zero ticket-splitting. The
+  front-most of the three planning skills; its output feeds `plan-breakdown` or
+  `plan-slices`.
 ---
 
 # Plan Draft
@@ -35,7 +37,7 @@ rough ticket ─plan-draft▶ concrete plan (replaces ticket body)
 - **IS:** an interactive planner. Its entire value is the interview — surfacing
   every decision the bullets leave implicit and driving each to an answer the user
   **explicitly confirms**. Architecture, target files/domains, data shapes, locked
-  decisions, open risks.
+  decisions, open risks. (One exception: **synthesis mode**, below.)
 - **IS NOT** a TDD planner. Never mention slices, tests, RED/GREEN, or testability
   seams — that is `plan-slices`'s whole job, and it *expects* a plan written with zero
   TDD concern as its input. Stay silent on testing.
@@ -50,6 +52,28 @@ The interview exists because these answers are the user's to make. Propose optio
 with a recommendation, but **do not lock a decision the user did not confirm**. A
 plan full of assumptions is worse than the rough ticket — it launders guesses as
 settled intent. When unsure, ask.
+
+**Facts are your job, never the user's.** When a decision needs a fact from the
+environment — what an endpoint returns, what a column already holds, how V1 did it
+— go find it. Only put the *decision* to the user. Asking them to look something
+up you could read yourself wastes the one thing the interview is for.
+
+## Two modes
+
+**Interview (default).** Phases A → B → C → D. Use it whenever the decisions are
+still open.
+
+**Synthesis (on explicit request only).** When a prior conversation — a `grilling`
+session, a long design thread — has already settled the decisions, re-asking them
+is asking the user what they just told you. Skip Phases B–C and assemble the plan
+straight from what was settled, then run the **Phase D gate unchanged**.
+
+Enter synthesis mode **only when the user says so.** Never infer it from "we've
+discussed a lot" — deciding on your own that enough was covered is exactly how an
+assumption gets laundered as settled intent. Anything the conversation did *not*
+settle stays an open decision: put it to the user or list it under Open Risks, and
+say which decisions you drew from the conversation so the Phase D gate can catch a
+misread.
 
 ## Phase A — Intake + ground
 
@@ -66,6 +90,10 @@ settled intent. When unsure, ask.
     columns or shapes — fixtures and schemas mirror byte-exact reality, not a guess
     at it. (e.g. hit the real TVDB episodes/seasons response before choosing model
     columns.)
+- **Read the domain glossary** — `CONTEXT.md` and any `docs/adr/` entries touching
+  this area (`docs/agents/domain.md`). Name concepts the way the glossary names
+  them, and if the plan contradicts an ADR, **say so explicitly** rather than
+  silently overriding it. Missing files → proceed silently.
 - **Map the surface.** Which single `app/Domains/*` context this lives in, and
   whether each piece is backend / frontend / full-stack.
 
@@ -91,13 +119,46 @@ Walk the clusters **one at a time**. Per cluster: state the decision, give 2–3
 concrete options with a **recommendation and its reasoning**, and get the user's
 pick. Use `AskUserQuestion` / the Conductor plan UI for structured choices.
 
+Ask a cluster as a **numbered round**, every question carrying your recommended
+answer, then wait. Numbering lets the user answer `3. b` instead of re-quoting the
+question, and a recommendation on every line means silence is a usable answer:
+
+```
+❓ **Q1** — **<title>**: <the decision, with its concrete options>
+
+➡️ <your recommendation and why>
+```
+
 - **Phased approval** — lock one workstream, then move to the next; never dump the
   whole plan for one big yes/no. The user can amend an earlier lock at any point.
+- **Only ask what's answerable now.** A question whose answer depends on another
+  question still open in this round belongs to a *later* round. Each round's
+  answers reshape what's askable next.
 - Record each **locked decision** with the rationale, so downstream (and the ticket
   reader) sees *why*, not just *what*.
 
 Per-cluster confirmation locks the *decisions*; it is not final approval of the
 plan. Nothing is written to Linear in this phase.
+
+### When a decision won't yield to discussion
+
+Three plugin skills resolve a stuck decision. Each is a whole session — **offer
+it, don't silently start one**, and fold only the answer back into the cluster.
+
+- **"How should this behave / look?"** → `mattpocock-skills:prototype`. Throwaway
+  code that answers one question; cheaper than arguing about a state model in
+  prose.
+- **A decision waiting on an external fact** (what a third-party endpoint returns,
+  what a library actually supports) → `mattpocock-skills:research`, which reads
+  primary sources in the background while the rest of the round continues.
+- **A hard-to-reverse interface** — a model's column set, a service's public
+  surface — → `mattpocock-skills:codebase-design`'s design-it-twice pattern, which
+  explores rival interfaces in parallel. Reach for it when the honest read is that
+  your "2–3 options" are one idea in three costumes.
+
+**Source:** the design-it-twice resolver is adapted from
+`mattpocock-skills:codebase-design` (`DESIGN-IT-TWICE.md`); `.claude/skills/codebase-design/SKILL.md`
+carries this repo's short form. Offer to explain the pattern before starting one.
 
 ## Phase D — Present the full plan (hard gate)
 
@@ -108,8 +169,11 @@ summary: the user reads it end-to-end and catches anything the piecemeal intervi
 missed. Structure:
 
 ```markdown
-## Overview
-<what + why, one paragraph — the outcome the rough bullets asked for>
+## Problem
+<what's wrong or missing today, from the user's perspective — not the solution>
+
+## Solution
+<what changes, from the user's perspective — one paragraph>
 
 ## Locked Decisions
 - <decision> — <the choice> · <why>
@@ -122,9 +186,21 @@ missed. Structure:
 ## Data Shapes
 <model columns + casts + relationships; API request/response shapes; raw-source columns>
 
+## Out of Scope
+<what this deliberately does NOT do — the explicit no-s>
+
 ## Open Risks / Deferred
 <anything intentionally left for downstream, with a note on who owns it>
 ```
+
+**Problem and Solution are user-facing prose** — what someone experiences, not
+which class gets edited. Paths belong in Target, which is the block downstream
+parallelism analysis reads.
+
+**Out of Scope is not optional padding.** A plan that never states its boundary
+invites scope creep in execution and gives review nothing to check "unasked-for
+behavior" against. If nothing was consciously ruled out, that's a sign Phase B
+under-explored, not a section to drop.
 
 Keep it a **plan, not tests** — no slices, no test files, no TDD language.
 
@@ -137,8 +213,8 @@ this complete plan.**
 Only after Phase D approval, write the approved plan into the **same ticket body**,
 **replacing** it (`linear-server` `save_issue` with `description` — repo rule: the
 ticket body is the single source of truth; write there, never a comment). Preserve
-any original acceptance intent by folding it into the Overview. Write it verbatim
-as approved — do not re-plan or add at this step.
+any original acceptance intent by folding it into Problem/Solution. Write it
+verbatim as approved — do not re-plan or add at this step.
 
 ## Phase F — Stop and route
 
@@ -162,3 +238,6 @@ changes, and never enter breakdown or slicing yourself.
   finished plan into a TDD backlog. Expects exactly the zero-TDD plan this produces.
 - `CLAUDE.md` / `.ai/guidelines/project.md` — DDD layout, naming, raw-source column
   convention that shape every locked decision.
+- `.claude/skills/codebase-design/SKILL.md` — module/interface/depth/seam
+  vocabulary; use its words when a locked decision is about an interface's shape.
+- `docs/agents/domain.md` — how to consume `CONTEXT.md` and `docs/adr/`.
