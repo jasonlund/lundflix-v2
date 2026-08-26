@@ -21,54 +21,56 @@ use Tests\TestCase;
 
 uses(TestCase::class);
 
-it('is ripe when the newest arrival is older than the quiet period', function (): void {
-    // Arrange
-    $oldest = now()->subSeconds(600);
-    $newest = now()->subSeconds(400);
+describe('isRipe() window thresholds', function (): void {
+    it('is ripe when the newest arrival is older than the quiet period', function (): void {
+        // Arrange
+        $oldest = now()->subSeconds(600);
+        $newest = now()->subSeconds(400);
 
-    // Act
-    $actual = DebounceWindow::isRipe($oldest, $newest, 300, 900);
+        // Act
+        $actual = DebounceWindow::isRipe($oldest, $newest, 300, 900);
 
-    // Assert
-    expect($actual)->toBeTrue();
-});
+        // Assert
+        expect($actual)->toBeTrue();
+    });
 
-it('is not ripe while the newest arrival is inside the quiet period and the oldest is inside the deadline', function (): void {
-    // Arrange
-    $oldest = now()->subSeconds(200);
-    $newest = now()->subSeconds(60);
+    it('is not ripe while the newest arrival is inside the quiet period and the oldest is inside the deadline', function (): void {
+        // Arrange
+        $oldest = now()->subSeconds(200);
+        $newest = now()->subSeconds(60);
 
-    // Act
-    $actual = DebounceWindow::isRipe($oldest, $newest, 300, 900);
+        // Act
+        $actual = DebounceWindow::isRipe($oldest, $newest, 300, 900);
 
-    // Assert
-    expect($actual)->toBeFalse();
-});
+        // Assert
+        expect($actual)->toBeFalse();
+    });
 
-it('is ripe when the oldest arrival passed the hard deadline even though the newest is still inside the quiet period', function (): void {
-    // Arrange
-    // a show still receiving episodes never goes quiet, so the deadline has to fire
-    $oldest = now()->subSeconds(1000);
-    $newest = now()->subSeconds(10);
+    it('is ripe when the oldest arrival passed the hard deadline even though the newest is still inside the quiet period', function (): void {
+        // Arrange
+        // a show still receiving episodes never goes quiet, so the deadline has to fire
+        $oldest = now()->subSeconds(1000);
+        $newest = now()->subSeconds(10);
 
-    // Act
-    $actual = DebounceWindow::isRipe($oldest, $newest, 300, 900);
+        // Act
+        $actual = DebounceWindow::isRipe($oldest, $newest, 300, 900);
 
-    // Assert
-    expect($actual)->toBeTrue();
-});
+        // Assert
+        expect($actual)->toBeTrue();
+    });
 
-it('is ripe exactly at the quiet-period threshold', function (): void {
-    // Arrange
-    // time is frozen so the newest arrival sits precisely on the boundary rather
-    // than a few microseconds past it — that exactness is what pins >= over >
-    $this->freezeTime();
-    $oldest = now()->subSeconds(400);
-    $newest = now()->subSeconds(300);
+    it('is ripe exactly at the quiet-period threshold', function (): void {
+        // Arrange
+        // time is frozen so the newest arrival sits precisely on the boundary rather
+        // than a few microseconds past it — that exactness is what pins >= over >
+        $this->freezeTime();
+        $oldest = now()->subSeconds(400);
+        $newest = now()->subSeconds(300);
 
-    // Act
-    $actual = DebounceWindow::isRipe($oldest, $newest, 300, 900);
+        // Act
+        $actual = DebounceWindow::isRipe($oldest, $newest, 300, 900);
 
-    // Assert
-    expect($actual)->toBeTrue();
+        // Assert
+        expect($actual)->toBeTrue();
+    });
 });

@@ -1,4 +1,4 @@
-# Brevity — before/after examples
+# Agent Writing — before/after examples
 
 Each case shows the checklist applied. Reference, not exhaustive.
 

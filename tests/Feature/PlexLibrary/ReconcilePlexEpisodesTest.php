@@ -48,180 +48,256 @@ uses(RefreshDatabase::class);
 |--------------------------------------------------------------------------
 */
 
-it('upserts a season row mapping raw plex facts and the tvdb crosswalk', function (): void {
-    // Arrange
-    $show = PlexShow::factory()->create();
-    $seasons = fixtureSeasonMetadata();
+/**
+ * The real Plex Season-2 Metadata row, decoded byte-exact from the committed
+ * fixture.
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function fixtureSeasonMetadata(): array
+{
+    return json_decode(fixtureBytes('PlexLibrary/plex/show_children_seasons.json'), true)['MediaContainer']['Metadata'];
+}
 
-    // Act
-    resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
+/**
+ * The real Plex Season-2 episode Metadata rows (all 24), decoded byte-exact
+ * from the committed fixture. Callers array_slice a small working set.
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function fixtureEpisodeMetadata(): array
+{
+    return json_decode(fixtureBytes('PlexLibrary/plex/show_allLeaves_episodes.json'), true)['MediaContainer']['Metadata'];
+}
 
-    // Assert
-    $season = PlexSeason::query()
-        ->where('plex_server_id', $show->plex_server_id)
-        ->where('plex_show_id', $show->id)
-        ->where('_plex_ratingKey', '34424')
-        ->sole();
-    expect($season->_plex_index)->toBe(2)
-        ->and($season->_plex_title)->toBe('Season 2')
-        ->and($season->_plex_leafCount)->toBe(24)
-        ->and($season->_plex_guid)->toBe('plex://season/602e68f2d17ae1002dc13d5e')
-        ->and($season->_tvdb_id)->toBe(10064);
-    $this->assertDatabaseHas('plex_seasons', [
-        '_plex_ratingKey' => '34424',
-        '_plex_addedAt' => Date::createFromTimestamp(1776560519)->toDateTimeString(),
-        '_plex_updatedAt' => Date::createFromTimestamp(1776560524)->toDateTimeString(),
-    ]);
-});
-
-it('updates the season in place on a second run without duplicating', function (): void {
-    // Arrange
-    $show = PlexShow::factory()->create();
-    $seasons = fixtureSeasonMetadata();
-
-    // Act
-    resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
-    resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
-
-    // Assert
-    expect(PlexSeason::query()->where('_plex_ratingKey', '34424')->count())->toBe(1);
-});
-
-it('persists a Specials season at index 0', function (): void {
-    // Arrange
-    $show = PlexShow::factory()->create();
-    $seasons = [...fixtureSeasonMetadata(), seasonMetadata([
+/**
+ * A single synthetic Plex season Metadata line for the Specials/aggregate
+ * cases the real `24` capture can't provide — only the stored keys the
+ * reconciler reads. Keys are raw Plex wire keys.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function seasonMetadata(array $overrides = []): array
+{
+    return array_merge([
         'ratingKey' => '99000',
-        'guid' => 'plex://season/specials0000000000000000',
+        'guid' => 'plex://season/synthetic00000000000000',
+        'type' => 'season',
         'index' => 0,
         'title' => 'Specials',
-    ])];
+        'leafCount' => 3,
+        'addedAt' => 1776560519,
+        'updatedAt' => 1776560524,
+        'Guid' => [],
+    ], $overrides);
+}
 
-    // Act
-    resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
+/**
+ * A single synthetic Plex episode Metadata line for the Specials-link case the
+ * real `24` capture can't provide — only the stored keys the reconciler reads
+ * plus the parent link. Keys are raw Plex wire keys.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function episodeMetadata(array $overrides = []): array
+{
+    return array_merge([
+        'ratingKey' => '99001',
+        'parentRatingKey' => '99000',
+        'guid' => 'plex://episode/synthetic000000000000000',
+        'type' => 'episode',
+        'index' => 1,
+        'parentIndex' => 0,
+        'title' => 'Special 1',
+        'addedAt' => 1776560519,
+        'updatedAt' => 1776560524,
+        'Guid' => [
+            ['id' => 'tvdb://900001'],
+        ],
+    ], $overrides);
+}
 
-    // Assert
-    $this->assertDatabaseHas('plex_seasons', [
-        '_plex_ratingKey' => '99000',
-        '_plex_index' => 0,
-    ]);
+describe('handle() season upsert & prune', function (): void {
+    it('upserts a season row mapping raw plex facts and the tvdb crosswalk', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $seasons = fixtureSeasonMetadata();
+
+        // Act
+        resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
+
+        // Assert
+        $season = PlexSeason::query()
+            ->where('plex_server_id', $show->plex_server_id)
+            ->where('plex_show_id', $show->id)
+            ->where('_plex_ratingKey', '34424')
+            ->sole();
+        expect($season->_plex_index)->toBe(2)
+            ->and($season->_plex_title)->toBe('Season 2')
+            ->and($season->_plex_leafCount)->toBe(24)
+            ->and($season->_plex_guid)->toBe('plex://season/602e68f2d17ae1002dc13d5e')
+            ->and($season->_tvdb_id)->toBe(10064);
+        $this->assertDatabaseHas('plex_seasons', [
+            '_plex_ratingKey' => '34424',
+            '_plex_addedAt' => Date::createFromTimestamp(1776560519)->toDateTimeString(),
+            '_plex_updatedAt' => Date::createFromTimestamp(1776560524)->toDateTimeString(),
+        ]);
+    });
+
+    it('updates the season in place on a second run without duplicating', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $seasons = fixtureSeasonMetadata();
+
+        // Act
+        resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
+        resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
+
+        // Assert
+        expect(PlexSeason::query()->where('_plex_ratingKey', '34424')->count())->toBe(1);
+    });
+
+    it('persists a Specials season at index 0', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $seasons = [...fixtureSeasonMetadata(), seasonMetadata([
+            'ratingKey' => '99000',
+            'guid' => 'plex://season/specials0000000000000000',
+            'index' => 0,
+            'title' => 'Specials',
+        ])];
+
+        // Act
+        resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
+
+        // Assert
+        $this->assertDatabaseHas('plex_seasons', [
+            '_plex_ratingKey' => '99000',
+            '_plex_index' => 0,
+        ]);
+    });
+
+    it('excludes the index -1 all-episodes aggregate season', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $seasons = [...fixtureSeasonMetadata(), seasonMetadata([
+            'ratingKey' => '99999',
+            'guid' => 'plex://season/aggregate00000000000000',
+            'index' => -1,
+            'title' => 'All episodes',
+        ])];
+
+        // Act
+        resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
+
+        // Assert
+        $this->assertDatabaseHas('plex_seasons', ['_plex_ratingKey' => '34424']);
+        $this->assertDatabaseMissing('plex_seasons', ['_plex_ratingKey' => '99999']);
+    });
+
+    it('prunes stale same-show seasons but leaves other shows untouched', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $stale = PlexSeason::factory()->create([
+            'plex_server_id' => $show->plex_server_id,
+            'plex_show_id' => $show->id,
+            '_plex_ratingKey' => '70000',
+        ]);
+        $otherShowSeason = PlexSeason::factory()->create();
+
+        // Act
+        resolve(ReconcilePlexEpisodes::class)->handle($show, fixtureSeasonMetadata(), []);
+
+        // Assert
+        $this->assertDatabaseMissing('plex_seasons', ['id' => $stale->id]);
+        $this->assertDatabaseHas('plex_seasons', ['id' => $otherShowSeason->id]);
+    });
+
 });
 
-it('excludes the index -1 all-episodes aggregate season', function (): void {
-    // Arrange
-    $show = PlexShow::factory()->create();
-    $seasons = [...fixtureSeasonMetadata(), seasonMetadata([
-        'ratingKey' => '99999',
-        'guid' => 'plex://season/aggregate00000000000000',
-        'index' => -1,
-        'title' => 'All episodes',
-    ])];
+describe('handle() episode upsert & prune', function (): void {
+    it('upserts episode rows mapping raw plex facts and the guid crosswalk', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $seasons = fixtureSeasonMetadata();
+        $episodes = array_slice(fixtureEpisodeMetadata(), 0, 2);
 
-    // Act
-    resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, []);
+        // Act
+        resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
 
-    // Assert
-    $this->assertDatabaseHas('plex_seasons', ['_plex_ratingKey' => '34424']);
-    $this->assertDatabaseMissing('plex_seasons', ['_plex_ratingKey' => '99999']);
-});
+        // Assert
+        $scoped = PlexEpisode::query()
+            ->where('plex_server_id', $show->plex_server_id)
+            ->where('plex_show_id', $show->id);
+        expect($scoped->count())->toBe(2);
+        $episode = (clone $scoped)->where('_plex_ratingKey', '34425')->sole();
+        expect($episode->_plex_parentIndex)->toBe(2)
+            ->and($episode->_plex_index)->toBe(1)
+            ->and($episode->_plex_title)->toBe('Day 2: 8:00 A.M.-9:00 A.M.')
+            ->and($episode->_plex_guid)->toBe('plex://episode/5d9c13507d06d9001fffb37d')
+            ->and($episode->_plex_guids)->toBe([
+                ['id' => 'imdb://tt0502205'],
+                ['id' => 'tmdb://134418'],
+                ['id' => 'tvdb://189279'],
+            ])
+            ->and($episode->_imdb_id)->toBe('tt0502205')
+            ->and($episode->_tmdb_id)->toBe(134418)
+            ->and($episode->_tvdb_id)->toBe(189279);
+    });
 
-it('prunes stale same-show seasons but leaves other shows untouched', function (): void {
-    // Arrange
-    $show = PlexShow::factory()->create();
-    $stale = PlexSeason::factory()->create([
-        'plex_server_id' => $show->plex_server_id,
-        'plex_show_id' => $show->id,
-        '_plex_ratingKey' => '70000',
-    ]);
-    $otherShowSeason = PlexSeason::factory()->create();
+    it('reports the number of episodes it reconciled for the show', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $seasons = fixtureSeasonMetadata();
+        $episodes = fixtureEpisodeMetadata();
 
-    // Act
-    resolve(ReconcilePlexEpisodes::class)->handle($show, fixtureSeasonMetadata(), []);
+        // Act
+        $total = resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
 
-    // Assert
-    $this->assertDatabaseMissing('plex_seasons', ['id' => $stale->id]);
-    $this->assertDatabaseHas('plex_seasons', ['id' => $otherShowSeason->id]);
-});
+        // Assert
+        expect($total)->toBe(24);
+    });
 
-it('upserts episode rows mapping raw plex facts and the guid crosswalk', function (): void {
-    // Arrange
-    $show = PlexShow::factory()->create();
-    $seasons = fixtureSeasonMetadata();
-    $episodes = array_slice(fixtureEpisodeMetadata(), 0, 2);
+    it('updates episodes in place on a second run without duplicating', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $seasons = fixtureSeasonMetadata();
+        $episodes = array_slice(fixtureEpisodeMetadata(), 0, 2);
 
-    // Act
-    resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
+        // Act
+        resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
+        resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
 
-    // Assert
-    $scoped = PlexEpisode::query()
-        ->where('plex_server_id', $show->plex_server_id)
-        ->where('plex_show_id', $show->id);
-    expect($scoped->count())->toBe(2);
-    $episode = (clone $scoped)->where('_plex_ratingKey', '34425')->sole();
-    expect($episode->_plex_parentIndex)->toBe(2)
-        ->and($episode->_plex_index)->toBe(1)
-        ->and($episode->_plex_title)->toBe('Day 2: 8:00 A.M.-9:00 A.M.')
-        ->and($episode->_plex_guid)->toBe('plex://episode/5d9c13507d06d9001fffb37d')
-        ->and($episode->_plex_guids)->toBe([
-            ['id' => 'imdb://tt0502205'],
-            ['id' => 'tmdb://134418'],
-            ['id' => 'tvdb://189279'],
-        ])
-        ->and($episode->_imdb_id)->toBe('tt0502205')
-        ->and($episode->_tmdb_id)->toBe(134418)
-        ->and($episode->_tvdb_id)->toBe(189279);
-});
+        // Assert
+        expect(PlexEpisode::query()->where('_plex_ratingKey', '34425')->count())->toBe(1)
+            ->and(PlexEpisode::query()->count())->toBe(2);
+    });
 
-it('reports the number of episodes it reconciled for the show', function (): void {
-    // Arrange
-    $show = PlexShow::factory()->create();
-    $seasons = fixtureSeasonMetadata();
-    $episodes = fixtureEpisodeMetadata();
+    it('prunes stale same-show episodes but leaves other shows untouched', function (): void {
+        // Arrange
+        $show = PlexShow::factory()->create();
+        $season = PlexSeason::factory()->create([
+            'plex_server_id' => $show->plex_server_id,
+            'plex_show_id' => $show->id,
+            '_plex_ratingKey' => '34424',
+        ]);
+        $stale = PlexEpisode::factory()->create([
+            'plex_server_id' => $show->plex_server_id,
+            'plex_show_id' => $show->id,
+            'plex_season_id' => $season->id,
+            '_plex_ratingKey' => '70000',
+        ]);
+        $otherShowEpisode = PlexEpisode::factory()->create();
 
-    // Act
-    $total = resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
+        // Act
+        resolve(ReconcilePlexEpisodes::class)->handle($show, fixtureSeasonMetadata(), array_slice(fixtureEpisodeMetadata(), 0, 2));
 
-    // Assert
-    expect($total)->toBe(24);
-});
-
-it('updates episodes in place on a second run without duplicating', function (): void {
-    // Arrange
-    $show = PlexShow::factory()->create();
-    $seasons = fixtureSeasonMetadata();
-    $episodes = array_slice(fixtureEpisodeMetadata(), 0, 2);
-
-    // Act
-    resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
-    resolve(ReconcilePlexEpisodes::class)->handle($show, $seasons, $episodes);
-
-    // Assert
-    expect(PlexEpisode::query()->where('_plex_ratingKey', '34425')->count())->toBe(1)
-        ->and(PlexEpisode::query()->count())->toBe(2);
-});
-
-it('prunes stale same-show episodes but leaves other shows untouched', function (): void {
-    // Arrange
-    $show = PlexShow::factory()->create();
-    $season = PlexSeason::factory()->create([
-        'plex_server_id' => $show->plex_server_id,
-        'plex_show_id' => $show->id,
-        '_plex_ratingKey' => '34424',
-    ]);
-    $stale = PlexEpisode::factory()->create([
-        'plex_server_id' => $show->plex_server_id,
-        'plex_show_id' => $show->id,
-        'plex_season_id' => $season->id,
-        '_plex_ratingKey' => '70000',
-    ]);
-    $otherShowEpisode = PlexEpisode::factory()->create();
-
-    // Act
-    resolve(ReconcilePlexEpisodes::class)->handle($show, fixtureSeasonMetadata(), array_slice(fixtureEpisodeMetadata(), 0, 2));
-
-    // Assert
-    $this->assertDatabaseMissing('plex_episodes', ['id' => $stale->id]);
-    $this->assertDatabaseHas('plex_episodes', ['id' => $otherShowEpisode->id]);
+        // Assert
+        $this->assertDatabaseMissing('plex_episodes', ['id' => $stale->id]);
+        $this->assertDatabaseHas('plex_episodes', ['id' => $otherShowEpisode->id]);
+    });
 });
 
 describe('episode → season link', function (): void {
@@ -323,74 +399,3 @@ describe('malformed payload', function (): void {
         $this->assertDatabaseCount('plex_episodes', 0);
     });
 });
-
-/**
- * The real Plex Season-2 Metadata row, decoded byte-exact from the committed
- * fixture.
- *
- * @return array<int, array<string, mixed>>
- */
-function fixtureSeasonMetadata(): array
-{
-    return json_decode(fixtureBytes('PlexLibrary/plex/show_children_seasons.json'), true)['MediaContainer']['Metadata'];
-}
-
-/**
- * The real Plex Season-2 episode Metadata rows (all 24), decoded byte-exact
- * from the committed fixture. Callers array_slice a small working set.
- *
- * @return array<int, array<string, mixed>>
- */
-function fixtureEpisodeMetadata(): array
-{
-    return json_decode(fixtureBytes('PlexLibrary/plex/show_allLeaves_episodes.json'), true)['MediaContainer']['Metadata'];
-}
-
-/**
- * A single synthetic Plex season Metadata line for the Specials/aggregate
- * cases the real `24` capture can't provide — only the stored keys the
- * reconciler reads. Keys are raw Plex wire keys.
- *
- * @param  array<string, mixed>  $overrides
- * @return array<string, mixed>
- */
-function seasonMetadata(array $overrides = []): array
-{
-    return array_merge([
-        'ratingKey' => '99000',
-        'guid' => 'plex://season/synthetic00000000000000',
-        'type' => 'season',
-        'index' => 0,
-        'title' => 'Specials',
-        'leafCount' => 3,
-        'addedAt' => 1776560519,
-        'updatedAt' => 1776560524,
-        'Guid' => [],
-    ], $overrides);
-}
-
-/**
- * A single synthetic Plex episode Metadata line for the Specials-link case the
- * real `24` capture can't provide — only the stored keys the reconciler reads
- * plus the parent link. Keys are raw Plex wire keys.
- *
- * @param  array<string, mixed>  $overrides
- * @return array<string, mixed>
- */
-function episodeMetadata(array $overrides = []): array
-{
-    return array_merge([
-        'ratingKey' => '99001',
-        'parentRatingKey' => '99000',
-        'guid' => 'plex://episode/synthetic000000000000000',
-        'type' => 'episode',
-        'index' => 1,
-        'parentIndex' => 0,
-        'title' => 'Special 1',
-        'addedAt' => 1776560519,
-        'updatedAt' => 1776560524,
-        'Guid' => [
-            ['id' => 'tvdb://900001'],
-        ],
-    ], $overrides);
-}

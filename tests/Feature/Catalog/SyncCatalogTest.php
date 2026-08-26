@@ -16,11 +16,6 @@ use Symfony\Component\Console\Command\Command;
 
 uses(RefreshDatabase::class);
 
-beforeEach(function (): void {
-    Cache::flush();
-    config(['services.tvdb.key' => 'test-key']);
-});
-
 /*
 |--------------------------------------------------------------------------
 | Fixtures (byte-exact real source slices)
@@ -121,190 +116,207 @@ function fakeCatalogSyncFreshAndUpdates(): void
     ]);
 }
 
-it('is born a movie from TMDB', function (): void {
-    // Arrange
-    fakeCatalogSync();
-
-    // Act
-    $this->artisan('catalog:sync');
-
-    // Assert
-    $matrix = Movie::where('_tmdb_id', 603)->first();
-    expect($matrix)->not->toBeNull();
-    expect($matrix->_imdb_id)->toBe('tt0133093');
-    expect(Movie::count())->toBe(1);
+beforeEach(function (): void {
+    Cache::flush();
+    config(['services.tvdb.key' => 'test-key']);
 });
 
-it('is born a show from TVDB; TMDB does not create a show it cannot match', function (): void {
-    // Arrange
-    fakeCatalogSync();
+describe('catalog:sync title creation', function (): void {
+    it('is born a movie from TMDB', function (): void {
+        // Arrange
+        fakeCatalogSync();
 
-    // Act
-    $this->artisan('catalog:sync');
+        // Act
+        $this->artisan('catalog:sync');
 
-    // Assert
-    // TVDB is the single source of truth for creating shows: Breaking Bad is born
-    // from TVDB (tvdb 81189) carrying its imdb crosswalk tt0903747 and its
-    // remoteIds TheMovieDB.com id 1396. TMDB only hydrates existing shows by id —
-    // it never creates a show it can't match, so Game of Thrones (tmdb 1399) is
-    // never inserted and Breaking Bad is the only row.
-    $breakingBad = Show::where('_tvdb_id', 81189)->first();
-    expect($breakingBad)->not->toBeNull();
-    expect($breakingBad->_imdb_id)->toBe('tt0903747');
-    expect($breakingBad->_tmdb_id)->toBe(1396);
+        // Assert
+        $matrix = Movie::where('_tmdb_id', 603)->first();
+        expect($matrix)->not->toBeNull();
+        expect($matrix->_imdb_id)->toBe('tt0133093');
+        expect(Movie::count())->toBe(1);
+    });
 
-    expect(Show::where('_tmdb_id', 1399)->first())->toBeNull();
-    expect(Show::count())->toBe(1);
+    it('is born a show from TVDB; TMDB does not create a show it cannot match', function (): void {
+        // Arrange
+        fakeCatalogSync();
+
+        // Act
+        $this->artisan('catalog:sync');
+
+        // Assert
+        // TVDB is the single source of truth for creating shows: Breaking Bad is born
+        // from TVDB (tvdb 81189) carrying its imdb crosswalk tt0903747 and its
+        // remoteIds TheMovieDB.com id 1396. TMDB only hydrates existing shows by id —
+        // it never creates a show it can't match, so Game of Thrones (tmdb 1399) is
+        // never inserted and Breaking Bad is the only row.
+        $breakingBad = Show::where('_tvdb_id', 81189)->first();
+        expect($breakingBad)->not->toBeNull();
+        expect($breakingBad->_imdb_id)->toBe('tt0903747');
+        expect($breakingBad->_tmdb_id)->toBe(1396);
+
+        expect(Show::where('_tmdb_id', 1399)->first())->toBeNull();
+        expect(Show::count())->toBe(1);
+    });
 });
 
-it('requests no IMDb dataset on a default run', function (): void {
-    // Arrange
-    fakeCatalogSync();
+describe('catalog:sync IMDb dataset exclusion', function (): void {
+    it('requests no IMDb dataset on a default run', function (): void {
+        // Arrange
+        fakeCatalogSync();
 
-    // Act
-    $this->artisan('catalog:sync');
+        // Act
+        $this->artisan('catalog:sync');
 
-    // Assert
-    // The three IMDb legs now run under catalog:sync-imdb, so the twice-daily
-    // catalog:sync must never reach for a multi-hundred-megabyte dataset.
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.ratings'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
+        // Assert
+        // The three IMDb legs now run under catalog:sync-imdb, so the twice-daily
+        // catalog:sync must never reach for a multi-hundred-megabyte dataset.
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.ratings'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
+    });
+
+    it('requests no IMDb dataset under --fresh either', function (): void {
+        // Arrange
+        fakeCatalogSyncFreshAndUpdates();
+
+        // Act
+        $this->artisan('catalog:sync', ['--fresh' => true]);
+
+        // Assert
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.ratings'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
+    });
+
+    it('still builds the TMDB movie and the TVDB show on a default run', function (): void {
+        // Arrange
+        fakeCatalogSync();
+
+        // Act & Assert
+        $this->artisan('catalog:sync')->assertExitCode(Command::SUCCESS);
+
+        // Assert
+        // Dropping the IMDb legs must leave the TMDB/TVDB chain itself untouched.
+        expect(Movie::where('_imdb_id', 'tt0133093')->first())->not->toBeNull();
+        expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+    });
 });
 
-it('requests no IMDb dataset under --fresh either', function (): void {
-    // Arrange
-    fakeCatalogSyncFreshAndUpdates();
+describe('catalog:sync exit codes and failure handling', function (): void {
+    it('continues past a failing movies command, exits FAILURE and reports', function (): void {
+        // Arrange
+        Sleep::fake();
+        Exceptions::fake();
+        // Http::fake merges stubs and the first registered match wins, so this 500
+        // registered ahead of the happy-path helper overrides only the ids export.
+        Http::fake(['*movie_ids*' => Http::response('', 500)]);
+        fakeCatalogSync();
 
-    // Act
-    $this->artisan('catalog:sync', ['--fresh' => true]);
+        // Act & Assert
+        $this->artisan('catalog:sync')->assertExitCode(Command::FAILURE);
 
-    // Assert
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.ratings'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.basics'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'title.akas'));
+        // Assert
+        // The dead export takes catalog:sync-movies down with it, but the orchestrator
+        // reports the throwable and keeps dispatching — so the TVDB show still lands.
+        Exceptions::assertReported(fn (RequestException $e): bool => true);
+        expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+    });
+
+    it('exits SUCCESS when every command succeeds', function (): void {
+        // Arrange
+        fakeCatalogSync();
+
+        // Act & Assert
+        $this->artisan('catalog:sync')->assertExitCode(Command::SUCCESS);
+    });
 });
 
-it('still builds the TMDB movie and the TVDB show on a default run', function (): void {
-    // Arrange
-    fakeCatalogSync();
+describe('catalog:sync --fresh and default routing', function (): void {
+    it('under --fresh crawls the full TVDB seed and forwards --fresh to both TMDB syncs', function (): void {
+        // Arrange
+        fakeCatalogSyncFreshAndUpdates();
+        Movie::factory()->withTmdb()->create(['_tmdb_id' => 603]);
+        Show::factory()->withTmdb()->create(['_tmdb_id' => 1399]);
 
-    // Act & Assert
-    $this->artisan('catalog:sync')->assertExitCode(Command::SUCCESS);
+        // Act
+        $this->artisan('catalog:sync', ['--fresh' => true]);
 
-    // Assert
-    // Dropping the IMDb legs must leave the TMDB/TVDB chain itself untouched.
-    expect(Movie::where('_imdb_id', 'tt0133093')->first())->not->toBeNull();
-    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+        // Assert
+        // --fresh swaps the TVDB show step to the full crawl (/series?page), so the
+        // series-updates feed's driver call (type=series at page 0, no page cursor)
+        // must never fire. The marker-driven episodes step still walks /updates, and
+        // the shared fixture's real next-link is a type=series&page=1 capture, so we
+        // discriminate on the page-0 entry rather than that borrowed cursor; the
+        // type=episodes dispatch itself is asserted elsewhere. Forwarding --fresh
+        // reprocesses the already-synced 603/1399 rows a plain run skips, so both
+        // hydrations fire.
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=series')
+            && ! Str::contains($request->url(), 'page='));
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
+    });
+
+    it('on a default run uses the TVDB updates feed and forwards no --fresh to the TMDB syncs', function (): void {
+        // Arrange
+        fakeCatalogSync();
+        Movie::factory()->withTmdb()->create(['_tmdb_id' => 603]);
+        Show::factory()->withTmdb()->create(['_tmdb_id' => 1399]);
+
+        // Act
+        $this->artisan('catalog:sync');
+
+        // Assert
+        // No --fresh means the updates feed (never the crawl) and the already-synced
+        // 603/1399 rows are skipped, so neither hydration fires.
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
+    });
 });
 
-it('continues past a failing movies command, exits FAILURE and reports', function (): void {
-    // Arrange
-    Sleep::fake();
-    Exceptions::fake();
-    // Http::fake merges stubs and the first registered match wins, so this 500
-    // registered ahead of the happy-path helper overrides only the ids export.
-    Http::fake(['*movie_ids*' => Http::response('', 500)]);
-    fakeCatalogSync();
+describe('catalog:sync TMDB changes feeds', function (): void {
+    it('exercises both TMDB changes feeds on a default run', function (): void {
+        // Arrange
+        fakeCatalogSync();
 
-    // Act & Assert
-    $this->artisan('catalog:sync')->assertExitCode(Command::FAILURE);
+        // Act
+        $this->artisan('catalog:sync');
 
-    // Assert
-    // The dead export takes catalog:sync-movies down with it, but the orchestrator
-    // reports the throwable and keeps dispatching — so the TVDB show still lands.
-    Exceptions::assertReported(fn (RequestException $e): bool => true);
-    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+        // Assert
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
+    });
 });
 
-it('exits SUCCESS when every command succeeds', function (): void {
-    // Arrange
-    fakeCatalogSync();
+describe('catalog:sync episodes dispatch', function (): void {
+    it('on a default run dispatches the episodes sync after the show sync', function (): void {
+        // Arrange
+        fakeCatalogSync();
 
-    // Act & Assert
-    $this->artisan('catalog:sync')->assertExitCode(Command::SUCCESS);
-});
+        // Act
+        $this->artisan('catalog:sync');
 
-it('under --fresh crawls the full TVDB seed and forwards --fresh to both TMDB syncs', function (): void {
-    // Arrange
-    fakeCatalogSyncFreshAndUpdates();
-    Movie::factory()->withTmdb()->create(['_tmdb_id' => 603]);
-    Show::factory()->withTmdb()->create(['_tmdb_id' => 1399]);
+        // Assert
+        // The type=episodes updates call only fires from catalog:sync-episodes-tvdb;
+        // seeing it proves the episodes command ran inside the orchestrator (ordering
+        // after the show sync is enforced structurally by its list placement).
+        Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=episodes'));
+    });
 
-    // Act
-    $this->artisan('catalog:sync', ['--fresh' => true]);
+    it('under --fresh also dispatches the episodes sync after the show crawl', function (): void {
+        // Arrange
+        fakeCatalogSyncFreshAndUpdates();
 
-    // Assert
-    // --fresh swaps the TVDB show step to the full crawl (/series?page), so the
-    // series-updates feed's driver call (type=series at page 0, no page cursor)
-    // must never fire. The marker-driven episodes step still walks /updates, and
-    // the shared fixture's real next-link is a type=series&page=1 capture, so we
-    // discriminate on the page-0 entry rather than that borrowed cursor; the
-    // type=episodes dispatch itself is asserted elsewhere. Forwarding --fresh
-    // reprocesses the already-synced 603/1399 rows a plain run skips, so both
-    // hydrations fire.
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=series')
-        && ! Str::contains($request->url(), 'page='));
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
-});
+        // Act
+        $this->artisan('catalog:sync', ['--fresh' => true]);
 
-it('on a default run uses the TVDB updates feed and forwards no --fresh to the TMDB syncs', function (): void {
-    // Arrange
-    fakeCatalogSync();
-    Movie::factory()->withTmdb()->create(['_tmdb_id' => 603]);
-    Show::factory()->withTmdb()->create(['_tmdb_id' => 1399]);
-
-    // Act
-    $this->artisan('catalog:sync');
-
-    // Assert
-    // No --fresh means the updates feed (never the crawl) and the already-synced
-    // 603/1399 rows are skipped, so neither hydration fires.
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
-});
-
-it('exercises both TMDB changes feeds on a default run', function (): void {
-    // Arrange
-    fakeCatalogSync();
-
-    // Act
-    $this->artisan('catalog:sync');
-
-    // Assert
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
-});
-
-it('on a default run dispatches the episodes sync after the show sync', function (): void {
-    // Arrange
-    fakeCatalogSync();
-
-    // Act
-    $this->artisan('catalog:sync');
-
-    // Assert
-    // The type=episodes updates call only fires from catalog:sync-episodes-tvdb;
-    // seeing it proves the episodes command ran inside the orchestrator (ordering
-    // after the show sync is enforced structurally by its list placement).
-    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=episodes'));
-});
-
-it('under --fresh also dispatches the episodes sync after the show crawl', function (): void {
-    // Arrange
-    fakeCatalogSyncFreshAndUpdates();
-
-    // Act
-    $this->artisan('catalog:sync', ['--fresh' => true]);
-
-    // Assert
-    // The type=episodes updates call only fires from catalog:sync-episodes-tvdb;
-    // --fresh swaps the show step to the crawl but the episodes step is purely
-    // marker-driven with no --fresh flag, so it must still run — seeing type=episodes
-    // proves it did (ordering after the crawl is enforced by its list placement).
-    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=episodes'));
+        // Assert
+        // The type=episodes updates call only fires from catalog:sync-episodes-tvdb;
+        // --fresh swaps the show step to the crawl but the episodes step is purely
+        // marker-driven with no --fresh flag, so it must still run — seeing type=episodes
+        // proves it did (ordering after the crawl is enforced by its list placement).
+        Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=episodes'));
+    });
 });

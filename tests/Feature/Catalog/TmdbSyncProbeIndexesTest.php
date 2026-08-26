@@ -25,52 +25,56 @@ function tmdbProbeIndexes(string $table): Collection
         ->values();
 }
 
-it('indexes movies on _tmdb_id and tmdb_synced_at together', function (): void {
-    // Arrange
-    // pure schema assertion — the migration chain RefreshDatabase runs is the setup
+describe('TMDB sync probe composite indexes', function (): void {
+    it('indexes movies on _tmdb_id and tmdb_synced_at together', function (): void {
+        // Arrange
+        // pure schema assertion — the migration chain RefreshDatabase runs is the setup
 
-    // Act
-    $indexes = tmdbProbeIndexes('movies');
+        // Act
+        $indexes = tmdbProbeIndexes('movies');
 
-    // Assert
-    expect($indexes->pluck('columns')->all())->toContain(['_tmdb_id', 'tmdb_synced_at']);
+        // Assert
+        expect($indexes->pluck('columns')->all())->toContain(['_tmdb_id', 'tmdb_synced_at']);
+    });
+
+    it('indexes shows on _tmdb_id and tmdb_synced_at together', function (): void {
+        // Arrange
+        // pure schema assertion — the migration chain RefreshDatabase runs is the setup
+
+        // Act
+        $indexes = tmdbProbeIndexes('shows');
+
+        // Assert
+        expect($indexes->pluck('columns')->all())->toContain(['_tmdb_id', 'tmdb_synced_at']);
+    });
 });
 
-it('indexes shows on _tmdb_id and tmdb_synced_at together', function (): void {
-    // Arrange
-    // pure schema assertion — the migration chain RefreshDatabase runs is the setup
+describe('TMDB sync probe single-column indexes', function (): void {
+    it('keeps the unique single-column _tmdb_id index on movies and shows', function (): void {
+        // Arrange
+        // pure schema assertion — the migration chain RefreshDatabase runs is the setup
 
-    // Act
-    $indexes = tmdbProbeIndexes('shows');
+        // Act
+        $unique = collect(['movies', 'shows'])->mapWithKeys(fn (string $table): array => [
+            $table => tmdbProbeIndexes($table)->where('unique', true)->pluck('columns')->all(),
+        ]);
 
-    // Assert
-    expect($indexes->pluck('columns')->all())->toContain(['_tmdb_id', 'tmdb_synced_at']);
-});
+        // Assert
+        expect($unique['movies'])->toContain(['_tmdb_id'])
+            ->and($unique['shows'])->toContain(['_tmdb_id']);
+    });
 
-it('keeps the unique single-column _tmdb_id index on movies and shows', function (): void {
-    // Arrange
-    // pure schema assertion — the migration chain RefreshDatabase runs is the setup
+    it('keeps the single-column tmdb_synced_at index on movies and shows', function (): void {
+        // Arrange
+        // pure schema assertion — the migration chain RefreshDatabase runs is the setup
 
-    // Act
-    $unique = collect(['movies', 'shows'])->mapWithKeys(fn (string $table): array => [
-        $table => tmdbProbeIndexes($table)->where('unique', true)->pluck('columns')->all(),
-    ]);
+        // Act
+        $nonUnique = collect(['movies', 'shows'])->mapWithKeys(fn (string $table): array => [
+            $table => tmdbProbeIndexes($table)->where('unique', false)->pluck('columns')->all(),
+        ]);
 
-    // Assert
-    expect($unique['movies'])->toContain(['_tmdb_id'])
-        ->and($unique['shows'])->toContain(['_tmdb_id']);
-});
-
-it('keeps the single-column tmdb_synced_at index on movies and shows', function (): void {
-    // Arrange
-    // pure schema assertion — the migration chain RefreshDatabase runs is the setup
-
-    // Act
-    $nonUnique = collect(['movies', 'shows'])->mapWithKeys(fn (string $table): array => [
-        $table => tmdbProbeIndexes($table)->where('unique', false)->pluck('columns')->all(),
-    ]);
-
-    // Assert
-    expect($nonUnique['movies'])->toContain(['tmdb_synced_at'])
-        ->and($nonUnique['shows'])->toContain(['tmdb_synced_at']);
+        // Assert
+        expect($nonUnique['movies'])->toContain(['tmdb_synced_at'])
+            ->and($nonUnique['shows'])->toContain(['tmdb_synced_at']);
+    });
 });

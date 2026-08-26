@@ -25,50 +25,52 @@ use Tests\TestCase;
 
 uses(TestCase::class);
 
-it('returns null for an absent epoch rather than collapsing to the epoch origin', function (): void {
-    // Arrange
-    // synthetic: a field Plex omitted arrives as null, no state to set up
+describe('fromEpoch() conversion', function (): void {
+    it('returns null for an absent epoch rather than collapsing to the epoch origin', function (): void {
+        // Arrange
+        // synthetic: a field Plex omitted arrives as null, no state to set up
 
-    // Act
-    $actual = PlexTimestamp::fromEpoch(null);
+        // Act
+        $actual = PlexTimestamp::fromEpoch(null);
 
-    // Assert
-    expect($actual)->toBeNull();
-});
+        // Assert
+        expect($actual)->toBeNull();
+    });
 
-it('converts a real Plex addedAt epoch to the matching instant', function (): void {
-    // Arrange
-    $epoch = json_decode(fixtureBytes('PlexLibrary/plex/episode.json'), true)['addedAt'];
+    it('converts a real Plex addedAt epoch to the matching instant', function (): void {
+        // Arrange
+        $epoch = json_decode(fixtureBytes('PlexLibrary/plex/episode.json'), true)['addedAt'];
 
-    // Act
-    $actual = PlexTimestamp::fromEpoch($epoch);
+        // Act
+        $actual = PlexTimestamp::fromEpoch($epoch);
 
-    // Assert
-    expect($actual)->toBeInstanceOf(CarbonInterface::class);
-    expect($actual->utc()->toDateTimeString())->toBe('2026-04-19 01:01:59');
-});
+        // Assert
+        expect($actual)->toBeInstanceOf(CarbonInterface::class);
+        expect($actual->utc()->toDateTimeString())->toBe('2026-04-19 01:01:59');
+    });
 
-it('converts a real Plex updatedAt epoch to the matching instant', function (): void {
-    // Arrange
-    $epoch = json_decode(fixtureBytes('PlexLibrary/plex/episode.json'), true)['updatedAt'];
+    it('converts a real Plex updatedAt epoch to the matching instant', function (): void {
+        // Arrange
+        $epoch = json_decode(fixtureBytes('PlexLibrary/plex/episode.json'), true)['updatedAt'];
 
-    // Act
-    $actual = PlexTimestamp::fromEpoch($epoch);
+        // Act
+        $actual = PlexTimestamp::fromEpoch($epoch);
 
-    // Assert
-    expect($actual)->toBeInstanceOf(CarbonInterface::class);
-    expect($actual->utc()->toDateTimeString())->toBe('2026-04-19 01:02:05');
-});
+        // Assert
+        expect($actual)->toBeInstanceOf(CarbonInterface::class);
+        expect($actual->utc()->toDateTimeString())->toBe('2026-04-19 01:02:05');
+    });
 
-it('converts a zero epoch to the epoch origin instead of null', function (): void {
-    // Arrange
-    // synthetic: Plex never sends 0 — proves the null check is on null, not falsiness
-    $epoch = 0;
+    it('converts a zero epoch to the epoch origin instead of null', function (): void {
+        // Arrange
+        // synthetic: Plex never sends 0 — proves the null check is on null, not falsiness
+        $epoch = 0;
 
-    // Act
-    $actual = PlexTimestamp::fromEpoch($epoch);
+        // Act
+        $actual = PlexTimestamp::fromEpoch($epoch);
 
-    // Assert
-    expect($actual)->toBeInstanceOf(CarbonInterface::class);
-    expect($actual->utc()->toDateTimeString())->toBe('1970-01-01 00:00:00');
+        // Assert
+        expect($actual)->toBeInstanceOf(CarbonInterface::class);
+        expect($actual->utc()->toDateTimeString())->toBe('1970-01-01 00:00:00');
+    });
 });

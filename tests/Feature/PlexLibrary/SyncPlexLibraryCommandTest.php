@@ -76,185 +76,6 @@ uses(RefreshDatabase::class);
 | while still proving it really inserted the rows it stayed silent about.
 */
 
-it('reconciles the top level on every run', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    expect(PlexServer::query()->count())->toBe(1);
-    expect(PlexLibrary::query()->count())->toBe(2);
-    expect(PlexMovie::query()->count())->toBe(3);
-    expect(PlexShow::query()->count())->toBe(3);
-});
-
-it('crawls episodes only for changed shows', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
-    seedUnchangedShow('27520', 4, 1784194023);
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves'));
-    Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/allLeaves'));
-    Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/children'));
-});
-
-it('skips the episode crawl when nothing changed', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
-    seedUnchangedShow('34112', 24, 1782985591);
-    seedUnchangedShow('27520', 4, 1784194023);
-    seedUnchangedShow('32204', 16, 1782552566);
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/allLeaves'));
-    Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/children'));
-});
-
-// The one case no read of _plex_updatedAt can ever see: the stored row carries
-// the fixture's own updatedAt (written through ReconcilePlexShows itself, so it
-// is byte-identical to what this run writes) and a caught-up episode watermark
-// pinned to it, so both stale-watermark arms are dead. Only leafCount moved, and
-// only the marking upsertPage does can turn that into a crawl.
-it('crawls a show whose only change is its leaf count', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
-    seedShowWithStaleLeafCount('27520', 3);
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/children'));
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/allLeaves'));
-});
-
-it('exits FAILURE when a show episode crawl failed', function (): void {
-    // Arrange
-    fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
-
-    // Act & Assert
-    $this->artisan('plex:sync')->assertExitCode(Command::FAILURE);
-});
-
-it('stamps the episode watermark on every show it crawled', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    foreach (['34112', '27520', '32204'] as $ratingKey) {
-        expect(showByRatingKey($ratingKey)->episodes_synced_at)->not->toBeNull();
-    }
-});
-
-it('leaves the episode watermark unstamped for a show whose crawl failed', function (): void {
-    // Arrange
-    fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    expect(showByRatingKey('34112')->episodes_synced_at)->toBeNull();
-    expect(showByRatingKey('27520')->episodes_synced_at)->not->toBeNull();
-});
-
-// The second fakePlexSeedCrawl() in Arrange also resets the recorded requests,
-// so the assertions below see the SECOND run only. Its payload is byte-identical
-// to the first run's, so show 34112 does NOT read as moved and is never marked —
-// only its unstamped episode watermark can put it back in the crawl. The 24 episodes of
-// the shared allLeaves fixture are re-parented to whichever show was crawled
-// last, so a row under 34112 proves that show was the one crawled.
-it('re-crawls a show whose episode crawl failed even though nothing changed', function (): void {
-    // Arrange
-    fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
-    $this->artisan('plex:sync')->run();
-    freshPlexHttpFactory();
-    fakePlexSeedCrawl();
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves'));
-    expect(PlexEpisode::query()->where('plex_show_id', showByRatingKey('34112')->id)->count())->toBeGreaterThan(0);
-});
-
-// The pending count is what keeps this honest: silence alone would also pass on a
-// run that inserted nothing at all.
-it('announces nothing for the arrivals it just added, which are still inside the debounce window', function (): void {
-    // Arrange
-    Notification::fake();
-    config()->set('services.slack.notifications.channel', '#lundflix');
-    fakePlexSeedCrawl();
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    Notification::assertNothingSent();
-    expect(PlexMovie::query()->whereNull('announced_at')->count())->toBe(3);
-    expect(PlexEpisode::query()->whereNull('announced_at')->count())->toBeGreaterThan(0);
-});
-
-// The channel is configured only for the SECOND run: the queue connection is
-// sync under test, so a first run that announced would deliver to Slack for
-// real instead of being counted by a fake that doesn't exist yet. Faking after
-// it therefore proves the silence belongs to the re-run, which reconciles the
-// identical payload and inserts nothing.
-it('announces nothing on a re-run that added nothing', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
-    $this->artisan('plex:sync')->run();
-    freshPlexHttpFactory();
-    fakePlexSeedCrawl();
-    Notification::fake();
-    config()->set('services.slack.notifications.channel', '#lundflix');
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    Notification::assertNothingSent();
-});
-
-// The window is passed by ageing the pending rows' created_at directly rather than
-// travelling the clock: the second crawl re-upserts the very same rows, and
-// created_at is insert-only, so the ageing survives the re-run. 1000s clears both
-// quiet windows and the 900s hard deadline, so every pending bucket is ripe.
-//
-// The channel is configured only for the SECOND run, after Notification::fake(),
-// for the same reason as the silent re-run test above: the queue connection is sync
-// under test, so a first run that announced would deliver to Slack for real.
-it('announces the pending arrivals in one message once the window has passed', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
-    $this->artisan('plex:sync')->run();
-    PlexMovie::query()->update(['created_at' => now()->subSeconds(1000)]);
-    PlexEpisode::query()->update(['created_at' => now()->subSeconds(1000)]);
-    freshPlexHttpFactory();
-    fakePlexSeedCrawl();
-    Notification::fake();
-    config()->set('services.slack.notifications.channel', '#lundflix');
-
-    // Act
-    $this->artisan('plex:sync')->run();
-
-    // Assert
-    Notification::assertSentOnDemandTimes(RecentlyAddedToPlex::class, 1);
-});
-
 /**
  * Drop the faked HTTP factory so a second fakePlexSeedCrawl() in one test starts
  * clean. Http::fake() MERGES its stubs into the existing ones (the earliest
@@ -351,3 +172,188 @@ function seedUnchangedShow(string $ratingKey, int $leafCount, int $updatedAtEpoc
         'episodes_synced_at' => Date::createFromTimestamp($updatedAtEpoch),
     ]);
 }
+
+describe('plex:sync crawl selection', function (): void {
+    it('reconciles the top level on every run', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        expect(PlexServer::query()->count())->toBe(1);
+        expect(PlexLibrary::query()->count())->toBe(2);
+        expect(PlexMovie::query()->count())->toBe(3);
+        expect(PlexShow::query()->count())->toBe(3);
+    });
+
+    it('crawls episodes only for changed shows', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+        seedUnchangedShow('27520', 4, 1784194023);
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves'));
+        Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/allLeaves'));
+        Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/children'));
+    });
+
+    it('skips the episode crawl when nothing changed', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+        seedUnchangedShow('34112', 24, 1782985591);
+        seedUnchangedShow('27520', 4, 1784194023);
+        seedUnchangedShow('32204', 16, 1782552566);
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/allLeaves'));
+        Http::assertNotSent(fn ($request): bool => Str::contains((string) $request->url(), '/children'));
+    });
+
+    // The one case no read of _plex_updatedAt can ever see: the stored row carries
+    // the fixture's own updatedAt (written through ReconcilePlexShows itself, so it
+    // is byte-identical to what this run writes) and a caught-up episode watermark
+    // pinned to it, so both stale-watermark arms are dead. Only leafCount moved, and
+    // only the marking upsertPage does can turn that into a crawl.
+    it('crawls a show whose only change is its leaf count', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+        seedShowWithStaleLeafCount('27520', 3);
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/children'));
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/27520/allLeaves'));
+    });
+});
+
+describe('plex:sync episode watermark & failure', function (): void {
+    it('exits FAILURE when a show episode crawl failed', function (): void {
+        // Arrange
+        fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+
+        // Act & Assert
+        $this->artisan('plex:sync')->assertExitCode(Command::FAILURE);
+    });
+
+    it('stamps the episode watermark on every show it crawled', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        foreach (['34112', '27520', '32204'] as $ratingKey) {
+            expect(showByRatingKey($ratingKey)->episodes_synced_at)->not->toBeNull();
+        }
+    });
+
+    it('leaves the episode watermark unstamped for a show whose crawl failed', function (): void {
+        // Arrange
+        fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        expect(showByRatingKey('34112')->episodes_synced_at)->toBeNull();
+        expect(showByRatingKey('27520')->episodes_synced_at)->not->toBeNull();
+    });
+
+    // The second fakePlexSeedCrawl() in Arrange also resets the recorded requests,
+    // so the assertions below see the SECOND run only. Its payload is byte-identical
+    // to the first run's, so show 34112 does NOT read as moved and is never marked —
+    // only its unstamped episode watermark can put it back in the crawl. The 24 episodes of
+    // the shared allLeaves fixture are re-parented to whichever show was crawled
+    // last, so a row under 34112 proves that show was the one crawled.
+    it('re-crawls a show whose episode crawl failed even though nothing changed', function (): void {
+        // Arrange
+        fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+        $this->artisan('plex:sync')->run();
+        freshPlexHttpFactory();
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves'));
+        expect(PlexEpisode::query()->where('plex_show_id', showByRatingKey('34112')->id)->count())->toBeGreaterThan(0);
+    });
+});
+
+describe('plex:sync announcements', function (): void {
+    // The pending count is what keeps this honest: silence alone would also pass on a
+    // run that inserted nothing at all.
+    it('announces nothing for the arrivals it just added, which are still inside the debounce window', function (): void {
+        // Arrange
+        Notification::fake();
+        config()->set('services.slack.notifications.channel', '#lundflix');
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        Notification::assertNothingSent();
+        expect(PlexMovie::query()->whereNull('announced_at')->count())->toBe(3);
+        expect(PlexEpisode::query()->whereNull('announced_at')->count())->toBeGreaterThan(0);
+    });
+
+    // The channel is configured only for the SECOND run: the queue connection is
+    // sync under test, so a first run that announced would deliver to Slack for
+    // real instead of being counted by a fake that doesn't exist yet. Faking after
+    // it therefore proves the silence belongs to the re-run, which reconciles the
+    // identical payload and inserts nothing.
+    it('announces nothing on a re-run that added nothing', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+        $this->artisan('plex:sync')->run();
+        freshPlexHttpFactory();
+        fakePlexSeedCrawl();
+        Notification::fake();
+        config()->set('services.slack.notifications.channel', '#lundflix');
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        Notification::assertNothingSent();
+    });
+
+    // The window is passed by ageing the pending rows' created_at directly rather than
+    // travelling the clock: the second crawl re-upserts the very same rows, and
+    // created_at is insert-only, so the ageing survives the re-run. 1000s clears both
+    // quiet windows and the 900s hard deadline, so every pending bucket is ripe.
+    //
+    // The channel is configured only for the SECOND run, after Notification::fake(),
+    // for the same reason as the silent re-run test above: the queue connection is sync
+    // under test, so a first run that announced would deliver to Slack for real.
+    it('announces the pending arrivals in one message once the window has passed', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+        $this->artisan('plex:sync')->run();
+        PlexMovie::query()->update(['created_at' => now()->subSeconds(1000)]);
+        PlexEpisode::query()->update(['created_at' => now()->subSeconds(1000)]);
+        freshPlexHttpFactory();
+        fakePlexSeedCrawl();
+        Notification::fake();
+        config()->set('services.slack.notifications.channel', '#lundflix');
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        Notification::assertSentOnDemandTimes(RecentlyAddedToPlex::class, 1);
+    });
+});
