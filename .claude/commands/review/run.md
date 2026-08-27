@@ -1,6 +1,6 @@
 ---
 name: review:run
-description: Orchestrates the full PR review loop end-to-end with confirmation gates — optional cross-ticket refactor sweep, then create-pr → human → suite → process → delta review of the fixes. Each stage pauses for approval before the next.
+description: Orchestrates the full PR review loop end-to-end with confirmation gates — optional cross-slice refactor sweep, then create-pr → human → suite → process → delta review of the fixes. Each stage pauses for approval before the next.
 ---
 
 # Review Loop Orchestrator
@@ -9,7 +9,7 @@ Runs the review pipeline as one guided sequence. Drive each stage **in order**,
 pausing at the ⏸ gates for the user. Each stage's mechanics live in its own
 command — **defer to that file, do not reimplement it here.**
 
-Loop: `[cross-ticket sweep?]` → `/review:create-pr` → `/review:human` →
+Loop: `[cross-slice sweep?]` → `/review:create-pr` → `/review:human` →
 `/review:suite` → `/review:process` → `[delta review]`.
 
 ## Input
@@ -18,13 +18,16 @@ Loop: `[cross-ticket sweep?]` → `/review:create-pr` → `/review:human` →
 
 ## Sequence
 
-### Stage 0: Cross-ticket refactor sweep (conditional)
-Decide whether the branch spans **more than one ticket** — inspect
-`git diff origin/main...HEAD --stat`, the branch name, and the commit history.
+### Stage 0: Cross-slice refactor sweep (conditional)
+Decide whether the branch spans **more than one TDD slice** — inspect
+`git diff origin/main...HEAD --stat` and the commit history. Ticket count is
+irrelevant: `tdd-refactorer` is spawned per slice with only that slice's files
+(`.claude/skills/tdd/SKILL.md:106`), so one ticket of many slices has the same
+blind spot as many tickets.
 
-- **Multi-ticket** → invoke the `review-tdd-cross-ticket` skill (whole-PR REFACTOR
+- **Multi-slice** → invoke the `review-tdd-cross-slice` skill (whole-PR REFACTOR
   sweep). It runs its **own** green-precondition + approval gate — let it.
-- **Single-ticket** → skip and say so (the slice's own REFACTOR already covered it).
+- **Single-slice** → skip and say so (that one slice's own REFACTOR saw everything).
 
 ### Stage 1: create-pr  ⏸
 If the branch has **no open PR**, follow `.claude/commands/review/create-pr.md`
