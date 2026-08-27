@@ -15,7 +15,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
-final class TmdbApiService
+final readonly class TmdbApiService
 {
     use PoolsIdBatches;
 

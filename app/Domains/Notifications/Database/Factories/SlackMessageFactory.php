@@ -11,7 +11,7 @@ use Illuminate\Notifications\Notification;
 /**
  * @extends Factory<SlackMessage>
  */
-class SlackMessageFactory extends Factory
+final class SlackMessageFactory extends Factory
 {
     protected $model = SlackMessage::class;
 

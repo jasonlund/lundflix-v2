@@ -12,7 +12,7 @@ namespace App\Domains\Identity\Support;
  * fails silently — the read returns null and the guest is simply bounced to
  * /login — so the keys and their shapes live here, at neither end.
  */
-final class PlexSession
+final readonly class PlexSession
 {
     private const string PIN_ID = 'plex_pin_id';
 

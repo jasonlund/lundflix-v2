@@ -8,7 +8,7 @@ use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Support\PlexTimestamp;
 
-final class ReconcilePlexLibraries
+final readonly class ReconcilePlexLibraries
 {
     /**
      * Section types the app mirrors — the audiovisual libraries. Music

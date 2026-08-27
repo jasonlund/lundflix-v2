@@ -13,7 +13,7 @@ use Illuminate\Console\Attributes\Signature;
 
 #[Description('Sync IMDb akas: re-download the title.akas dataset and refresh the aka list on every matching catalog title')]
 #[Signature('catalog:sync-akas {--batch=}')]
-class SyncImdbAkas extends ImdbSyncCommand
+final class SyncImdbAkas extends ImdbSyncCommand
 {
     /**
      * Default flush size for the accumulated akas buffer; --batch overrides it.

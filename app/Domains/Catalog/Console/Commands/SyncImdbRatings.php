@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
 
 #[Description('Sync IMDb ratings: re-download the title.ratings dataset and refresh votes/rating on every matching catalog title')]
 #[Signature('catalog:sync-ratings')]
-class SyncImdbRatings extends Command
+final class SyncImdbRatings extends Command
 {
     /**
      * Flush the accumulated ratings buffer once it reaches this size.

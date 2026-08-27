@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class PlexSeason extends Model
+final class PlexSeason extends Model
 {
     /** @use HasFactory<PlexSeasonFactory> */
     use HasFactory;

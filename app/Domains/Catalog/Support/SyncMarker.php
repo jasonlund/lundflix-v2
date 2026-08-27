@@ -8,7 +8,7 @@ use App\Domains\Catalog\Enums\SyncFeed;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 
-final class SyncMarker
+final readonly class SyncMarker
 {
     private const int OVERLAP_HOURS = 6;
 

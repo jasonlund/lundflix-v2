@@ -63,6 +63,30 @@ app/Domains/
   and `routes/web.php` points at them. Keep them thin — guard, call an Action or
   Service, respond.
 
+### Class modifiers
+
+Two mechanical rules, no per-file judgment, enforced by `tests/Unit/ArchTest.php`
+over everything the repo owns (`app/`, the PSR-4 halves of `database/`, the
+helper classes under `tests/`):
+
+- **Every non-abstract class is `final`.** Inheritance is opt-in, and opting in is
+  spelled `abstract` — a shared base (`PlexLibraryCommand`, `TmdbSyncCommand`)
+  declares itself abstract and is named in the arch test's `->ignoring()` list,
+  which a staleness guard pins as genuinely abstract.
+- **A class with no parent is additionally `readonly`** — `final readonly class`.
+  This holds for stateless and static-only helpers too; the point is that the
+  shape is predictable, not that each class earns it individually.
+
+The second rule stops at the parent because **PHP forbids a `readonly class` from
+extending a non-readonly one** (a fatal, not a warning). So everything extending a
+framework base — Models, Commands, Factories, Exceptions, spatie `Data`,
+Providers, Middleware, Filament pages — can only ever take `final`. Enums, traits
+and interfaces are outside both rules; enums are implicitly final and can never be
+readonly.
+
+Anonymous migration classes are the one structural exclusion — they can't be named,
+and the arch targets (`Database\Factories`, `Database\Seeders`) don't reach them.
+
 ### Action classes
 
 Single-purpose actions live in `App\Domains\{Domain}\Actions`.

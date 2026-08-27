@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Support;
 
 use Generator;
 
-final class Batches
+final readonly class Batches
 {
     /**
      * Cut a stream into fixed-size batches, tail included, pulling from the source

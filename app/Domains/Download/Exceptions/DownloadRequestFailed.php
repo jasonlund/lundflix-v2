@@ -6,7 +6,7 @@ namespace App\Domains\Download\Exceptions;
 
 use Exception;
 
-class DownloadRequestFailed extends Exception
+final class DownloadRequestFailed extends Exception
 {
     public static function for(string $url): self
     {

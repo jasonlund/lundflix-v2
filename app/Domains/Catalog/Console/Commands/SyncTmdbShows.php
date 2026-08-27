@@ -20,7 +20,7 @@ use Illuminate\Support\Collection;
 
 #[Description('Two-phase TMDB show sync: hydrate our own shows by their resolvable id (direct _tmdb_id, or reconciled from _imdb_id via /find), then update-changed from the marker-derived changes window')]
 #[Signature('catalog:sync-shows-tmdb {--fresh}')]
-class SyncTmdbShows extends TmdbSyncCommand
+final class SyncTmdbShows extends TmdbSyncCommand
 {
     private ReconcileImdbOnlyShows $reconcileImdbOnly;
 

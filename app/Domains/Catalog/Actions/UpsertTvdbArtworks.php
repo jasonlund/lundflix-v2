@@ -10,7 +10,7 @@ use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
 use Illuminate\Support\Facades\DB;
 
-final class UpsertTvdbArtworks
+final readonly class UpsertTvdbArtworks
 {
     /**
      * Raw TVDB artwork keys mapped 1:1 onto `_tvdb_*` columns, value taken raw.

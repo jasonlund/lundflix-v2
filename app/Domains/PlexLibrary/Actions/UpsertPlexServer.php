@@ -6,7 +6,7 @@ namespace App\Domains\PlexLibrary\Actions;
 
 use App\Domains\PlexLibrary\Models\PlexServer;
 
-final class UpsertPlexServer
+final readonly class UpsertPlexServer
 {
     /**
      * @param  array<string, mixed>  $connection

@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 
 #[Description('Sync IMDb titles: re-download the title.basics dataset and refresh the basics columns on every matching catalog title')]
 #[Signature('catalog:sync-titles {--batch=}')]
-class SyncImdbTitles extends ImdbSyncCommand
+final class SyncImdbTitles extends ImdbSyncCommand
 {
     /**
      * Default flush size for the accumulated basics buffer; --batch overrides it.

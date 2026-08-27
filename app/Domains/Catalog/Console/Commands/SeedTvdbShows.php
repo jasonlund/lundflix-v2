@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 
 #[Description('Crawl every TheTVDB series and upsert shows with their artworks and seasons (one-time bootstrap); pass --ids-file (a CSV file of series ids) to re-hydrate specific series instead of crawling')]
 #[Signature('catalog:seed-shows-tvdb {--ids-file=}')]
-class SeedTvdbShows extends TvdbShowsCommand
+final class SeedTvdbShows extends TvdbShowsCommand
 {
     public function handle(
         TvdbApiService $api,

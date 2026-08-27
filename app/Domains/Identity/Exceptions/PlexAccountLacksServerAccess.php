@@ -6,7 +6,7 @@ namespace App\Domains\Identity\Exceptions;
 
 use Exception;
 
-class PlexAccountLacksServerAccess extends Exception
+final class PlexAccountLacksServerAccess extends Exception
 {
     /**
      * @param  array{id: int|null, uuid: string|null, username: string|null, email: string|null, thumb: string|null}  $plexUser  from PlexApiService::getUserInfo()

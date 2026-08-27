@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Exceptions;
 
 use Exception;
 
-class CorruptImdbDatasetArchive extends Exception
+final class CorruptImdbDatasetArchive extends Exception
 {
     public static function at(string $path): self
     {

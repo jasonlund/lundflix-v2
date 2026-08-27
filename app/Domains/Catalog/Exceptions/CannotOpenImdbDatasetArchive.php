@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Exceptions;
 
 use Exception;
 
-class CannotOpenImdbDatasetArchive extends Exception
+final class CannotOpenImdbDatasetArchive extends Exception
 {
     public static function at(string $path): self
     {

@@ -9,7 +9,7 @@ use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Sleep;
 
-final class RequestThrottle
+final readonly class RequestThrottle
 {
     private const string SLOT_KEY = 'download:request-throttle:next-slot';
 

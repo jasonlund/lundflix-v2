@@ -6,7 +6,7 @@ namespace App\Domains\Identity\Exceptions;
 
 use Exception;
 
-class PlexPinNotClaimed extends Exception
+final class PlexPinNotClaimed extends Exception
 {
     public static function for(int $pinId): self
     {

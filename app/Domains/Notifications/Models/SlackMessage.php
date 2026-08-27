@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class SlackMessage extends Model
+final class SlackMessage extends Model
 {
     /** @use HasFactory<SlackMessageFactory> */
     use HasFactory;

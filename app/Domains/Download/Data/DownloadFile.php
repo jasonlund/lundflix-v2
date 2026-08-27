@@ -6,7 +6,7 @@ namespace App\Domains\Download\Data;
 
 use Spatie\LaravelData\Data;
 
-class DownloadFile extends Data
+final class DownloadFile extends Data
 {
     public function __construct(
         public string $name,

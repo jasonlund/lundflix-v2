@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Local\Database;
 
-final class DumpSelection
+final readonly class DumpSelection
 {
     /**
      * Child `media` restriction as a bounded top-N subquery per parent type.

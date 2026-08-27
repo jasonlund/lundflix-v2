@@ -6,7 +6,7 @@ namespace App\Domains\Common\Exceptions;
 
 use Exception;
 
-class PlexAuthenticationFailed extends Exception
+final class PlexAuthenticationFailed extends Exception
 {
     public static function invalidToken(): self
     {

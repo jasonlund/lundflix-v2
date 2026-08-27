@@ -9,7 +9,7 @@ use App\Domains\PlexLibrary\Models\PlexMovie;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
-final class RecentlyAddedDigest
+final readonly class RecentlyAddedDigest
 {
     /**
      * @param  Collection<int, PlexMovie>  $movies

@@ -11,7 +11,7 @@ use function Pest\Laravel\assertDatabaseHas;
  * Throwaway fixture notification exercising Laravel's built-in `database`
  * channel — no example notification ships in production.
  */
-class DatabaseChannelTestNotification extends Notification
+final class DatabaseChannelTestNotification extends Notification
 {
     /** @return list<string> */
     public function via(object $notifiable): array

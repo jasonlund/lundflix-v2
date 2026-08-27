@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
  * Throwaway fixture notification exercising Laravel's `slack` channel — no
  * example notification ships in production.
  */
-class SlackChannelTestNotification extends Notification
+final class SlackChannelTestNotification extends Notification
 {
     /** @return list<string> */
     public function via(object $notifiable): array

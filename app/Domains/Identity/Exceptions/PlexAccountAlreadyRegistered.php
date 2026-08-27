@@ -6,7 +6,7 @@ namespace App\Domains\Identity\Exceptions;
 
 use Exception;
 
-class PlexAccountAlreadyRegistered extends Exception
+final class PlexAccountAlreadyRegistered extends Exception
 {
     /**
      * @param  array{id: int|null, uuid: string|null, username: string|null, email: string|null, thumb: string|null}  $plexUser  from PlexApiService::getUserInfo()

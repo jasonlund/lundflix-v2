@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\Collection;
  */
 #[Description('Sync TheTVDB episodes for already-seeded shows incrementally from the /updates feed since the last run marker')]
 #[Signature('catalog:sync-episodes-tvdb')]
-class SyncTvdbEpisodes extends Command
+final class SyncTvdbEpisodes extends Command
 {
     public function handle(TvdbApiService $api, SeedTvdbEpisodes $seed, SyncMarker $marker): int
     {

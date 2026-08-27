@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 /**
  * @extends Factory<Media>
  */
-class MediaFactory extends Factory
+final class MediaFactory extends Factory
 {
     protected $model = Media::class;
 
