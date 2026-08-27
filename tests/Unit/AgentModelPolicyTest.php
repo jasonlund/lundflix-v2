@@ -105,6 +105,7 @@ describe('agent frontmatter model pinning', function () use ($declaredModel): vo
             'integration-reviewer',
             'discipline-reviewer',
             'testing-reviewer',
+            'duplication-reviewer',
             'coderabbit-reviewer',
         ];
 
