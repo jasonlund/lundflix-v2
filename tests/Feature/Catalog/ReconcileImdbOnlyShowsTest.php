@@ -29,44 +29,46 @@ function fakeReconcileFind(): void
     ]);
 }
 
-it('stamps an imdb-only row with its resolved tmdb id and returns it', function (): void {
-    // Arrange
-    fakeReconcileFind();
-    $show = Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null]);
+describe('handle() tmdb id resolution', function (): void {
+    it('stamps an imdb-only row with its resolved tmdb id and returns it', function (): void {
+        // Arrange
+        fakeReconcileFind();
+        $show = Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null]);
 
-    // Act
-    $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$show]), resolve(TmdbApiService::class));
+        // Act
+        $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$show]), resolve(TmdbApiService::class));
 
-    // Assert
-    expect($resolved)->toBe([1396]);
-    expect($show->fresh()->_tmdb_id)->toBe(1396);
-});
+        // Assert
+        expect($resolved)->toBe([1396]);
+        expect($show->fresh()->_tmdb_id)->toBe(1396);
+    });
 
-it('leaves an imdb-only row TVDB-only when /find returns no tv results', function (): void {
-    // Arrange
-    fakeReconcileFind();
-    $show = Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0133093', '_tmdb_id' => null]);
+    it('leaves an imdb-only row TVDB-only when /find returns no tv results', function (): void {
+        // Arrange
+        fakeReconcileFind();
+        $show = Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0133093', '_tmdb_id' => null]);
 
-    // Act
-    $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$show]), resolve(TmdbApiService::class));
+        // Act
+        $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$show]), resolve(TmdbApiService::class));
 
-    // Assert
-    expect($resolved)->toBe([]);
-    expect($show->fresh()->_tmdb_id)->toBeNull();
-});
+        // Assert
+        expect($resolved)->toBe([]);
+        expect($show->fresh()->_tmdb_id)->toBeNull();
+    });
 
-it('reports a collision and leaves the row null when the resolved id already belongs to another row', function (): void {
-    // Arrange
-    Exceptions::fake();
-    fakeReconcileFind();
-    Show::factory()->withTvdb()->create(['_tmdb_id' => 1396]);
-    $imdbOnly = Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null]);
+    it('reports a collision and leaves the row null when the resolved id already belongs to another row', function (): void {
+        // Arrange
+        Exceptions::fake();
+        fakeReconcileFind();
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 1396]);
+        $imdbOnly = Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null]);
 
-    // Act
-    $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$imdbOnly]), resolve(TmdbApiService::class));
+        // Act
+        $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$imdbOnly]), resolve(TmdbApiService::class));
 
-    // Assert
-    expect($resolved)->toBe([]);
-    expect($imdbOnly->fresh()->_tmdb_id)->toBeNull();
-    Exceptions::assertReported(TmdbShowCrosswalkCollision::class);
+        // Assert
+        expect($resolved)->toBe([]);
+        expect($imdbOnly->fresh()->_tmdb_id)->toBeNull();
+        Exceptions::assertReported(TmdbShowCrosswalkCollision::class);
+    });
 });

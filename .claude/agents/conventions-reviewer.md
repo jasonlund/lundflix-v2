@@ -54,7 +54,7 @@ change against these rules (full text in `CLAUDE.md` and
   and genuine "why" prose — flag summary lines that restate the method name,
   `@param`/`@var` adding nothing past the native type hint, and framework stubs (a
   `@var string` restating a typed property). Flag the noise; do **not** rewrite it
-  (the standalone `brevity` skill does that) — your job is to surface it.
+  (the standalone `agent-writing` skill does that) — your job is to surface it.
 
 ### Frontend (Inertia + React)
 - `resources/js/` mirrors backend domains: `common/` (generic, no domain

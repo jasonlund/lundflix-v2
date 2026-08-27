@@ -35,119 +35,125 @@ use Illuminate\Support\Str;
 | container-paged Plex response returns — only the envelope is synthetic.
 */
 
-it('returns the season metadata from fetchShowChildren', function (): void {
-    // Arrange
-    $uri = 'https://plex.test:6022';
-    $token = 'access-token-abc';
-    Http::fake([
-        '*/library/metadata/34112/children*' => Http::response(fixtureBytes('PlexLibrary/plex/show_children_seasons.json')),
-    ]);
+describe('fetchShowChildren() and fetchShowLeaves() payloads', function (): void {
+    it('returns the season metadata from fetchShowChildren', function (): void {
+        // Arrange
+        $uri = 'https://plex.test:6022';
+        $token = 'access-token-abc';
+        Http::fake([
+            '*/library/metadata/34112/children*' => Http::response(fixtureBytes('PlexLibrary/plex/show_children_seasons.json')),
+        ]);
 
-    // Act
-    $seasons = resolve(PlexLibraryService::class)->fetchShowChildren($uri, $token, '34112');
+        // Act
+        $seasons = resolve(PlexLibraryService::class)->fetchShowChildren($uri, $token, '34112');
 
-    // Assert
-    expect($seasons)->toHaveCount(1)
-        ->and(data_get($seasons, '0.type'))->toBe('season');
+        // Assert
+        expect($seasons)->toHaveCount(1)
+            ->and(data_get($seasons, '0.type'))->toBe('season');
+    });
+
+    it('returns the flattened episode metadata with guids from fetchShowLeaves', function (): void {
+        // Arrange
+        $uri = 'https://plex.test:6022';
+        $token = 'access-token-abc';
+        Http::fake([
+            '*/library/metadata/34112/allLeaves*' => Http::response(fixtureBytes('PlexLibrary/plex/show_allLeaves_episodes.json')),
+        ]);
+
+        // Act
+        $episodes = resolve(PlexLibraryService::class)->fetchShowLeaves($uri, $token, '34112');
+
+        // Assert
+        expect($episodes)->toHaveCount(24)
+            ->and(data_get($episodes, '0.type'))->toBe('episode')
+            ->and(data_get($episodes, '0.Guid.0.id'))->toStartWith('imdb://');
+    });
 });
 
-it('returns the flattened episode metadata with guids from fetchShowLeaves', function (): void {
-    // Arrange
-    $uri = 'https://plex.test:6022';
-    $token = 'access-token-abc';
-    Http::fake([
-        '*/library/metadata/34112/allLeaves*' => Http::response(fixtureBytes('PlexLibrary/plex/show_allLeaves_episodes.json')),
-    ]);
+describe('fetchShowLeaves() container paging', function (): void {
+    it('walks both leaves pages and concatenates every episode', function (): void {
+        // Arrange
+        $uri = 'https://plex.test:6022';
+        $token = 'access-token-abc';
+        $members = data_get(json_decode(fixtureBytes('PlexLibrary/plex/show_allLeaves_episodes.json'), true), 'MediaContainer.Metadata');
+        $page = fn (array $slice, int $offset): string => (string) json_encode(['MediaContainer' => [
+            'size' => count($slice),
+            'totalSize' => count($members),
+            'offset' => $offset,
+            'Metadata' => $slice,
+        ]]);
+        Http::fake([
+            '*/library/metadata/34112/allLeaves*' => Http::sequence()
+                ->push($page(array_slice($members, 0, 12), 0))
+                ->push($page(array_slice($members, 12), 12)),
+        ]);
 
-    // Act
-    $episodes = resolve(PlexLibraryService::class)->fetchShowLeaves($uri, $token, '34112');
+        // Act
+        $episodes = resolve(PlexLibraryService::class)->fetchShowLeaves($uri, $token, '34112');
 
-    // Assert
-    expect($episodes)->toHaveCount(24)
-        ->and(data_get($episodes, '0.type'))->toBe('episode')
-        ->and(data_get($episodes, '0.Guid.0.id'))->toStartWith('imdb://');
+        // Assert
+        expect($episodes)->toHaveCount(24)
+            ->and(collect($episodes)->pluck('ratingKey')->all())->toBe(collect($members)->pluck('ratingKey')->all());
+    });
+
+    it('advances X-Plex-Container-Start across the two leaves page requests', function (): void {
+        // Arrange
+        $uri = 'https://plex.test:6022';
+        $token = 'access-token-abc';
+        $members = data_get(json_decode(fixtureBytes('PlexLibrary/plex/show_allLeaves_episodes.json'), true), 'MediaContainer.Metadata');
+        $page = fn (array $slice, int $offset): string => (string) json_encode(['MediaContainer' => [
+            'size' => count($slice),
+            'totalSize' => count($members),
+            'offset' => $offset,
+            'Metadata' => $slice,
+        ]]);
+        Http::fake([
+            '*/library/metadata/34112/allLeaves*' => Http::sequence()
+                ->push($page(array_slice($members, 0, 12), 0))
+                ->push($page(array_slice($members, 12), 12)),
+        ]);
+
+        // Act
+        resolve(PlexLibraryService::class)->fetchShowLeaves($uri, $token, '34112');
+
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves')
+            && ($request->header('X-Plex-Container-Start')[0] ?? null) === '0');
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves')
+            && ($request->header('X-Plex-Container-Start')[0] ?? null) === '12');
+    });
 });
 
-it('walks both leaves pages and concatenates every episode', function (): void {
-    // Arrange
-    $uri = 'https://plex.test:6022';
-    $token = 'access-token-abc';
-    $members = data_get(json_decode(fixtureBytes('PlexLibrary/plex/show_allLeaves_episodes.json'), true), 'MediaContainer.Metadata');
-    $page = fn (array $slice, int $offset): string => (string) json_encode(['MediaContainer' => [
-        'size' => count($slice),
-        'totalSize' => count($members),
-        'offset' => $offset,
-        'Metadata' => $slice,
-    ]]);
-    Http::fake([
-        '*/library/metadata/34112/allLeaves*' => Http::sequence()
-            ->push($page(array_slice($members, 0, 12), 0))
-            ->push($page(array_slice($members, 12), 12)),
-    ]);
+describe('fetchShowChildren() request shape', function (): void {
+    it('requests the children page with the container size header', function (): void {
+        // Arrange
+        $uri = 'https://plex.test:6022';
+        $token = 'access-token-abc';
+        Http::fake([
+            '*/library/metadata/34112/children*' => Http::response(fixtureBytes('PlexLibrary/plex/show_children_seasons.json')),
+        ]);
 
-    // Act
-    $episodes = resolve(PlexLibraryService::class)->fetchShowLeaves($uri, $token, '34112');
+        // Act
+        resolve(PlexLibraryService::class)->fetchShowChildren($uri, $token, '34112');
 
-    // Assert
-    expect($episodes)->toHaveCount(24)
-        ->and(collect($episodes)->pluck('ratingKey')->all())->toBe(collect($members)->pluck('ratingKey')->all());
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => ($request->header('X-Plex-Container-Start')[0] ?? null) === '0'
+            && ($request->header('X-Plex-Container-Size')[0] ?? null) === '200');
+    });
 
-it('advances X-Plex-Container-Start across the two leaves page requests', function (): void {
-    // Arrange
-    $uri = 'https://plex.test:6022';
-    $token = 'access-token-abc';
-    $members = data_get(json_decode(fixtureBytes('PlexLibrary/plex/show_allLeaves_episodes.json'), true), 'MediaContainer.Metadata');
-    $page = fn (array $slice, int $offset): string => (string) json_encode(['MediaContainer' => [
-        'size' => count($slice),
-        'totalSize' => count($members),
-        'offset' => $offset,
-        'Metadata' => $slice,
-    ]]);
-    Http::fake([
-        '*/library/metadata/34112/allLeaves*' => Http::sequence()
-            ->push($page(array_slice($members, 0, 12), 0))
-            ->push($page(array_slice($members, 12), 12)),
-    ]);
+    it('requests the ratingKey-scoped children path with includeGuids', function (): void {
+        // Arrange
+        $uri = 'https://plex.test:6022';
+        $token = 'access-token-abc';
+        Http::fake([
+            '*/library/metadata/34112/children*' => Http::response(fixtureBytes('PlexLibrary/plex/show_children_seasons.json')),
+        ]);
 
-    // Act
-    resolve(PlexLibraryService::class)->fetchShowLeaves($uri, $token, '34112');
+        // Act
+        resolve(PlexLibraryService::class)->fetchShowChildren($uri, $token, '34112');
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves')
-        && ($request->header('X-Plex-Container-Start')[0] ?? null) === '0');
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/allLeaves')
-        && ($request->header('X-Plex-Container-Start')[0] ?? null) === '12');
-});
-
-it('requests the children page with the container size header', function (): void {
-    // Arrange
-    $uri = 'https://plex.test:6022';
-    $token = 'access-token-abc';
-    Http::fake([
-        '*/library/metadata/34112/children*' => Http::response(fixtureBytes('PlexLibrary/plex/show_children_seasons.json')),
-    ]);
-
-    // Act
-    resolve(PlexLibraryService::class)->fetchShowChildren($uri, $token, '34112');
-
-    // Assert
-    Http::assertSent(fn ($request): bool => ($request->header('X-Plex-Container-Start')[0] ?? null) === '0'
-        && ($request->header('X-Plex-Container-Size')[0] ?? null) === '200');
-});
-
-it('requests the ratingKey-scoped children path with includeGuids', function (): void {
-    // Arrange
-    $uri = 'https://plex.test:6022';
-    $token = 'access-token-abc';
-    Http::fake([
-        '*/library/metadata/34112/children*' => Http::response(fixtureBytes('PlexLibrary/plex/show_children_seasons.json')),
-    ]);
-
-    // Act
-    resolve(PlexLibraryService::class)->fetchShowChildren($uri, $token, '34112');
-
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/children')
-        && Str::contains((string) $request->url(), 'includeGuids=1'));
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/library/metadata/34112/children')
+            && Str::contains((string) $request->url(), 'includeGuids=1'));
+    });
 });

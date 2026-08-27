@@ -107,13 +107,19 @@ land cleanly.
 ```
 ✅ /review:suite on PR #{number}
 
-| Engine     | Status | Blocking | Should Fix | Consider | Review |
-|------------|--------|----------|------------|----------|--------|
-| review:claude | ✅  | …        | …          | …        | <url>  |
-| CodeRabbit | ✅     | …        | …          | …        | <url>  |
+| Engine     | Status | Spec | Blocking | Should Fix | Consider | Review |
+|------------|--------|------|----------|------------|----------|--------|
+| review:claude | ✅  | …    | …        | …          | …        | <url>  |
+| CodeRabbit | ✅     | n/a  | …        | …          | …        | <url>  |
 
 Reports: {RUN_DIR}/
 ```
+
+**Spec** counts the findings on the requirements axis — "does it do what the ticket
+asked". It sits beside the severity counts as its own column and stays out of them,
+because the two axes are not commensurable: a PR can be clean on every convention
+and still miss an acceptance criterion. A row is clean only when **all four** count
+columns read 0. CodeRabbit reviews standards only, so its Spec cell reads `n/a`.
 
 List any failed engine with its one-line reason. Do not commit or push — this
 command only reviews and posts.

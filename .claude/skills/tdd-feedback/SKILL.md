@@ -37,6 +37,13 @@ The user confirms the chosen route. Only the DIRECT (non-code) branch skips appr
 
 - **Bug → test-first, ALWAYS.** A failing reproducer (RED) goes in before the fix
   (Beck's regression-test pattern). Never patch the code first.
+- **No reproducer, no diagnosis.** If the failing test doesn't come out in one
+  pass, the bug is not yet understood — **stop and get a repro before theorising.**
+  Reading code to build a hypothesis without a red-capable signal is the failure
+  mode here. Hand off to `mattpocock-skills:diagnosing-bugs`, which is built for
+  exactly this: construct a tight, deterministic, red-capable loop, minimise it,
+  then rank falsifiable hypotheses before instrumenting. Come back with the
+  minimised repro and turn it into the RED test.
 - **Cleanup → refactor only against a GREEN suite.** Two hats: never mix structural
   and behavioral change in one pass.
 - **Behavior change → a new slice**, one at a time, plan-card approved. Never bolt it
@@ -50,6 +57,8 @@ The user confirms the chosen route. Only the DIRECT (non-code) branch skips appr
 Feedback item in →
  ├─ Behavior wrong / something broken?              → BUG
  │     full tdd cycle; RED = a failing reproducer test
+ │     reproducer not obvious first pass? → mattpocock-skills:diagnosing-bugs,
+ │       return with a minimised repro, THEN write RED
  │     RED tdd-test-writer · GREEN tdd-implementer · REFACTOR tdd-refactorer
  │     show classification + RED plan card (EnterPlanMode/ExitPlanMode) → dispatch
  │

@@ -30,71 +30,75 @@ function freshHookCwd(): string
     return $dir;
 }
 
-it('fires on a reviewer reporting broken work', function (): void {
-    // Arrange
-    $cwd = freshHookCwd();
+describe('feedback-router hook firing', function (): void {
+    it('fires on a reviewer reporting broken work', function (): void {
+        // Arrange
+        $cwd = freshHookCwd();
 
-    // Act
-    $output = runFeedbackRouterHook('the reviewer said the importer is broken', $cwd);
+        // Act
+        $output = runFeedbackRouterHook('the reviewer said the importer is broken', $cwd);
 
-    // Assert
-    expect($output)->toContain('[feedback-router]');
+        // Assert
+        expect($output)->toContain('[feedback-router]');
+    });
+
+    it('fires on a bug-fix request against existing work', function (): void {
+        // Arrange
+        $cwd = freshHookCwd();
+
+        // Act
+        $output = runFeedbackRouterHook('fix this bug in the dataset importer', $cwd);
+
+        // Assert
+        expect($output)->toContain('[feedback-router]');
+    });
+
+    it('fires on a request to remove an unused helper', function (): void {
+        // Arrange
+        $cwd = freshHookCwd();
+
+        // Act
+        $output = runFeedbackRouterHook('remove the now-unused helper method', $cwd);
+
+        // Assert
+        expect($output)->toContain('[feedback-router]');
+    });
+
+    it('fires when a comment attachment landed recently even with a trivial prompt', function (): void {
+        // Arrange
+        $cwd = freshHookCwd();
+        $commentsDir = $cwd.'/.context/attachments/comments';
+        mkdir($commentsDir, 0777, true);
+        file_put_contents($commentsDir.'/x.md', "diff comment\n");
+
+        // Act
+        $output = runFeedbackRouterHook('ok', $cwd);
+
+        // Assert
+        expect($output)->toContain('[feedback-router]');
+    });
 });
 
-it('fires on a bug-fix request against existing work', function (): void {
-    // Arrange
-    $cwd = freshHookCwd();
+describe('feedback-router hook silence', function (): void {
+    it('stays silent on a new feature request', function (): void {
+        // Arrange
+        $cwd = freshHookCwd();
 
-    // Act
-    $output = runFeedbackRouterHook('fix this bug in the dataset importer', $cwd);
+        // Act
+        $output = runFeedbackRouterHook('add an export button to the dashboard', $cwd);
 
-    // Assert
-    expect($output)->toContain('[feedback-router]');
-});
+        // Assert
+        expect(Str::trim($output))->toBe('');
+    });
 
-it('fires on a request to remove an unused helper', function (): void {
-    // Arrange
-    $cwd = freshHookCwd();
+    it('stays silent on an unrelated question', function (): void {
+        // Arrange
+        $cwd = freshHookCwd();
 
-    // Act
-    $output = runFeedbackRouterHook('remove the now-unused helper method', $cwd);
+        // Act
+        $output = runFeedbackRouterHook('what time is it', $cwd);
 
-    // Assert
-    expect($output)->toContain('[feedback-router]');
-});
-
-it('fires when a comment attachment landed recently even with a trivial prompt', function (): void {
-    // Arrange
-    $cwd = freshHookCwd();
-    $commentsDir = $cwd.'/.context/attachments/comments';
-    mkdir($commentsDir, 0777, true);
-    file_put_contents($commentsDir.'/x.md', "diff comment\n");
-
-    // Act
-    $output = runFeedbackRouterHook('ok', $cwd);
-
-    // Assert
-    expect($output)->toContain('[feedback-router]');
-});
-
-it('stays silent on a new feature request', function (): void {
-    // Arrange
-    $cwd = freshHookCwd();
-
-    // Act
-    $output = runFeedbackRouterHook('add an export button to the dashboard', $cwd);
-
-    // Assert
-    expect(Str::trim($output))->toBe('');
-});
-
-it('stays silent on an unrelated question', function (): void {
-    // Arrange
-    $cwd = freshHookCwd();
-
-    // Act
-    $output = runFeedbackRouterHook('what time is it', $cwd);
-
-    // Assert
-    expect(Str::trim($output))->toBe('');
+        // Assert
+        expect(Str::trim($output))->toBe('');
+    });
 });

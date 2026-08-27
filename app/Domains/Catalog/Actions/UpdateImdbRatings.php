@@ -58,12 +58,6 @@ final readonly class UpdateImdbRatings
             RawSourceColumns::names(self::SOURCE, self::RAW_COLUMNS),
         );
 
-        if ($matchedIds === []) {
-            return 0;
-        }
-
-        (clone $query)->whereIn('_imdb_id', $matchedIds)->searchable();
-
         return count($matchedIds);
     }
 }
