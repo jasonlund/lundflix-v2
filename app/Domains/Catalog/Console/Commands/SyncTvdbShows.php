@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
+use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
 use App\Domains\Catalog\Actions\UpsertTvdbSeasons;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
@@ -38,6 +39,7 @@ class SyncTvdbShows extends TvdbShowsCommand
         UpsertTvdbArtworks $upsertArtworks,
         UpsertTvdbSeasons $upsertSeasons,
         SyncMarker $marker,
+        ReindexTouchedRows $reindexTouchedRows,
     ): int {
         $startedAt = CarbonImmutable::now();
 
@@ -45,12 +47,18 @@ class SyncTvdbShows extends TvdbShowsCommand
 
         $this->output->writeln('Syncing shows…');
         $result = $this->syncIds($this->ids($api), $api, $upsertShows, $upsertArtworks, $upsertSeasons);
+        $this->output->writeln('Synced shows in '.$this->secondsSince($startedAt).'s');
 
         // Any failure means this run didn't cover the whole window, so the marker
         // must not move past it.
         if (! $result->failed) {
             $marker->advance(SyncFeed::TvdbShows, $startedAt);
         }
+
+        // Outside the marker gate on purpose: the ingest indexes nothing itself, so a
+        // failed run must still index the rows it did hydrate before its window is
+        // retried — the watermark is this run's start, so it covers exactly those.
+        $this->reindexTouchedShows($reindexTouchedRows, $startedAt);
 
         return self::SUCCESS;
     }

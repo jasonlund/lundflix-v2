@@ -333,3 +333,34 @@ describe('handle() empty input', function (): void {
             ->and(Show::query()->count())->toBe(0);
     });
 });
+
+describe('handle() search indexing', function (): void {
+    it('sends nothing to the search engine when upserting new shows', function (): void {
+        // Arrange
+        $series = json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)['data'];
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        resolve(UpsertTvdbShows::class)->handle([$series]);
+
+        // Assert
+        expect($capturedChunks())->toBe([])
+            ->and(Show::query()->where('_tvdb_id', $series['id'])->exists())->toBeTrue();
+    });
+
+    it('sends nothing to the search engine when re-upserting an already-persisted show', function (): void {
+        // Arrange
+        $series = json_decode(fixtureBytes('Catalog/tvdb/series_extended.json'), true)['data'];
+        // A stale name the payload must overwrite, so the assertion proves this upsert wrote.
+        Show::factory()->withTvdb()->create(['_tvdb_id' => $series['id'], '_tvdb_name' => 'Stale Name']);
+        // Registered after the factory save so that row's own auto-sync isn't captured.
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        resolve(UpsertTvdbShows::class)->handle([$series]);
+
+        // Assert
+        expect($capturedChunks())->toBe([])
+            ->and(Show::query()->where('_tvdb_id', $series['id'])->value('_tvdb_name'))->toBe('Breaking Bad');
+    });
+});

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
+use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Actions\UpsertTmdbMovies;
 use App\Domains\Catalog\Data\SyncWindow;
@@ -13,7 +14,6 @@ use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Services\TmdbExportService;
 use App\Domains\Catalog\Support\Batches;
 use App\Domains\Catalog\Support\SyncMarker;
-use Carbon\CarbonImmutable;
 use Generator;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -25,6 +25,9 @@ class SyncTmdbMovies extends TmdbSyncCommand
 {
     private const string EXPORT = 'movie_ids';
 
+    /** Export rows read before a `[scan n]` beat — the export runs to ~1M rows. */
+    private const int SCAN_BEAT = 10_000;
+
     private UpsertTmdbMovies $upsertMovies;
 
     public function handle(
@@ -33,39 +36,34 @@ class SyncTmdbMovies extends TmdbSyncCommand
         UpsertTmdbMovies $upsertMovies,
         UpsertTmdbImages $upsertImages,
         SyncMarker $marker,
+        ReindexTouchedRows $reindexTouchedRows,
     ): int {
         $this->api = $api;
         $this->upsertMovies = $upsertMovies;
         $this->upsertImages = $upsertImages;
+        $this->reindexTouchedRows = $reindexTouchedRows;
 
-        // Run-start, not run-end: updates landing mid-run stay inside the next run's
-        // overlap window rather than falling in the gap.
-        $startedAt = CarbonImmutable::now();
+        return $this->runLeg($marker, fn (): bool => $this->insertNew($export));
+    }
 
-        $this->output->writeln('Downloading movie-ids export…');
-        $file = $export->download(self::EXPORT);
+    /**
+     * Insert phase: hydrate every exported id we don't already hold.
+     */
+    private function insertNew(TmdbExportService $export): bool
+    {
+        $file = $this->timedPhase(
+            'Downloading movie-ids export…',
+            fn (): string => $export->download(self::EXPORT),
+        );
 
         try {
-            $this->output->writeln('Syncing movies…');
-            $insertFailed = $this->syncRows($export, $file);
+            return $this->timedPhase(
+                'Syncing movies…',
+                fn (): bool => $this->syncRows($export, $file),
+            );
         } finally {
             @unlink($file);
         }
-
-        // --fresh already re-hydrated every exported id, so a changes pass is redundant.
-        $changesFailed = false;
-
-        if (! $this->option('fresh')) {
-            $changesFailed = $this->updateChanged($marker);
-        }
-
-        // A failure means the window wasn't fully covered — the marker must not move
-        // past a span still owed to the next run.
-        if (! $insertFailed && ! $changesFailed) {
-            $marker->advance($this->feed(), $startedAt);
-        }
-
-        return self::SUCCESS;
     }
 
     protected function feed(): SyncFeed
@@ -160,17 +158,27 @@ class SyncTmdbMovies extends TmdbSyncCommand
      * Yields row by row rather than returning a set, so a batch hydrates before the
      * next buffer is probed — the interleave is what keeps the resident set bounded.
      *
+     * The scan beat counts rows READ, upstream of the already-synced filter: on a
+     * seeded catalog every row is filtered out, and a beat downstream of that would
+     * be as silent as the upsert beat it exists to cover for.
+     *
      * @return Generator<int, array{id: int|string}>
      */
     private function keptRows(TmdbExportService $export, string $file): Generator
     {
         if ($this->option('fresh')) {
-            yield from $export->rows($file);
+            foreach ($export->rows($file) as $row) {
+                $this->beatEvery('scan', self::SCAN_BEAT);
+
+                yield $row;
+            }
 
             return;
         }
 
         foreach (Batches::of($export->rows($file), self::PROBE_SIZE) as $buffer) {
+            $this->beatEvery('scan', self::SCAN_BEAT, count($buffer));
+
             yield from $this->unsyncedRows($buffer);
         }
     }

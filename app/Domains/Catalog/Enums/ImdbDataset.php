@@ -10,6 +10,15 @@ enum ImdbDataset
     case TitleAkas;
     case TitleRatings;
 
+    public function cacheKey(): string
+    {
+        return match ($this) {
+            self::TitleBasics => 'catalog:sync:marker:imdb_title_basics',
+            self::TitleAkas => 'catalog:sync:marker:imdb_title_akas',
+            self::TitleRatings => 'catalog:sync:marker:imdb_title_ratings',
+        };
+    }
+
     public function filename(): string
     {
         return match ($this) {

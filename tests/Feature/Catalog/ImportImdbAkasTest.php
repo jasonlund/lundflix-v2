@@ -176,3 +176,32 @@ describe('handle() unmatched titles', function (): void {
             ->and(Movie::query()->find($movie->id)->_imdb_akas)->toBeArray()->toHaveCount(1);
     });
 });
+
+describe('handle() search indexing', function (): void {
+    it('passes nothing to the search engine while still writing the aka list', function (): void {
+        // Arrange
+        $movie = Movie::factory()->create();
+        $show = Show::factory()->create();
+        // Registered last so the factory saves' own create-time syncs aren't captured
+        // — otherwise every row looks reindexed and nothing can ever look quiet.
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        $result = resolve(ImportImdbAkas::class)->handle([
+            $movie->_imdb_id => [
+                ['titleId' => $movie->_imdb_id, 'ordering' => '1', 'title' => 'The Matrix', 'region' => null, 'language' => null, 'types' => ['original'], 'attributes' => null, 'isOriginalTitle' => '1'],
+            ],
+            $show->_imdb_id => [
+                ['titleId' => $show->_imdb_id, 'ordering' => '1', 'title' => 'Interstellar', 'region' => null, 'language' => null, 'types' => ['original'], 'attributes' => null, 'isOriginalTitle' => '1'],
+            ],
+        ]);
+
+        // Assert
+        expect(reindexedIds($capturedChunks()))->toBe([])
+            ->and(Movie::query()->find($movie->id)->_imdb_akas[0]['title'])->toBe('The Matrix')
+            ->and(Show::query()->find($show->id)->_imdb_akas[0]['title'])->toBe('Interstellar')
+            ->and($result)->toBeInstanceOf(TitleImportCounts::class)
+            ->and($result->movies)->toBe(1)
+            ->and($result->shows)->toBe(1);
+    });
+});

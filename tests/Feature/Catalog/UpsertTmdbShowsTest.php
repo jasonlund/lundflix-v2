@@ -130,6 +130,24 @@ describe('handle() malformed native id', function (): void {
     });
 });
 
+describe('handle() search indexing', function (): void {
+    it('passes nothing to the search engine while still hydrating the show', function (): void {
+        // Arrange
+        $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+        Show::factory()->create(['_tmdb_id' => 1399]);
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+        // Assert
+        $show = Show::query()->where('_tmdb_id', 1399)->firstOrFail();
+        expect($capturedChunks())->toBe([])
+            ->and($show->_tmdb_name)->toBe('Game of Thrones')
+            ->and($show->tmdb_synced_at)->not->toBeNull();
+    });
+});
+
 describe('handle() empty input', function (): void {
     it('returns 0 and persists nothing for empty input', function (): void {
         // Arrange

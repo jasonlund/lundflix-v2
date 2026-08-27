@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
+use App\Domains\Catalog\Support\ImdbDatasetMarker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -94,14 +96,13 @@ describe('catalog:sync-akas title grouping', function (): void {
             ->and(Movie::query()->whereIn('_imdb_id', ['tt0000001', 'tt0007189', 'tt0137523', 'tt0816692'])->exists())->toBeFalse();
     });
 
-    // Three matched titles at --batch=2 puts a flush inside the stream: the buffer
-    // fills the moment tt0137523's group closes, which is the first row of
-    // tt0816692 — so the write happens with two thirds of the file still unread,
-    // and the run's tail is written by the after-loop flush. tt0137523 is the group
-    // that closes on the boundary, so a buffer that captured a title mid-group
-    // would land it here split across the two writes; its complete ordering
-    // sequence, in file order, is what proves it didn't.
-    it('keeps each title\'s group whole across a mid-stream flush', function (): void {
+    // At --batch=2 a probe batch closes on the id change that follows its second
+    // distinct id, so the run scans 13 rows, then 148, then the tail at 214 — a
+    // cadence the file alone sets, unchanged by how many of its titles the catalog
+    // wanted. tt0137523 is the group that closes on the last of those boundaries,
+    // so a buffer that captured a title mid-group would land it split across two
+    // writes; its complete ordering sequence, in file order, proves it didn't.
+    it('beats the rows scanned at each probe boundary and keeps every title\'s group whole', function (): void {
         // Arrange
         $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
         $fightClub = Movie::factory()->create(['_imdb_id' => 'tt0137523']);
@@ -113,9 +114,10 @@ describe('catalog:sync-akas title grouping', function (): void {
 
         // Assert
         $output = Artisan::output();
-        expect(substr_count($output, '[imdb akas'))->toBe(2)
-            ->and($output)->toContain('[imdb akas 2]')
-            ->and($output)->toContain('[imdb akas 3]');
+        expect(substr_count($output, '[imdb akas'))->toBe(3)
+            ->and($output)->toContain('[imdb akas 13]')
+            ->and($output)->toContain('[imdb akas 148]')
+            ->and($output)->toContain('[imdb akas 214]');
 
         $fightClub->refresh();
         expect($fightClub->_imdb_akas)->toBeArray()->toHaveCount(68)
@@ -170,28 +172,6 @@ describe('catalog:sync-akas streaming and fetch', function (): void {
         }
     });
 
-    // A real run buffers ~10k groups the catalog has no title for, and a heartbeat
-    // per zero-match flush would bury the ones that wrote something — so a flush
-    // that resolves to nothing stays silent and never reaches the importer. The
-    // phase line proves the command really streamed the fixture, so the absent
-    // heartbeat can't mean the run never started.
-    it('emits no heartbeat and writes nothing when the catalog matches no title in the dataset', function (): void {
-        // Arrange
-        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
-
-        // Act
-        Artisan::call('catalog:sync-akas', ['--batch' => 2]);
-
-        // Assert
-        $output = Artisan::output();
-        expect($output)->toContain('Importing IMDb akas')
-            ->and($output)->not->toContain('[imdb akas')
-            ->and(Movie::query()->count())->toBe(0)
-            ->and(Show::query()->count())->toBe(0)
-            ->and(Movie::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse()
-            ->and(Show::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse();
-    });
-
     // Asserting the fetch alongside the cleanup keeps "no leftover temp file" from
     // passing for the wrong reason (a run that never downloaded anything).
     it('downloads the akas dataset and removes the temp file when it finishes', function (): void {
@@ -214,5 +194,113 @@ describe('catalog:sync-akas streaming and fetch', function (): void {
         Http::assertSent(fn (Request $request): bool => Str::endsWith($request->url(), '/title.akas.tsv.gz'));
         expect($sinkPath)->toBeString();
         expect(file_exists($sinkPath))->toBeFalse();
+    });
+});
+
+describe('catalog:sync-akas heartbeat output', function (): void {
+    // The dataset runs to tens of millions of rows the catalog wants almost none
+    // of, so the beat counts rows scanned rather than titles applied: a run that
+    // matches nothing at all still has to show it is moving, at the very same
+    // boundaries as a run that matched everything. The write guards keep that
+    // liveness honest — nothing reaches the importer.
+    it('beats every probe boundary but writes nothing when the catalog matches no title in the dataset', function (): void {
+        // Arrange
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+
+        // Act
+        Artisan::call('catalog:sync-akas', ['--batch' => 2]);
+
+        // Assert
+        $output = Artisan::output();
+        expect($output)->toContain('Importing IMDb akas')
+            ->and(substr_count($output, '[imdb akas'))->toBe(3)
+            ->and($output)->toContain('[imdb akas 13]')
+            ->and($output)->toContain('[imdb akas 148]')
+            ->and($output)->toContain('[imdb akas 214]')
+            ->and(Movie::query()->count())->toBe(0)
+            ->and(Show::query()->count())->toBe(0)
+            ->and(Movie::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse()
+            ->and(Show::query()->whereNotNull('_imdb_akas')->exists())->toBeFalse();
+    });
+
+    // The akas leg is the slowest of the sync, so it closes by reporting the wall
+    // time it took. Only the line's presence is assertable — an elapsed reading
+    // taken around a live streaming import can't be frozen to an exact value.
+    it('prints an elapsed phase line on completion', function (): void {
+        // Arrange
+        Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+
+        // Act
+        Artisan::call('catalog:sync-akas');
+
+        // Assert
+        expect(Artisan::output())->toContain('[elapsed');
+    });
+});
+
+describe('catalog:sync-akas marker gating', function (): void {
+    /*
+    |--------------------------------------------------------------------------
+    | Last-Modified gate
+    |--------------------------------------------------------------------------
+    | The probe is a HEAD and the download a GET, both against the same dataset
+    | URL, so every fake below dispatches on $request->method(): the HEAD arm
+    | carries the header under test, the GET arm serves the real fixture bytes.
+    */
+    it('skips the akas download when the dataset is unchanged', function (): void {
+        // Arrange
+        $header = 'Tue, 12 Aug 2026 01:02:03 GMT';
+        resolve(ImdbDatasetMarker::class)->advance(ImdbDataset::TitleAkas, $header);
+        $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Http::fake(fn (Request $request) => $request->method() === 'HEAD'
+            ? Http::response('', 200, ['Last-Modified' => $header])
+            : Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')));
+
+        // Act
+        $exitCode = Artisan::call('catalog:sync-akas');
+
+        // Assert
+        expect(Artisan::output())->toContain('unchanged');
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'GET');
+        expect($matrix->refresh()->_imdb_akas)->toBeNull();
+        expect($exitCode)->toBe(0);
+    });
+
+    // The untouched basics marker is the point: each leg gates on its own dataset,
+    // so an akas run must never stamp another leg's marker and skip it next time.
+    it('advances the akas marker after a successful sync', function (): void {
+        // Arrange
+        $header = 'Wed, 13 Aug 2026 04:05:06 GMT';
+        $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Http::fake(fn (Request $request) => $request->method() === 'HEAD'
+            ? Http::response('', 200, ['Last-Modified' => $header])
+            : Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')));
+
+        // Act
+        Artisan::call('catalog:sync-akas');
+
+        // Assert
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && Str::endsWith($request->url(), '/title.akas.tsv.gz'));
+        expect($matrix->refresh()->_imdb_akas)->toHaveCount(67);
+        expect(resolve(ImdbDatasetMarker::class)->current(ImdbDataset::TitleAkas))->toBe($header);
+        expect(resolve(ImdbDatasetMarker::class)->current(ImdbDataset::TitleBasics))->toBeNull();
+    });
+
+    it('downloads the akas dataset despite a matching marker when forced', function (): void {
+        // Arrange
+        $header = 'Tue, 12 Aug 2026 01:02:03 GMT';
+        resolve(ImdbDatasetMarker::class)->advance(ImdbDataset::TitleAkas, $header);
+        $matrix = Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Http::fake(fn (Request $request) => $request->method() === 'HEAD'
+            ? Http::response('', 200, ['Last-Modified' => $header])
+            : Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz')));
+
+        // Act
+        Artisan::call('catalog:sync-akas', ['--force' => true]);
+
+        // Assert
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && Str::endsWith($request->url(), '/title.akas.tsv.gz'));
+        expect($matrix->refresh()->_imdb_akas)->toHaveCount(67);
     });
 });

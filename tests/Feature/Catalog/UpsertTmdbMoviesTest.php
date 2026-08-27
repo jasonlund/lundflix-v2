@@ -181,3 +181,18 @@ describe('handle() column mapping', function (): void {
         expect(DB::table('movies')->where('_tmdb_id', 604)->value('_tmdb_release_date'))->toBeNull();
     });
 });
+
+describe('handle() search indexing', function (): void {
+    it('passes nothing to the search engine while still upserting the movie', function (): void {
+        // Arrange
+        $payload = tmdbPayload(['id' => 603]);
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        resolve(UpsertTmdbMovies::class)->handle([$payload]);
+
+        // Assert
+        expect($capturedChunks())->toBe([])
+            ->and(Movie::query()->where('_tmdb_id', 603)->exists())->toBeTrue();
+    });
+});

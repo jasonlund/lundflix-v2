@@ -4,19 +4,25 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
+use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
 use App\Domains\Catalog\Actions\UpsertTvdbSeasons;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
+use App\Domains\Catalog\Console\Commands\Concerns\MeasuresElapsedTime;
 use App\Domains\Catalog\Data\SyncIdsResult;
 use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TvdbApiService;
 use App\Domains\Catalog\Support\Batches;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Support\Str;
 
 abstract class TvdbShowsCommand extends Command
 {
+    use MeasuresElapsedTime;
+
     /** Decoded `/series/{id}/extended` bodies held live at once (~150 KB each) — see GUIDELINES.md. */
     private const int BATCH_SIZE = 250;
 
@@ -51,16 +57,23 @@ abstract class TvdbShowsCommand extends Command
         UpsertTvdbArtworks $upsertArtworks,
         UpsertTvdbSeasons $upsertSeasons,
     ): SyncIdsResult {
-        $failed = false;
-        $failedIds = [];
+        // Defense in depth: every leg reindexes what it touched once, after ingest, and
+        // the ingest writes through a cast-bypassing Model::upsert() that fires no model
+        // events — so nothing reaches the index mid-run today. The wrap keeps that true
+        // if a future write path ever goes through a saved model. Scout has no global
+        // off switch; disabling is per-class, via the Searchable trait's static.
+        return Show::withoutSyncingToSearch(function () use ($ids, $api, $upsertShows, $upsertArtworks, $upsertSeasons): SyncIdsResult {
+            $failed = false;
+            $failedIds = [];
 
-        foreach (Batches::of($ids, self::BATCH_SIZE) as $chunk) {
-            $result = $this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks, $upsertSeasons);
-            $failed = $failed || $result->failed;
-            $failedIds = [...$failedIds, ...$result->failedIds];
-        }
+            foreach (Batches::of($ids, self::BATCH_SIZE) as $chunk) {
+                $result = $this->syncChunkSafely($chunk, $api, $upsertShows, $upsertArtworks, $upsertSeasons);
+                $failed = $failed || $result->failed;
+                $failedIds = [...$failedIds, ...$result->failedIds];
+            }
 
-        return new SyncIdsResult($failed, $failedIds);
+            return new SyncIdsResult($failed, $failedIds);
+        });
     }
 
     /**
@@ -135,6 +148,29 @@ abstract class TvdbShowsCommand extends Command
         }
 
         return $this->chunkResult($pooled->failedIds);
+    }
+
+    /**
+     * The end-of-leg reindex phase, shared by every leg: the ingest writes through a
+     * cast-bypassing `Model::upsert()` that fires no model events, so nothing reaches
+     * the index during the leg and the rows it touched (`updated_at >= $startedAt`)
+     * are indexed here in one pass. Each concrete command decides WHERE in its flow
+     * this runs — only the mechanics live here.
+     */
+    protected function reindexTouchedShows(ReindexTouchedRows $reindexTouchedRows, CarbonImmutable $startedAt): void
+    {
+        // Under SCOUT_QUEUE the phase only dispatches the index writes, so the elapsed
+        // seconds time the dispatch — say "queued" rather than claim the shows are indexed.
+        $queued = $reindexTouchedRows->queuesIndexing();
+
+        $reindexStartedAt = CarbonImmutable::now();
+        $this->output->writeln($queued ? 'Queueing shows for reindex…' : 'Reindexing shows…');
+        $reindexed = $reindexTouchedRows->handle(Show::class, $startedAt, fn (string $line) => $this->output->writeln($line));
+        $shows = Str::plural('show', $reindexed);
+        $elapsed = $this->secondsSince($reindexStartedAt);
+        $this->output->writeln($queued
+            ? "Queued {$reindexed} {$shows} for reindex in {$elapsed}s"
+            : "Reindexed {$reindexed} {$shows} in {$elapsed}s");
     }
 
     /**
