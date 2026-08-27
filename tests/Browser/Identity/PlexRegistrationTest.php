@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Domains\Common\Data\PlexAccount;
+use App\Domains\Identity\Data\VerifiedPlexIdentity;
 use App\Domains\Identity\Models\User;
+use App\Domains\Identity\Support\PlexSession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 /*
@@ -19,28 +22,33 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 | app.plex.tv, and a browser test that followed it would hit a third party on
 | every CI run. Coverage of that redirect stays in PlexAuthorizationStartTest.
 |
-| $verifiedPlexAccount mirrors tests/Fixtures/Common/plex/user.json (account
-| 1001 / plexuser1) — the real capture the callback stashes — plus the PIN
-| token, and is arranged straight into the session because the callback has
-| already run by the time the guest sees this form.
+| $verifiedPlexIdentity mirrors tests/Fixtures/Common/plex/user.json (account
+| 1001 / plexuser1) — the real capture the callback stashes — with the PIN
+| token appended, and is stashed through PlexSession itself because the
+| callback has already run by the time the guest sees this form. Going through
+| the production marshaller rather than a hand-written session array is what
+| keeps a change to the stash shape from silently bouncing these tests to
+| /login.
 */
 
 uses(RefreshDatabase::class);
 
-/** @var Closure(): array{id: int, uuid: string, username: string, email: string, thumb: string, token: string} */
-$verifiedPlexAccount = fn (): array => [
-    'id' => 1001,
-    'uuid' => '0000000000000001',
-    'username' => 'plexuser1',
-    'email' => 'user1@example.com',
-    'thumb' => 'https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1',
-    'token' => 'sxWpYzQ1TkxAbCdEfGhI',
-];
+/** @var Closure(): VerifiedPlexIdentity */
+$verifiedPlexIdentity = fn (): VerifiedPlexIdentity => new VerifiedPlexIdentity(
+    new PlexAccount(
+        id: 1001,
+        uuid: '0000000000000001',
+        username: 'plexuser1',
+        email: 'user1@example.com',
+        thumb: 'https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1',
+    ),
+    token: 'sxWpYzQ1TkxAbCdEfGhI',
+);
 
-describe('/register browser round trip', function () use ($verifiedPlexAccount): void {
-    it('carries a guest from the prefilled form to the signed-in home page', function () use ($verifiedPlexAccount): void {
+describe('/register browser round trip', function () use ($verifiedPlexIdentity): void {
+    it('carries a guest from the prefilled form to the signed-in home page', function () use ($verifiedPlexIdentity): void {
         // Arrange
-        $this->withSession(['plex_registration' => $verifiedPlexAccount()]);
+        PlexSession::stashVerifiedIdentity($verifiedPlexIdentity());
 
         // Act
         $page = visit('/register');
@@ -67,9 +75,9 @@ describe('/register browser round trip', function () use ($verifiedPlexAccount):
             ->and($user->_plex_username)->toBe('plexuser1');
     });
 
-    it('shows the server validation error and keeps the guest on the form', function () use ($verifiedPlexAccount): void {
+    it('shows the server validation error and keeps the guest on the form', function () use ($verifiedPlexIdentity): void {
         // Arrange
-        $this->withSession(['plex_registration' => $verifiedPlexAccount()]);
+        PlexSession::stashVerifiedIdentity($verifiedPlexIdentity());
 
         // Act
         $page = visit('/register');

@@ -25,8 +25,9 @@ use Symfony\Component\Finder\Finder;
  * Boundary methods exempt outright — both parameters and return type.
  *
  * Keyed `Fully\Qualified\Class::method` => why it stays an array. Every key must
- * resolve to a real public method; `assertDtoBoundaryExemptionsResolve()` below
- * fails the suite on a stale one rather than letting it exempt nothing forever.
+ * resolve to a real public method *that still speaks `array`*;
+ * `assertDtoBoundaryExemptionsResolve()` below fails the suite on a stale one
+ * rather than letting it exempt nothing forever.
  *
  * NB: `App\Domains\Identity\Actions\PasswordValidationRules::passwordRules` is
  * deliberately absent — it is a `protected` method on a trait, so it is never a
@@ -79,8 +80,10 @@ const DTO_BOUNDARY_EXEMPT_METHODS = [
  * Boundary methods whose PARAMETERS only are exempt — their `array` return type
  * is still an offender.
  *
- * The IMDb importers take raw dataset rows (exempt) but hand back an outcome
- * summary that becomes a DTO in FLIX-243 slice 7, so the return must stay flagged.
+ * The IMDb importers take raw dataset rows (exempt) but hand back a
+ * `TitleImportCounts` DTO, so the return must stay flagged rather than ride along
+ * on the parameter exemption. An entry here therefore stays live on its `array`
+ * parameter alone — an `array` return does not keep it off the stale list.
  *
  * @var array<string, string>
  */
@@ -130,35 +133,70 @@ function dtoBoundaryClasses(): array
 }
 
 /**
- * Fail loudly on an exemption entry that no longer names a real boundary method.
+ * Why $entry is a stale exemption, or null while it still exempts something real.
  *
  * A stale key exempts nothing and can never fail on its own, so the lists would
  * rot silently as classes are renamed or converted. Resolution mirrors the scan
  * below exactly — only a public method *declared on* the named class is ever
- * consulted — so an inherited or non-public entry is stale too.
+ * consulted — so an inherited or non-public entry is stale too, as is one whose
+ * method no longer speaks `array` at all.
+ *
+ * @param  bool  $parametersOnly  entry from DTO_BOUNDARY_EXEMPT_PARAMETERS, whose
+ *                                `array` return stays fenced — so only an `array`
+ *                                parameter can keep it live.
+ */
+function dtoBoundaryStaleExemptionReason(string $entry, bool $parametersOnly): ?string
+{
+    // A key missing its `::` separator lands here as an empty method name,
+    // which `method_exists` rejects like any other unresolvable entry.
+    [$class, $method] = array_pad(explode('::', $entry, 2), 2, '');
+
+    if (! class_exists($class) || ! method_exists($class, $method)) {
+        return "{$entry} names no existing class or method. Remove the entry or fix the name.";
+    }
+
+    $reflection = new ReflectionMethod($class, $method);
+
+    if (! $reflection->isPublic() || $reflection->getDeclaringClass()->getName() !== $class) {
+        return "{$entry} is not a public method declared on {$class}, so it exempts nothing. Remove the entry.";
+    }
+
+    // Resolving is only half the check. A converted method exempts nothing today,
+    // and because the scan skips a key-matched method whole, the dead entry would
+    // silently re-exempt it the moment someone typed it `array` again.
+    if ($parametersOnly) {
+        return dtoBoundaryTakesArray($reflection)
+            ? null
+            : "{$entry} no longer takes an array parameter, so it exempts nothing. Remove the entry.";
+    }
+
+    if (dtoBoundaryTakesArray($reflection) || dtoBoundaryTypeIsArray($reflection->getReturnType())) {
+        return null;
+    }
+
+    return "{$entry} no longer takes or returns array, so it exempts nothing. Remove the entry.";
+}
+
+/**
+ * Fail loudly on an exemption entry that no longer exempts a real array-typed
+ * boundary method.
  *
  * @throws RuntimeException
  */
 function assertDtoBoundaryExemptionsResolve(): void
 {
-    $entries = [
-        ...array_keys(DTO_BOUNDARY_EXEMPT_METHODS),
-        ...array_keys(DTO_BOUNDARY_EXEMPT_PARAMETERS),
+    $lists = [
+        [array_keys(DTO_BOUNDARY_EXEMPT_METHODS), false],
+        [array_keys(DTO_BOUNDARY_EXEMPT_PARAMETERS), true],
     ];
 
-    foreach ($entries as $entry) {
-        // A key missing its `::` separator lands here as an empty method name,
-        // which `method_exists` rejects like any other unresolvable entry.
-        [$class, $method] = array_pad(explode('::', $entry, 2), 2, '');
+    foreach ($lists as [$entries, $parametersOnly]) {
+        foreach ($entries as $entry) {
+            $reason = dtoBoundaryStaleExemptionReason($entry, $parametersOnly);
 
-        if (! class_exists($class) || ! method_exists($class, $method)) {
-            throw new RuntimeException("Stale DTO boundary exemption: {$entry} names no existing class or method. Remove the entry or fix the name.");
-        }
-
-        $reflection = new ReflectionMethod($class, $method);
-
-        if (! $reflection->isPublic() || $reflection->getDeclaringClass()->getName() !== $class) {
-            throw new RuntimeException("Stale DTO boundary exemption: {$entry} is not a public method declared on {$class}, so it exempts nothing. Remove the entry.");
+            if ($reason !== null) {
+                throw new RuntimeException("Stale DTO boundary exemption: {$reason}");
+            }
         }
     }
 }
@@ -222,6 +260,14 @@ function dtoBoundaryMethodSpeaksArray(ReflectionMethod $method, string $signatur
         return false;
     }
 
+    return dtoBoundaryTakesArray($method);
+}
+
+/**
+ * Whether any parameter of a method is typed `array`/`?array`.
+ */
+function dtoBoundaryTakesArray(ReflectionMethod $method): bool
+{
     foreach ($method->getParameters() as $parameter) {
         if (dtoBoundaryTypeIsArray($parameter->getType())) {
             return true;
@@ -267,7 +313,75 @@ describe('arrayTypedBoundaryMethods() offender detection', function (): void {
     });
 });
 
+describe('dtoBoundaryStaleExemptionReason() staleness detection', function (): void {
+    it('keeps an entry whose method still speaks array', function (): void {
+        // Arrange
+        $live = new class
+        {
+            public function handle(array $rows): void {}
+        };
+
+        // Act
+        $reason = dtoBoundaryStaleExemptionReason($live::class.'::handle', parametersOnly: false);
+
+        // Assert
+        expect($reason)->toBeNull();
+    });
+
+    it('flags an entry whose method no longer takes or returns array', function (): void {
+        // Resolving is not enough: a converted method exempts nothing, and the
+        // offender scan skips the whole method on a key match — so the dead entry
+        // would blanket the regression the moment anyone re-typed it `array`.
+        // Arrange
+        $converted = new class
+        {
+            public function handle(int $id): void {}
+        };
+
+        // Act
+        $reason = dtoBoundaryStaleExemptionReason($converted::class.'::handle', parametersOnly: false);
+
+        // Assert
+        expect($reason)->toContain('no longer takes or returns array');
+    });
+
+    it('flags a parameters-only entry whose method no longer takes array', function (): void {
+        // A parameters-only entry exempts parameters alone, so an `array` return
+        // keeps it fenced rather than keeping it live.
+        // Arrange
+        $converted = new class
+        {
+            public function handle(int $id): array
+            {
+                return [];
+            }
+        };
+
+        // Act
+        $reason = dtoBoundaryStaleExemptionReason($converted::class.'::handle', parametersOnly: true);
+
+        // Assert
+        expect($reason)->toContain('no longer takes an array parameter');
+    });
+});
+
 describe('the app/Domains boundary fence', function (): void {
+    it('scans the real app/Domains tree rather than silently finding nothing', function (): void {
+        // A fence whose scan returns nothing has no offenders and passes forever.
+        // `dtoBoundaryClasses()` returns `[]` on a missing directory and filters
+        // twice, so pin a floor here: a broken path or namespace mapping fails as
+        // a hollow fence instead of masquerading as a clean tree.
+        // Arrange
+        // the real app/Domains tree is the subject, no state to set up
+
+        // Act
+        $classes = dtoBoundaryClasses();
+
+        // Assert
+        expect($classes)->not->toBeEmpty()
+            ->and(count($classes))->toBeGreaterThan(20);
+    });
+
     it('has no domain boundary method typed array outside the exemption list', function (): void {
         // Arrange
         // the real app/Domains tree is the subject, no state to set up

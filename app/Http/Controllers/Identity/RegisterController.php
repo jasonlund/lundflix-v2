@@ -48,9 +48,9 @@ final readonly class RegisterController
         // bubbles out of here with the identity intact, so the redirect back to the
         // form still has something to render.
         $user = $this->registerPlexUser->handle($plex, new PlexRegistrationInput(
-            name: $request->string('name')->value(),
-            password: $request->string('password')->value(),
-            passwordConfirmation: $request->string('password_confirmation')->value(),
+            name: $this->submittedString($request, 'name'),
+            password: $this->submittedString($request, 'password'),
+            passwordConfirmation: $this->submittedString($request, 'password_confirmation'),
         ));
 
         PlexSession::forgetVerifiedIdentity();
@@ -58,5 +58,20 @@ final readonly class RegisterController
         Auth::login($user);
 
         return to_route('home');
+    }
+
+    /**
+     * A field that was never submitted, or that arrived as something other than a
+     * string (`name[]=a&name[]=b` is an ordinary POST shape), reads as null — the
+     * state PlexRegistrationInput's nullable properties exist to carry, so the
+     * Validator inside RegisterPlexUser refuses it instead of the constructor
+     * fataling on it. `$request->string()` cannot express that: it stringifies a
+     * missing field to '' and raises on an array.
+     */
+    private function submittedString(Request $request, string $field): ?string
+    {
+        $value = $request->input($field);
+
+        return is_string($value) ? $value : null;
     }
 }

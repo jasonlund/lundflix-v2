@@ -26,7 +26,10 @@ use Inertia\Testing\AssertableInertia as Assert;
 |
 | $verifiedPlexIdentity below mirrors tests/Fixtures/Common/plex/user.json
 | (account 1001 / plexuser1) — the real capture the callback stashes — with
-| the PIN-exchange token appended.
+| the PIN-exchange token appended. It reaches the session through
+| PlexSession::stashVerifiedIdentity(), never as a hand-written array: the
+| route tests then read the exact payload the callback writes, so a change to
+| the stash shape breaks them instead of silently bouncing to /login.
 */
 
 uses(RefreshDatabase::class);
@@ -95,10 +98,10 @@ describe('GET /register form access', function () use ($verifiedPlexIdentity): v
 
     it('renders the registration form with the verified plex username and email', function () use ($verifiedPlexIdentity): void {
         // Arrange
-        $plex = $verifiedPlexIdentity();
+        PlexSession::stashVerifiedIdentity($verifiedPlexIdentity());
 
         // Act
-        $response = $this->withSession(['plex_registration' => $plex])->get('/register');
+        $response = $this->get('/register');
 
         // Assert
         $response->assertInertia(fn (Assert $page): Assert => $page
@@ -112,10 +115,10 @@ describe('GET /register form access', function () use ($verifiedPlexIdentity): v
 describe('POST /register account creation', function () use ($verifiedPlexIdentity): void {
     it('creates the plex user, logs them in, and sends them home', function () use ($verifiedPlexIdentity): void {
         // Arrange
-        $plex = $verifiedPlexIdentity();
+        PlexSession::stashVerifiedIdentity($verifiedPlexIdentity());
 
         // Act
-        $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
+        $response = $this->post('/register', [
             'name' => 'Jason',
             'password' => 'correct-horse-battery-staple',
             'password_confirmation' => 'correct-horse-battery-staple',
@@ -136,10 +139,10 @@ describe('POST /register account creation', function () use ($verifiedPlexIdenti
 
     it('logs the new user in for the session only, issuing no remember-me cookie', function () use ($verifiedPlexIdentity): void {
         // Arrange
-        $plex = $verifiedPlexIdentity();
+        PlexSession::stashVerifiedIdentity($verifiedPlexIdentity());
 
         // Act
-        $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
+        $response = $this->post('/register', [
             'name' => 'Jason',
             'password' => 'correct-horse-battery-staple',
             'password_confirmation' => 'correct-horse-battery-staple',
@@ -152,10 +155,10 @@ describe('POST /register account creation', function () use ($verifiedPlexIdenti
 
     it('clears the stashed plex identity once the account is created', function () use ($verifiedPlexIdentity): void {
         // Arrange
-        $plex = $verifiedPlexIdentity();
+        PlexSession::stashVerifiedIdentity($verifiedPlexIdentity());
 
         // Act
-        $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
+        $response = $this->post('/register', [
             'name' => 'Jason',
             'password' => 'correct-horse-battery-staple',
             'password_confirmation' => 'correct-horse-battery-staple',
@@ -169,10 +172,10 @@ describe('POST /register account creation', function () use ($verifiedPlexIdenti
 describe('POST /register refusals', function () use ($verifiedPlexIdentity): void {
     it('rejects a submission whose password is not confirmed', function () use ($verifiedPlexIdentity): void {
         // Arrange
-        $plex = $verifiedPlexIdentity();
+        PlexSession::stashVerifiedIdentity($verifiedPlexIdentity());
 
         // Act
-        $response = $this->withSession(['plex_registration' => $plex])->post('/register', [
+        $response = $this->post('/register', [
             'name' => 'Jason',
             'password' => 'correct-horse-battery-staple',
             'password_confirmation' => 'mismatched-confirmation',
@@ -180,6 +183,42 @@ describe('POST /register refusals', function () use ($verifiedPlexIdentity): voi
 
         // Assert
         $response->assertSessionHasErrors('password');
+        expect(User::query()->count())->toBe(0);
+        $this->assertGuest();
+    });
+
+    it('rejects a submission with the name field omitted entirely', function () use ($verifiedPlexIdentity): void {
+        // Arrange
+        PlexSession::stashVerifiedIdentity($verifiedPlexIdentity());
+
+        // Act
+        $response = $this->post('/register', [
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]);
+
+        // Assert
+        $response->assertSessionHasErrors('name');
+        expect(User::query()->count())->toBe(0);
+        $this->assertGuest();
+    });
+
+    // A field posted as an array (`name[]=a&name[]=b`) is an ordinary PHP request
+    // shape, so it must reach the Validator as a missing value and fail there —
+    // never the constructor of a ?string property, which would be a 500.
+    it('rejects a submission whose name field is posted as an array', function () use ($verifiedPlexIdentity): void {
+        // Arrange
+        PlexSession::stashVerifiedIdentity($verifiedPlexIdentity());
+
+        // Act
+        $response = $this->post('/register', [
+            'name' => ['Jason', 'Imposter'],
+            'password' => 'correct-horse-battery-staple',
+            'password_confirmation' => 'correct-horse-battery-staple',
+        ]);
+
+        // Assert
+        $response->assertSessionHasErrors('name');
         expect(User::query()->count())->toBe(0);
         $this->assertGuest();
     });

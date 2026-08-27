@@ -20,6 +20,8 @@ use App\Domains\Identity\Data\VerifiedPlexIdentity;
  * an object handed to the session is JSON-encoded when the handler writes it
  * and decodes back as a bare array on the next request, so stashing the DTO
  * itself would hand /register an array and bounce every guest to /login.
+ * Marshalling on the way in leaves the payload as the only shape the key ever
+ * holds, so the read has a single form to hydrate.
  */
 final class PlexSession
 {
@@ -60,14 +62,6 @@ final class PlexSession
     public static function verifiedIdentity(): ?VerifiedPlexIdentity
     {
         $stash = session(self::VERIFIED_IDENTITY);
-
-        // The stash is only JSON-encoded when the handler writes the session out
-        // at the end of the request, so within the request that stashed it the
-        // store still hands back the object itself. Both shapes therefore reach
-        // this read: the identity before that round trip, the payload after it.
-        if ($stash instanceof VerifiedPlexIdentity) {
-            return $stash;
-        }
 
         return is_array($stash) ? self::hydrate($stash) : null;
     }

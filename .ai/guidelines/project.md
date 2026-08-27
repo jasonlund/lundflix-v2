@@ -90,10 +90,21 @@ language won't check; make it a class. Enforced by
 
 **Three exemptions, and only these** (the fence documents each entry with its reason):
 
-1. **Raw upstream payloads** — `array $payloads`/`$rows`/`$sections` feeding the
-   `_{source}_*` raw-parity columns. A DTO there is a transform at ingest and breaks
-   the `RAW_COLUMNS` list-driven mapping. Parameter-only: the method's **return**
-   still converts.
+1. **Raw upstream payloads** — the wire shape is the source's, not ours. Two forms,
+   and which one you have decides how much of the signature is exempt:
+   - **Ingest sinks — the exempt `array` is a *parameter*.** `array $payloads`/`$rows`/
+     `$page`/`$sections` feeding the `_{source}_*` raw-parity columns
+     (`UpsertTmdbMovies::handle`, `ReconcilePlexLibraries::handle`,
+     `ImportImdbTitles::handle`). A DTO there is a transform at ingest and breaks the
+     `RAW_COLUMNS` list-driven mapping. The **return** still converts — these hand
+     back a count or a DTO (`TitleImportCounts`).
+   - **Wire-shape reads — the exempt `array` is the *return*.** A method whose
+     `array`/`?array` return *is* the decoded upstream response body
+     (`TmdbApiService::movie`, `TmdbApiService::configuration`,
+     `PlexLibraryService::fetchSections`, and their TVDB/Plex siblings). No
+     `RAW_COLUMNS` mapping to break and no DTO planned — modelling a third party's
+     response shape buys a class that changes whenever they change. The return
+     stays `array` indefinitely.
 2. **Framework-fixed signatures** — Fortify's `CreatesNewUsers::create(array $input)`,
    Inertia's `share(): array`. Not ours to retype.
 3. **Scalar lists** — `list<int>`/`list<string>` returns. A list of ints is not a
