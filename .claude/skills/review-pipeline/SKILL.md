@@ -309,6 +309,18 @@ positives, never at the author's judgment.
   *form* of labels that are present, not their presence. Matching the surrounding
   file is correct; flag only a file that mixes both styles inconsistently within
   itself.
+- A domain importing `App\Domains\Common\Data\*` — `Common` is the documented
+  shared kernel and explicitly holds DTOs, so depending on one is the intended
+  direction. The "only through `Contracts/`" rule governs reaching into another
+  **domain's** internals, not the kernel. Do **not** ask for a `Common\Data\*`
+  carrier to be republished behind `Common\Contracts` or a service: it adds an
+  interface with no second implementation behind it. (`Identity\Data\VerifiedPlexIdentity`
+  → `Common\Data\PlexAccount` is the current instance.)
+- `array_key_exists()` left as the native call — `.ai/guidelines/project.md` lists
+  it under "**Stay native — do NOT 'fix' these**", because `Arr::exists($array, $key)`
+  swaps the argument order and the positional Rector map cannot express it. It is
+  also the correct choice where a key holding `null` must still count as present,
+  which `isset()` would miss. Suggesting the `Arr::` swap is a review defect.
 
 ## Consensus Rules (Used by Orchestrator, Not Agents)
 
