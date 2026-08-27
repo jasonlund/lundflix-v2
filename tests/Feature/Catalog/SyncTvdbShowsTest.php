@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
@@ -274,6 +275,26 @@ describe('catalog:sync-shows-tvdb end-of-leg reindex', function () use ($stampUp
         $this->artisan('catalog:sync-shows-tvdb')
             ->expectsOutputToContain('Reindexing shows…')
             ->expectsOutputToContain('Reindexed 1 show in 0s');
+    });
+
+    it('prints the reindex phase lines in queued wording when scout queues its index writes', function (): void {
+        // Production runs SCOUT_QUEUE=true, where the phase only DISPATCHES the index
+        // writes — its elapsed seconds time the dispatch, not the indexing, so the
+        // lines must not claim the shows were indexed.
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        config(['scout.queue' => true]);
+        Queue::fake();
+        fakeTvdbUpdates();
+
+        // Act
+        Artisan::call('catalog:sync-shows-tvdb');
+
+        // Assert
+        expect(Artisan::output())
+            ->toContain('Queueing shows for reindex…')
+            ->toContain('  [reindex 1 queued]')
+            ->toContain('Queued 1 show for reindex in 0s');
     });
 
     it('prints the ingest completion line with elapsed time', function (): void {

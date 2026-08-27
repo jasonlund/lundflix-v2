@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Console\Commands\Concerns\MeasuresElapsedTime;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
@@ -240,5 +241,69 @@ describe('catalog:sync-ratings heartbeat output', function (): void {
 
         // Act & Assert
         $this->artisan('catalog:sync-ratings')->expectsOutputToContain('[elapsed');
+    });
+});
+
+describe('IMDb leg elapsed formatting', function (): void {
+    it('formats a long leg without a locale thousands separator', function (): void {
+        // The trait method is exercised directly: wall clock cannot be frozen, so a
+        // leg long enough to cross the separator threshold is unreachable through the
+        // command. The 3661.2s start reading is what a real hour-long leg would hand it.
+        // Arrange
+        $timer = new class
+        {
+            use MeasuresElapsedTime;
+
+            public function since(float $startedAt): string
+            {
+                return $this->preciseSecondsSince($startedAt);
+            }
+        };
+
+        // Act
+        $elapsed = $timer->since(microtime(true) - 3661.2);
+
+        // Assert
+        expect($elapsed)->not->toContain(',');
+        expect($elapsed)->toMatch('/^366\d\.\d$/');
+    });
+
+    it('closes the leg with a one-decimal elapsed line', function (): void {
+        // Arrange
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
+
+        // Act
+        Artisan::call('catalog:sync-ratings');
+
+        // Assert
+        expect(Artisan::output())->toMatch('/ {2}\[elapsed \d+\.\ds]/');
+    });
+});
+
+describe('catalog:sync-ratings --batch ceiling', function (): void {
+    it('reduces an over-ceiling --batch to the feed maximum', function (): void {
+        // Arrange
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
+
+        // Act
+        Artisan::call('catalog:sync-ratings', ['--batch' => 10000]);
+
+        // Assert
+        expect(Artisan::output())->toContain('Reducing --batch 10000 to the ratings ceiling of 4000.');
+    });
+
+    it('leaves a --batch within the ceiling untouched', function (): void {
+        // The heartbeat boundary is the proof the supplied 2 survived: the pre-filter
+        // closes a probe batch every --batch rows.
+        // Arrange
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
+
+        // Act
+        Artisan::call('catalog:sync-ratings', ['--batch' => 2]);
+
+        // Assert
+        $output = Artisan::output();
+        expect($output)->not->toContain('Reducing --batch');
+        expect($output)->toContain('[imdb ratings 2]');
     });
 });

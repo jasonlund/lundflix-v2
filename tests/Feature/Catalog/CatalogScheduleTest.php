@@ -33,6 +33,7 @@ describe('catalog:sync scheduling', function (): void {
         expect($event->expression)->toBe('0 0,12 * * *');
         expect($event->timezone)->toBe('America/Los_Angeles');
         expect($event->withoutOverlapping)->toBeTrue();
+        expect($event->expiresAt)->toBe(360);
     });
 });
 
@@ -51,5 +52,6 @@ describe('catalog:sync-imdb scheduling', function (): void {
         expect($event->expression)->toBe('0 6 * * *');
         expect($event->timezone)->toBe('America/Los_Angeles');
         expect($event->withoutOverlapping)->toBeTrue();
+        expect($event->expiresAt)->toBe(600);
     });
 });

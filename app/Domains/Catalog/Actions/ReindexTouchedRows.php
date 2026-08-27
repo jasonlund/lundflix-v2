@@ -19,17 +19,32 @@ final readonly class ReindexTouchedRows
     public function handle(string $model, DateTimeInterface $watermark, Closure $write): int
     {
         $reindexed = 0;
+        $mode = $this->queuesIndexing() ? ' queued' : '';
 
         $model::query()
             ->where('updated_at', '>=', $watermark)
-            ->chunkById((int) config('scout.chunk.searchable'), function (Collection $rows) use (&$reindexed, $write): void {
+            ->chunkById((int) config('scout.chunk.searchable'), function (Collection $rows) use (&$reindexed, $write, $mode): void {
                 $rows->searchable();
 
                 $reindexed += $rows->count();
 
-                $write("  [reindex {$reindexed}]");
+                $write("  [reindex {$reindexed}{$mode}]");
             });
 
         return $reindexed;
+    }
+
+    /**
+     * Whether `searchable()` merely QUEUES the index writes instead of performing them.
+     *
+     * `Searchable::queueMakeSearchable()` indexes inline only while `scout.queue` is
+     * falsy; otherwise it dispatches a job and returns immediately. Production runs
+     * `SCOUT_QUEUE=true`, so a caller timing this phase is timing the dispatch — the
+     * output has to say "queued", not "indexed", or the elapsed seconds read as the
+     * indexing budget. Public because the callers word their own phase lines.
+     */
+    public function queuesIndexing(): bool
+    {
+        return (bool) config('scout.queue');
     }
 }

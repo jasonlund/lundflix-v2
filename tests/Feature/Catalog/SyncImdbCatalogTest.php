@@ -6,14 +6,21 @@ use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\ImdbDatasetMarker;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
+use Laravel\Scout\EngineManager;
+use Laravel\Scout\Engines\Engine;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 uses(RefreshDatabase::class);
 
@@ -60,6 +67,60 @@ function downloadedImdbDataset(string $filename): Closure
 {
     return fn (Request $request): bool => $request->method() === 'GET'
         && Str::contains($request->url(), $filename);
+}
+
+/**
+ * A Scout engine spy whose first update() throws and whose later calls capture.
+ *
+ * Models a search-engine outage that opens mid-run — the movies reindex dies on
+ * its first push, and whether the shows reindex still gets to run is the subject.
+ * Register it after Arrange, like spyOnScoutEngine(), so factory auto-syncs don't
+ * spend the one throw.
+ *
+ * @return Closure(): list<list<int|string>> the chunks captured after the throw
+ */
+function spyOnScoutEngineFailingOnce(): Closure
+{
+    $captured = [];
+    $updates = 0;
+
+    $spy = Mockery::spy(Engine::class);
+
+    $spy->shouldReceive('update')->andReturnUsing(
+        function (EloquentCollection $models) use (&$captured, &$updates): void {
+            $updates++;
+
+            if ($updates === 1) {
+                throw new RuntimeException('search engine unavailable');
+            }
+
+            $captured[] = $models->modelKeys();
+        },
+    );
+
+    resolve(EngineManager::class)->extend('failing-spy', fn (): Engine => $spy);
+    config(['scout.driver' => 'failing-spy']);
+
+    // use (&$captured), never an arrow fn: that would bind a copy of the empty
+    // array and the reader would report nothing however much the spy captured.
+    return function () use (&$captured): array {
+        return $captured;
+    };
+}
+
+/**
+ * Run the wrapper against a buffer we own and hand back everything it wrote.
+ *
+ * `Artisan::output()` reads back empty for this command: the wrapper forwards
+ * `$this->output` into its own `Artisan::call` per leg, which leaves the kernel's
+ * last output an `OutputStyle` — no `fetch()`, so the read yields ''. Passing our
+ * own buffer keeps the whole run, legs included, in one readable string.
+ */
+function imdbCatalogOutput(): string
+{
+    Artisan::call('catalog:sync-imdb', [], $buffer = new BufferedOutput);
+
+    return $buffer->fetch();
 }
 
 describe('catalog:sync-imdb leg dispatch', function (): void {
@@ -225,6 +286,76 @@ describe('catalog:sync-imdb end-of-leg reindex', function (): void {
         $this->artisan('catalog:sync-imdb')->expectsOutputToContain('[reindex');
     });
 
+    it('prints a phase line and an elapsed close for each model it reindexes', function (): void {
+        // The two passes are announced separately so an operator can tell ingest from
+        // reindexing, and the movies pass from the shows one. Asserted over the run's
+        // captured text, not chained expectsOutputToContain: the closing line contains
+        // the opening one, and Mockery routes both writes to the first matching
+        // expectation, leaving the closing expectation forever unsatisfied.
+        // Arrange
+        Date::setTestNow('2026-08-12 12:00:00');
+        Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Show::factory()->create(['_imdb_id' => 'tt0903747']);
+        fakeImdbDatasets();
+
+        // Act
+        $output = imdbCatalogOutput();
+
+        // Assert
+        expect($output)
+            ->toContain('Reindexing movies…')
+            ->toContain('Reindexed 1 movie in 0s')
+            ->toContain('Reindexing shows…')
+            ->toContain('Reindexed 1 show in 0s');
+    });
+
+    it('prints the reindex phase lines in queued wording when scout queues its index writes', function (): void {
+        // Production runs SCOUT_QUEUE=true, where the passes only DISPATCH the index
+        // writes — their elapsed seconds time the dispatch, not the indexing, so the
+        // lines must not claim the rows were indexed.
+        // Arrange
+        Date::setTestNow('2026-08-12 12:00:00');
+        config(['scout.queue' => true]);
+        Queue::fake();
+        Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Show::factory()->create(['_imdb_id' => 'tt0903747']);
+        fakeImdbDatasets();
+
+        // Act
+        $output = imdbCatalogOutput();
+
+        // Assert
+        expect($output)
+            ->toContain('Queueing movies for reindex…')
+            ->toContain('Queued 1 movie for reindex in 0s')
+            ->toContain('Queueing shows for reindex…')
+            ->toContain('Queued 1 show for reindex in 0s');
+    });
+
+    it('names the model whose reindex died and still closes the surviving pass', function (): void {
+        // Arrange
+        Date::setTestNow('2026-08-12 12:00:00');
+        Exceptions::fake();
+        Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Show::factory()->create(['_imdb_id' => 'tt0903747']);
+        fakeImdbDatasets();
+        // Registered after the factory saves so the movies pass, not a factory save,
+        // is what eats the one throw.
+        spyOnScoutEngineFailingOnce();
+
+        // Act
+        $output = imdbCatalogOutput();
+
+        // Assert
+        // Without a failure close, the movies pass would just stop mid-phase and the
+        // next phase line would read as its result.
+        expect($output)
+            ->toContain('Reindexing movies…')
+            ->toContain('Reindexing movies failed after 0s')
+            ->not->toContain('Reindexed 1 movie in 0s')
+            ->toContain('Reindexed 1 show in 0s');
+    });
+
     it('still reindexes the rows a surviving leg touched when another leg fails', function (): void {
         // Arrange
         Sleep::fake();
@@ -241,6 +372,24 @@ describe('catalog:sync-imdb end-of-leg reindex', function (): void {
 
         // Assert
         expect(reindexedIds($capturedChunks()))->toContain($matrix->id);
+    });
+
+    it('still reindexes shows when the movies reindex throws, and exits FAILURE', function (): void {
+        // Arrange
+        Exceptions::fake();
+        Movie::factory()->create(['id' => 101, '_imdb_id' => 'tt0133093']);
+        $breakingBad = Show::factory()->create(['id' => 202, '_imdb_id' => 'tt0903747']);
+        fakeImdbDatasets();
+        // Registered after the factory saves so their auto-syncs aren't captured —
+        // and so the movies pass, not a factory save, is what eats the throw.
+        $capturedChunks = spyOnScoutEngineFailingOnce();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-imdb')->assertExitCode(Command::FAILURE);
+
+        // Assert
+        Exceptions::assertReported(fn (RuntimeException $e): bool => true);
+        expect(reindexedIds($capturedChunks()))->toContain($breakingBad->id);
     });
 
     it('sends nothing to the engine when every leg is skipped', function (): void {

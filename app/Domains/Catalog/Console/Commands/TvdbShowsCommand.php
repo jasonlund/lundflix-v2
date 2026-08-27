@@ -159,10 +159,18 @@ abstract class TvdbShowsCommand extends Command
      */
     protected function reindexTouchedShows(ReindexTouchedRows $reindexTouchedRows, CarbonImmutable $startedAt): void
     {
+        // Under SCOUT_QUEUE the phase only dispatches the index writes, so the elapsed
+        // seconds time the dispatch — say "queued" rather than claim the shows are indexed.
+        $queued = $reindexTouchedRows->queuesIndexing();
+
         $reindexStartedAt = CarbonImmutable::now();
-        $this->output->writeln('Reindexing shows…');
+        $this->output->writeln($queued ? 'Queueing shows for reindex…' : 'Reindexing shows…');
         $reindexed = $reindexTouchedRows->handle(Show::class, $startedAt, fn (string $line) => $this->output->writeln($line));
-        $this->output->writeln("Reindexed {$reindexed} ".Str::plural('show', $reindexed).' in '.$this->secondsSince($reindexStartedAt).'s');
+        $shows = Str::plural('show', $reindexed);
+        $elapsed = $this->secondsSince($reindexStartedAt);
+        $this->output->writeln($queued
+            ? "Queued {$reindexed} {$shows} for reindex in {$elapsed}s"
+            : "Reindexed {$reindexed} {$shows} in {$elapsed}s");
     }
 
     /**

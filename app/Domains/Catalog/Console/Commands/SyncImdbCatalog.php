@@ -5,20 +5,24 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\ReindexTouchedRows;
+use App\Domains\Catalog\Console\Commands\Concerns\MeasuresElapsedTime;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
+use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Number;
+use Illuminate\Support\Str;
 use Throwable;
 
 #[Description('Sync the IMDb datasets — ratings, titles, akas — in order, surviving any single failure')]
 #[Signature('catalog:sync-imdb {--force}')]
 class SyncImdbCatalog extends Command
 {
+    use MeasuresElapsedTime;
+
     /**
      * Ratings runs first so the cheapest dataset lands even if a later leg dies.
      */
@@ -53,9 +57,9 @@ class SyncImdbCatalog extends Command
             fn (): bool => $this->runLegs($arguments),
         ));
 
-        $this->reindexRowsTouchedSince($startedAt);
+        $reindexFailed = $this->reindexRowsTouchedSince($startedAt);
 
-        return $failed ? self::FAILURE : self::SUCCESS;
+        return $failed || $reindexFailed ? self::FAILURE : self::SUCCESS;
     }
 
     /**
@@ -79,8 +83,7 @@ class SyncImdbCatalog extends Command
                 $failed = true;
             }
 
-            $elapsed = Number::format(microtime(true) - $legStartedAt, precision: 1);
-            $this->output->writeln("  [elapsed {$dataset} {$elapsed}s]");
+            $this->output->writeln("  [elapsed {$dataset} {$this->preciseSecondsSince($legStartedAt)}s]");
         }
 
         return $failed;
@@ -88,12 +91,50 @@ class SyncImdbCatalog extends Command
 
     /**
      * Runs on the failure path too: a failed leg must not strand the rows a surviving leg wrote.
+     *
+     * Each model is guarded on its own for the same reason: a search-engine outage
+     * during the movies pass would otherwise strand every show the run touched.
+     *
+     * @return bool whether either reindex failed — both models run either way
      */
-    private function reindexRowsTouchedSince(DateTimeInterface $startedAt): void
+    private function reindexRowsTouchedSince(DateTimeInterface $startedAt): bool
     {
         $write = $this->output->writeln(...);
+        $failed = false;
 
-        $this->reindexTouchedRows->handle(Movie::class, $startedAt, $write);
-        $this->reindexTouchedRows->handle(Show::class, $startedAt, $write);
+        // Under SCOUT_QUEUE a pass only dispatches the index writes, so its elapsed
+        // seconds time the dispatch — say "queued" rather than claim rows were indexed.
+        $queued = $this->reindexTouchedRows->queuesIndexing();
+
+        foreach ([Movie::class, Show::class] as $model) {
+            $noun = Str::lower(class_basename($model));
+            $label = Str::plural($noun);
+            $phaseStartedAt = CarbonImmutable::now();
+
+            $write($queued ? "Queueing {$label} for reindex…" : "Reindexing {$label}…");
+
+            try {
+                $reindexed = $this->reindexTouchedRows->handle($model, $startedAt, $write);
+                $counted = Str::plural($noun, $reindexed);
+
+                $close = $queued
+                    ? "Queued {$reindexed} {$counted} for reindex in"
+                    : "Reindexed {$reindexed} {$counted} in";
+            } catch (Throwable $e) {
+                report($e);
+                $failed = true;
+
+                // A dead pass still closes: the surviving model prints its own phase
+                // line next, and with nothing between them the failure would read as
+                // that pass's result instead.
+                $close = $queued
+                    ? "Queueing {$label} for reindex failed after"
+                    : "Reindexing {$label} failed after";
+            }
+
+            $write("{$close} {$this->secondsSince($phaseStartedAt)}s");
+        }
+
+        return $failed;
     }
 }

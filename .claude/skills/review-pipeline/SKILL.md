@@ -265,6 +265,13 @@ positives, never at the author's judgment.
   `tdd-laravel-testing`.
 - Fixed third-party base URLs as `private const` on a service — intentional, not
   "should be config".
+- The catalog schedule's non-overlap by **offset timing**, not a shared mutex
+  (`routes/console.php`). `catalog:sync-imdb` at 06:00 sits between `catalog:sync`'s
+  00:00/12:00 starts, and each carries its own per-event `withoutOverlapping()`.
+  FLIX-273 evaluated a cross-command shared mutex, rejected it, and wrote down the
+  residual it accepted. That `withoutOverlapping()` is per-event is the known
+  premise, not an oversight — do not propose a shared lock. (The lock *expiry*
+  is a separate matter and is set explicitly on both entries.)
 - Many small named exception classes for one domain — intentional
   (one-failure-per-class), not over-engineering.
 - Action classes named `VerbNoun` with no `Action` suffix — intentional naming.

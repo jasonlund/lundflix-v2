@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
+use App\Domains\Catalog\Console\Commands\Concerns\MeasuresElapsedTime;
 use App\Domains\Catalog\Console\Commands\Concerns\SkipsUnchangedDataset;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Services\ImdbDatasetService;
 use App\Domains\Catalog\Support\CatalogImdbIds;
 use Illuminate\Console\Command;
 use Illuminate\Support\LazyCollection;
-use Illuminate\Support\Number;
 
 /**
  * The gate → download → stream → mark run shared by the IMDb dataset syncs, plus
@@ -27,7 +27,19 @@ use Illuminate\Support\Number;
  */
 abstract class ImdbSyncCommand extends Command
 {
+    use MeasuresElapsedTime;
     use SkipsUnchangedDataset;
+
+    /**
+     * The largest --batch any feed accepts, and the one bound an operator can
+     * actually breach: the batch sizes both the pre-filter's id probe and the
+     * write buffer, and the widest write (titles, 7 columns) spends 15 bindings a
+     * row plus the update's WHERE IN id against MySQL's 65,535 placeholder cap —
+     * about 4369 rows. Rounded down for headroom, since a global scope or a new
+     * column spends bindings the arithmetic above does not see. A feed writing
+     * fewer columns has room to raise it by overriding {@see maxBatchSize()}.
+     */
+    private const int MAX_BATCH_SIZE = 4000;
 
     public function __construct(
         protected readonly ImdbDatasetService $datasets,
@@ -112,11 +124,31 @@ abstract class ImdbSyncCommand extends Command
         );
     }
 
+    /**
+     * The ceiling a supplied --batch is reduced to; overridable per feed.
+     */
+    protected function maxBatchSize(): int
+    {
+        return self::MAX_BATCH_SIZE;
+    }
+
     protected function batchSize(): int
     {
         $batch = (int) $this->option('batch');
 
-        return $batch > 0 ? $batch : $this->defaultBatchSize();
+        if ($batch <= 0) {
+            return $this->defaultBatchSize();
+        }
+
+        $max = $this->maxBatchSize();
+
+        if ($batch > $max) {
+            $this->output->writeln("Reducing --batch {$batch} to the {$this->feed()} ceiling of {$max}.");
+
+            return $max;
+        }
+
+        return $batch;
     }
 
     /**
@@ -180,8 +212,6 @@ abstract class ImdbSyncCommand extends Command
      */
     private function reportElapsed(float $startedAt): void
     {
-        $elapsed = Number::format(microtime(true) - $startedAt, precision: 1);
-
-        $this->output->writeln("  [elapsed {$elapsed}s]");
+        $this->output->writeln("  [elapsed {$this->preciseSecondsSince($startedAt)}s]");
     }
 }

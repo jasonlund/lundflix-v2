@@ -39,6 +39,16 @@ reviews:
         `expect(fn () => ...)->toThrow(...)`. The standard is machine-guarded by
         tests/Unit/TestCommentStandardTest.php; splitting these blocks is a
         regression, not an improvement.
+    - path: "routes/console.php"
+      instructions: >-
+        Do not propose a shared mutex, shared lock key, or `skip()` guard to stop
+        `catalog:sync` and `catalog:sync-imdb` overlapping. FLIX-273 evaluated a
+        cross-command mutex, rejected it, and chose offset timing: `catalog:sync-imdb`
+        runs at 06:00, between `catalog:sync`'s 00:00 and 12:00 starts, and each entry
+        carries its own per-event `withoutOverlapping()`. That the mutex is per-event
+        is the known premise of that decision, not an oversight, and the accepted
+        residual is written down on the ticket. The lock *expiry* is a separate
+        concern and is already set explicitly on both entries.
     - path: "app/Domains/**/Exceptions/**"
       instructions: >-
         Do not flag third-party account identifiers (ids, usernames, emails)

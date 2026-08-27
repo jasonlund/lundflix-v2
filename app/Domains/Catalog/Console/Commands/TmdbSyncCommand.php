@@ -185,7 +185,13 @@ abstract class TmdbSyncCommand extends Command
      */
     private function reindexTouched(DateTimeInterface $watermark): void
     {
-        $this->timedPhase("Reindexing {$this->entityLabel()}…", function () use ($watermark): void {
+        // Under SCOUT_QUEUE the phase only dispatches the index writes, so timedPhase's
+        // elapsed seconds time the dispatch — say "queued" rather than claim it indexed.
+        $label = $this->reindexTouchedRows->queuesIndexing()
+            ? "Queueing {$this->entityLabel()} for reindex…"
+            : "Reindexing {$this->entityLabel()}…";
+
+        $this->timedPhase($label, function () use ($watermark): void {
             $this->reindexTouchedRows->handle(
                 $this->model()::class,
                 $watermark,

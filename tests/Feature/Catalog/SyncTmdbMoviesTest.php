@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Exception\InvalidOptionException;
 
@@ -561,6 +562,29 @@ describe('catalog:sync-movies heartbeat and elapsed phase lines', function (): v
         $this->artisan('catalog:sync-movies')
             ->expectsOutputToContain('Reindexing movies…')
             ->expectsOutputToContain('  [reindex 1]');
+    });
+
+    it('prints the reindex phase line in queued wording when scout queues its index writes', function (): void {
+        // Production runs SCOUT_QUEUE=true, where the phase only DISPATCHES the index
+        // writes — its elapsed seconds time the dispatch, not the indexing, so the
+        // lines must not claim the movies were indexed.
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        config(['scout.queue' => true]);
+        Queue::fake();
+        fakeTmdbSync();
+
+        // Act
+        // Read back as one string rather than chaining expectsOutputToContain(): the
+        // closing line CONTAINS the opening one, and the mocked writer hands each write
+        // to the first matching substring expectation, so the pair would shadow.
+        Artisan::call('catalog:sync-movies');
+
+        // Assert
+        expect(Artisan::output())
+            ->toContain('Queueing movies for reindex…')
+            ->toContain('  [reindex 1 queued]')
+            ->toContain('Queueing movies for reindex… done in 0s');
     });
 
     it('closes every phase line with its elapsed seconds', function (): void {
