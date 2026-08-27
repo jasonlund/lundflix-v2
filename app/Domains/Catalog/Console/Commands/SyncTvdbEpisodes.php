@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\SeedTvdbEpisodes;
+use App\Domains\Catalog\Console\Commands\Concerns\MeasuresElapsedTime;
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
@@ -16,6 +17,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Str;
 
 /**
  * Incremental TheTVDB episodes sync for already-seeded shows. The /updates `since`
@@ -28,6 +30,8 @@ use Illuminate\Database\Eloquent\Collection;
 #[Signature('catalog:sync-episodes-tvdb')]
 final class SyncTvdbEpisodes extends Command
 {
+    use MeasuresElapsedTime;
+
     public function handle(TvdbApiService $api, SeedTvdbEpisodes $seed, SyncMarker $marker): int
     {
         $startedAt = CarbonImmutable::now();
@@ -50,9 +54,38 @@ final class SyncTvdbEpisodes extends Command
             }
         }
 
-        $failed = false;
+        $this->output->writeln('Read the episodes update feed in '.$this->secondsSince($startedAt).'s');
+
+        $syncStartedAt = CarbonImmutable::now();
 
         $this->output->writeln('Syncing episodes…');
+
+        // The leg writes no searchable content: the only model save it makes is the
+        // per-show episodes_synced_at stamp, whose inline Searchable sync would ship
+        // one engine write per show for a bookkeeping column nothing searches. Scout
+        // has no global off switch; disabling is per-class, via the trait's static.
+        ['episodes' => $episodes, 'failed' => $failed] = Show::withoutSyncingToSearch(
+            fn (): array => $this->seedMatchedShows(array_keys($seen), $seed),
+        );
+
+        $this->output->writeln("Synced {$episodes} ".Str::plural('episode', $episodes).' in '.$this->secondsSince($syncStartedAt).'s');
+
+        // Advance only on a clean run: a failed show means this run didn't cover
+        // the whole window, so the marker must not move past it.
+        if (! $failed) {
+            $marker->advance(SyncFeed::TvdbEpisodes, $startedAt);
+        }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * @param  list<int>  $seriesIds  every distinct series id the feed reported
+     * @return array{episodes: int, failed: bool}
+     */
+    private function seedMatchedShows(array $seriesIds, SeedTvdbEpisodes $seed): array
+    {
+        $failed = false;
 
         // Per 100 rather than the other Catalog syncs' per 1000: those beat over
         // bulk-hydrated batches, while this walk pays a paged HTTP crawl per show,
@@ -63,16 +96,15 @@ final class SyncTvdbEpisodes extends Command
 
         // The feed carries far more distinct ids than a single whereIn can bind, so
         // the membership lookup runs a chunk at a time.
-        foreach (array_chunk(array_keys($seen), 1000) as $chunk) {
+        foreach (array_chunk($seriesIds, 1000) as $chunk) {
             $query = Show::query()
                 ->select(['id', '_tvdb_id', '_tvdb_defaultSeasonType'])
                 ->whereIn('_tvdb_id', $chunk)
                 ->whereNotNull('episodes_synced_at');
 
-            // PK pagination because the walk writes to the rows it iterates:
-            // handle() stamps episodes_synced_at, which offset pagination would
-            // skip or double-process. Report-and-continue so one bad show can't
-            // abort the run.
+            // PK pagination because the walk writes to the rows it iterates: the seed
+            // stamps episodes_synced_at, which offset pagination would skip or
+            // double-process. Report-and-continue so one bad show can't abort the run.
             $query->chunkById(200, function (Collection $shows) use ($seed, &$failed, &$episodes, &$beatAt): void {
                 foreach ($shows as $show) {
                     try {
@@ -90,12 +122,6 @@ final class SyncTvdbEpisodes extends Command
             });
         }
 
-        // Advance only on a clean run: a failed show means this run didn't cover
-        // the whole window, so the marker must not move past it.
-        if (! $failed) {
-            $marker->advance(SyncFeed::TvdbEpisodes, $startedAt);
-        }
-
-        return self::SUCCESS;
+        return ['episodes' => $episodes, 'failed' => $failed];
     }
 }

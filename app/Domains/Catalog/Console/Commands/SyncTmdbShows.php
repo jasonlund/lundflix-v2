@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\ReconcileImdbOnlyShows;
+use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Actions\UpsertTmdbShows;
 use App\Domains\Catalog\Enums\SyncFeed;
@@ -12,7 +13,6 @@ use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Support\SyncMarker;
 use App\Domains\Catalog\Support\SyncWindow;
-use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,6 +22,13 @@ use Illuminate\Support\Collection;
 #[Signature('catalog:sync-shows-tmdb {--fresh}')]
 final class SyncTmdbShows extends TmdbSyncCommand
 {
+    /**
+     * Candidate rows walked before a `[scan n]` beat — ten times tighter than the
+     * movies leg's, because this walk spans our own ~173k shows, not the ~1M rows
+     * of an ids export.
+     */
+    private const int SCAN_BEAT = 1000;
+
     private ReconcileImdbOnlyShows $reconcileImdbOnly;
 
     private UpsertTmdbShows $upsertShows;
@@ -32,33 +39,27 @@ final class SyncTmdbShows extends TmdbSyncCommand
         UpsertTmdbShows $upsertShows,
         UpsertTmdbImages $upsertImages,
         SyncMarker $marker,
+        ReindexTouchedRows $reindexTouchedRows,
     ): int {
         $this->api = $api;
         $this->reconcileImdbOnly = $reconcileImdbOnly;
         $this->upsertShows = $upsertShows;
         $this->upsertImages = $upsertImages;
+        $this->reindexTouchedRows = $reindexTouchedRows;
 
-        // Run-start, not run-end: updates landing mid-run stay inside the next run's
-        // overlap window rather than falling in the gap.
-        $startedAt = CarbonImmutable::now();
+        return $this->runLeg($marker, fn (): bool => $this->insertNew());
+    }
 
-        $this->output->writeln('Hydrating TMDB shows…');
-        $insertFailed = $this->hydrateOwnShows();
-
-        // --fresh already re-hydrated every candidate, so a changes pass is redundant.
-        $changesFailed = false;
-
-        if (! $this->option('fresh')) {
-            $changesFailed = $this->updateChanged($marker);
-        }
-
-        // A failure means the window wasn't fully covered — the marker must not move
-        // past a span still owed to the next run.
-        if (! $insertFailed && ! $changesFailed) {
-            $marker->advance($this->feed(), $startedAt);
-        }
-
-        return self::SUCCESS;
+    /**
+     * Insert phase: hydrate OUR OWN shows carrying a resolvable id — `_tmdb_id`
+     * hydrates directly, imdb-only resolves through /find first.
+     */
+    private function insertNew(): bool
+    {
+        return $this->timedPhase(
+            'Hydrating TMDB shows…',
+            fn (): bool => $this->hydrateOwnShows(),
+        );
     }
 
     protected function feed(): SyncFeed
@@ -117,10 +118,6 @@ final class SyncTmdbShows extends TmdbSyncCommand
         return $payload['name'] ?? null;
     }
 
-    /**
-     * Insert phase: hydrate OUR OWN shows carrying a resolvable id — `_tmdb_id`
-     * hydrates directly, imdb-only resolves through /find first.
-     */
     private function hydrateOwnShows(): bool
     {
         // chunkById specifically: the loop WRITES the columns it filters on (the
@@ -138,6 +135,10 @@ final class SyncTmdbShows extends TmdbSyncCommand
         $failed = false;
 
         $query->chunkById(self::HYDRATE_SIZE, function (Collection $chunk) use (&$failed): void {
+            // Rows WALKED, not hydrated: a candidate that resolves to nothing still
+            // has to show as progress, or a long unresolvable stretch reads as hung.
+            $this->beatEvery('scan', self::SCAN_BEAT, $chunk->count());
+
             $failed = $this->hydrateChunkSafely($chunk) || $failed;
         });
 

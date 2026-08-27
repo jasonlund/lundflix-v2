@@ -37,53 +37,55 @@ $verifiedPlexAccount = fn (): array => [
     'token' => 'sxWpYzQ1TkxAbCdEfGhI',
 ];
 
-it('carries a guest from the prefilled form to the signed-in home page', function () use ($verifiedPlexAccount): void {
-    // Arrange
-    $this->withSession(['plex_registration' => $verifiedPlexAccount()]);
+describe('/register browser round trip', function () use ($verifiedPlexAccount): void {
+    it('carries a guest from the prefilled form to the signed-in home page', function () use ($verifiedPlexAccount): void {
+        // Arrange
+        $this->withSession(['plex_registration' => $verifiedPlexAccount()]);
 
-    // Act
-    $page = visit('/register');
+        // Act
+        $page = visit('/register');
 
-    $page->assertValue('#plex_username', 'plexuser1')
-        ->assertValue('#plex_email', 'user1@example.com')
-        ->assertValue('#name', 'plexuser1')
-        ->fill('#name', 'Plex User One')
-        ->fill('#password', 'sT0rmy-petrel-42')
-        ->fill('#password_confirmation', 'sT0rmy-petrel-42')
-        ->click('Create account');
+        $page->assertValue('#plex_username', 'plexuser1')
+            ->assertValue('#plex_email', 'user1@example.com')
+            ->assertValue('#name', 'plexuser1')
+            ->fill('#name', 'Plex User One')
+            ->fill('#password', 'sT0rmy-petrel-42')
+            ->fill('#password_confirmation', 'sT0rmy-petrel-42')
+            ->click('Create account');
 
-    // Assert
-    $page->assertPathIs('/')
-        ->assertSee('lundflix')
-        ->assertNoJavaScriptErrors();
+        // Assert
+        $page->assertPathIs('/')
+            ->assertSee('lundflix')
+            ->assertNoJavaScriptErrors();
 
-    $this->assertAuthenticated();
+        $this->assertAuthenticated();
 
-    $user = User::query()->sole();
-    expect($user->name)->toBe('Plex User One')
-        ->and($user->email)->toBe('user1@example.com')
-        ->and($user->_plex_id)->toBe(1001)
-        ->and($user->_plex_username)->toBe('plexuser1');
-});
+        $user = User::query()->sole();
+        expect($user->name)->toBe('Plex User One')
+            ->and($user->email)->toBe('user1@example.com')
+            ->and($user->_plex_id)->toBe(1001)
+            ->and($user->_plex_username)->toBe('plexuser1');
+    });
 
-it('shows the server validation error and keeps the guest on the form', function () use ($verifiedPlexAccount): void {
-    // Arrange
-    $this->withSession(['plex_registration' => $verifiedPlexAccount()]);
+    it('shows the server validation error and keeps the guest on the form', function () use ($verifiedPlexAccount): void {
+        // Arrange
+        $this->withSession(['plex_registration' => $verifiedPlexAccount()]);
 
-    // Act
-    $page = visit('/register');
+        // Act
+        $page = visit('/register');
 
-    $page->fill('#name', 'Plex User One')
-        ->fill('#password', 'sT0rmy-petrel-42')
-        ->fill('#password_confirmation', 'a-different-password')
-        ->click('Create account');
+        $page->fill('#name', 'Plex User One')
+            ->fill('#password', 'sT0rmy-petrel-42')
+            ->fill('#password_confirmation', 'a-different-password')
+            ->click('Create account');
 
-    // Assert
-    $page->assertPathIs('/register')
-        ->assertSee('The password field confirmation does not match.')
-        ->assertNoJavaScriptErrors();
+        // Assert
+        $page->assertPathIs('/register')
+            ->assertSee('The password field confirmation does not match.')
+            ->assertNoJavaScriptErrors();
 
-    $this->assertGuest();
+        $this->assertGuest();
 
-    expect(User::query()->count())->toBe(0);
+        expect(User::query()->count())->toBe(0);
+    });
 });

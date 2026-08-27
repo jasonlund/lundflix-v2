@@ -28,52 +28,56 @@ use Illuminate\Support\Str;
 |     (owned, present), 1/2 clientslappy / clientsofia3.
 */
 
-it('returns a Collection of the 3 resources from GET clients.plex.tv/api/v2/resources with the include flags', function (): void {
-    Http::fake([
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-    ]);
+describe('getUserResources() resource list', function (): void {
+    it('returns a Collection of the 3 resources from GET clients.plex.tv/api/v2/resources with the include flags', function (): void {
+        Http::fake([
+            '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        ]);
 
-    $resources = resolve(PlexApiService::class)->getUserResources('the-token');
+        $resources = resolve(PlexApiService::class)->getUserResources('the-token');
 
-    expect($resources)->toBeInstanceOf(Collection::class)
-        ->and($resources->count())->toBe(3);
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), 'clients.plex.tv/api/v2/resources')
-        && (string) data_get($request->data(), 'includeHttps') !== ''
-        && (string) data_get($request->data(), 'includeRelay') !== ''
-        && (string) data_get($request->data(), 'includeIPv6') !== '');
+        expect($resources)->toBeInstanceOf(Collection::class)
+            ->and($resources->count())->toBe(3);
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), 'clients.plex.tv/api/v2/resources')
+            && (string) data_get($request->data(), 'includeHttps') !== ''
+            && (string) data_get($request->data(), 'includeRelay') !== ''
+            && (string) data_get($request->data(), 'includeIPv6') !== '');
+    });
 });
 
-it('returns true from hasServerAccess when a resource matches the configured server id', function (): void {
-    config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
-    Http::fake([
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+describe('hasServerAccess() server-id matching', function (): void {
+    it('returns true from hasServerAccess when a resource matches the configured server id', function (): void {
+        config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
+        Http::fake([
+            '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        ]);
+
+        $hasAccess = resolve(PlexApiService::class)->hasServerAccess('the-token');
+
+        expect($hasAccess)->toBeTrue();
+    });
+
+    it('returns false from hasServerAccess when no resource matches the configured server id', function (): void {
+        config(['services.plex.server_identifier' => 'no-such-server']);
+        Http::fake([
+            '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        ]);
+
+        $hasAccess = resolve(PlexApiService::class)->hasServerAccess('the-token');
+
+        expect($hasAccess)->toBeFalse();
+    });
+
+    it('throws when the server id is unconfigured', function (mixed $value): void {
+        // PLEX_SERVER_IDENTIFIER is required: missing/empty must fail loud, before any
+        // HTTP call. Http::preventStrayRequests() is global, so a stray request would
+        // fail the test — proving the throw fires pre-network with no Http::fake.
+        config(['services.plex.server_identifier' => $value]);
+
+        expect(fn () => resolve(PlexApiService::class)->hasServerAccess('the-token'))
+            ->toThrow(PlexServerIdentifierMissing::class);
+    })->with([
+        'null' => [null],
+        'empty string' => [''],
     ]);
-
-    $hasAccess = resolve(PlexApiService::class)->hasServerAccess('the-token');
-
-    expect($hasAccess)->toBeTrue();
 });
-
-it('returns false from hasServerAccess when no resource matches the configured server id', function (): void {
-    config(['services.plex.server_identifier' => 'no-such-server']);
-    Http::fake([
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-    ]);
-
-    $hasAccess = resolve(PlexApiService::class)->hasServerAccess('the-token');
-
-    expect($hasAccess)->toBeFalse();
-});
-
-it('throws when the server id is unconfigured', function (mixed $value): void {
-    // PLEX_SERVER_IDENTIFIER is required: missing/empty must fail loud, before any
-    // HTTP call. Http::preventStrayRequests() is global, so a stray request would
-    // fail the test — proving the throw fires pre-network with no Http::fake.
-    config(['services.plex.server_identifier' => $value]);
-
-    expect(fn () => resolve(PlexApiService::class)->hasServerAccess('the-token'))
-        ->toThrow(PlexServerIdentifierMissing::class);
-})->with([
-    'null' => [null],
-    'empty string' => [''],
-]);

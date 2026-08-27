@@ -85,10 +85,6 @@ final readonly class UpsertTmdbMovies
 
         Movie::upsert($rows, ['_tmdb_id'], array_keys($rows[0]));
 
-        Movie::query()
-            ->whereIn('_tmdb_id', array_column($rows, '_tmdb_id'))
-            ->searchable();
-
         return count($rows);
     }
 

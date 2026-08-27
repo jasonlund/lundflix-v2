@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
+use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Actions\UpsertTvdbArtworks;
 use App\Domains\Catalog\Actions\UpsertTvdbSeasons;
 use App\Domains\Catalog\Actions\UpsertTvdbShows;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Services\TvdbApiService;
 use App\Domains\Common\Support\SourceId;
+use Carbon\CarbonImmutable;
 use Generator;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -25,7 +27,10 @@ final class SeedTvdbShows extends TvdbShowsCommand
         UpsertTvdbShows $upsertShows,
         UpsertTvdbArtworks $upsertArtworks,
         UpsertTvdbSeasons $upsertSeasons,
+        ReindexTouchedRows $reindexTouchedRows,
     ): int {
+        $startedAt = CarbonImmutable::now();
+
         $idsFile = $this->option('ids-file');
 
         if ($idsFile !== null && $idsFile !== '') {
@@ -61,6 +66,8 @@ final class SeedTvdbShows extends TvdbShowsCommand
             ? []
             : $this->syncIds($failedIds, $api, $upsertShows, $upsertArtworks, $upsertSeasons)->failedIds;
 
+        $this->output->writeln('Synced shows in '.$this->secondsSince($startedAt).'s');
+
         $recovered = count($failedIds) - count($stillFailing);
         $this->output->writeln("catalog:seed-shows-tvdb retry: {$recovered} recovered, ".count($stillFailing).' still failing');
 
@@ -68,6 +75,11 @@ final class SeedTvdbShows extends TvdbShowsCommand
             $this->output->writeln('  unrecovered ids: '.implode(', ', $stillFailing));
             report(TvdbRequestFailed::forIds($stillFailing));
         }
+
+        // After the retry pass on purpose: a row the retry healed rides this same single
+        // pass. Ungated by the still-failing report for the same reason — the ingest
+        // indexes nothing itself, so a run with failures must still index what it touched.
+        $this->reindexTouchedShows($reindexTouchedRows, $startedAt);
 
         return self::SUCCESS;
     }

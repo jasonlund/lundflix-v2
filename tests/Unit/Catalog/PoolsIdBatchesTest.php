@@ -100,134 +100,142 @@ final readonly class PoolsIdBatchesTestHost
     }
 }
 
-it('dedupes duplicate ids before fanning out, firing one request per unique id', function (): void {
-    // Arrange
-    Http::fake([
-        '*/item/1*' => Http::response(['id' => 1]),
-        '*/item/2*' => Http::response(['id' => 2]),
-    ]);
+describe('pooled() fan-out and ordering', function (): void {
+    it('dedupes duplicate ids before fanning out, firing one request per unique id', function (): void {
+        // Arrange
+        Http::fake([
+            '*/item/1*' => Http::response(['id' => 1]),
+            '*/item/2*' => Http::response(['id' => 2]),
+        ]);
 
-    // Act
-    resolve(PoolsIdBatchesTestHost::class)->fetch([1, 1, 2, 2, 1]);
+        // Act
+        resolve(PoolsIdBatchesTestHost::class)->fetch([1, 1, 2, 2, 1]);
 
-    // Assert
-    Http::assertSentCount(2);
+        // Assert
+        Http::assertSentCount(2);
+    });
+
+    it('chunks by poolConcurrency without dropping or reordering any id', function (): void {
+        // Arrange
+        // concurrency 3 over 7 ids fans out as chunks [1,2,3][4,5,6][7]; every id must
+        // still fire exactly once and in input order across the chunk boundaries
+        Http::fake(['*/item/*' => Http::response(['ok' => true])]);
+        $host = new PoolsIdBatchesTestHost(concurrency: 3);
+
+        // Act
+        $host->fetch([1, 2, 3, 4, 5, 6, 7]);
+
+        // Assert
+        Http::assertSentCount(7);
+        Http::assertSentInOrder([
+            fn ($request): bool => Str::contains((string) $request->url(), '/item/1'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/item/2'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/item/3'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/item/4'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/item/5'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/item/6'),
+            fn ($request): bool => Str::contains((string) $request->url(), '/item/7'),
+        ]);
+    });
+
+    it('decodes and returns results keyed in input order', function (): void {
+        // Arrange
+        // faked out of input order to prove the result follows the ids, not the pool
+        Http::fake([
+            '*/item/30*' => Http::response(['id' => 30]),
+            '*/item/10*' => Http::response(['id' => 10]),
+            '*/item/20*' => Http::response(['id' => 20]),
+        ]);
+
+        // Act
+        $result = resolve(PoolsIdBatchesTestHost::class)->fetch([10, 20, 30]);
+
+        // Assert
+        expect(array_keys($result->results))->toBe([10, 20, 30])
+            ->and($result->results[10])->toBe(['id' => 10])
+            ->and($result->results[20])->toBe(['id' => 20])
+            ->and($result->results[30])->toBe(['id' => 30])
+            ->and($result->failedIds)->toBe([]);
+    });
 });
 
-it('chunks by poolConcurrency without dropping or reordering any id', function (): void {
-    // Arrange
-    // concurrency 3 over 7 ids fans out as chunks [1,2,3][4,5,6][7]; every id must
-    // still fire exactly once and in input order across the chunk boundaries
-    Http::fake(['*/item/*' => Http::response(['ok' => true])]);
-    $host = new PoolsIdBatchesTestHost(concurrency: 3);
+describe('pooled() per-id failure handling', function (): void {
+    it('returns the succeeding id and reports the aggregate when a non-Response pool entry lands a failed id', function (): void {
+        // Arrange
+        // a connection failure past retries lands a Throwable (not a Response) at the
+        // pool slot; the loop must collect that id, not blow up dereferencing it
+        Sleep::fake();
+        Exceptions::fake();
+        Http::fake([
+            '*/item/1*' => fn () => throw new ConnectionException('Connection timed out'),
+            '*/item/2*' => Http::response(['id' => 2]),
+        ]);
 
-    // Act
-    $host->fetch([1, 2, 3, 4, 5, 6, 7]);
+        // Act
+        $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
 
-    // Assert
-    Http::assertSentCount(7);
-    Http::assertSentInOrder([
-        fn ($request): bool => Str::contains((string) $request->url(), '/item/1'),
-        fn ($request): bool => Str::contains((string) $request->url(), '/item/2'),
-        fn ($request): bool => Str::contains((string) $request->url(), '/item/3'),
-        fn ($request): bool => Str::contains((string) $request->url(), '/item/4'),
-        fn ($request): bool => Str::contains((string) $request->url(), '/item/5'),
-        fn ($request): bool => Str::contains((string) $request->url(), '/item/6'),
-        fn ($request): bool => Str::contains((string) $request->url(), '/item/7'),
-    ]);
+        // Assert
+        expect($result->results)->toBe([2 => ['id' => 2]])
+            ->and($result->failedIds)->toBe([1]);
+        Exceptions::assertReported(
+            fn (RuntimeException $e): bool => Str::contains($e->getMessage(), 'failed ids: 1')
+        );
+    });
+
+    it('returns the succeeding id and reports the aggregate when resolvePooled signals a PooledIdFailed', function (): void {
+        // Arrange
+        // the 500 makes the host's resolvePooled throw PooledIdFailed for id 1; id 2
+        // must still be decoded before the batch reports the aggregate failure
+        Exceptions::fake();
+        Http::fake([
+            '*/item/1*' => Http::response('', 500),
+            '*/item/2*' => Http::response(['id' => 2]),
+        ]);
+
+        // Act
+        $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
+
+        // Assert
+        expect($result->results)->toBe([2 => ['id' => 2]])
+            ->and($result->failedIds)->toBe([1]);
+        Exceptions::assertReported(
+            fn (RuntimeException $e): bool => Str::contains($e->getMessage(), 'failed ids: 1')
+        );
+    });
 });
 
-it('decodes and returns results keyed in input order', function (): void {
-    // Arrange
-    // faked out of input order to prove the result follows the ids, not the pool
-    Http::fake([
-        '*/item/30*' => Http::response(['id' => 30]),
-        '*/item/10*' => Http::response(['id' => 10]),
-        '*/item/20*' => Http::response(['id' => 20]),
-    ]);
+describe('pooled() request headers', function (): void {
+    it('sends Connection: close on pooled requests so each socket closes after its response', function (): void {
+        // Arrange
+        Http::fake(['*/item/*' => Http::response(['ok' => true])]);
 
-    // Act
-    $result = resolve(PoolsIdBatchesTestHost::class)->fetch([10, 20, 30]);
+        // Act
+        resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
 
-    // Assert
-    expect(array_keys($result->results))->toBe([10, 20, 30])
-        ->and($result->results[10])->toBe(['id' => 10])
-        ->and($result->results[20])->toBe(['id' => 20])
-        ->and($result->results[30])->toBe(['id' => 30])
-        ->and($result->failedIds)->toBe([]);
+        // Assert
+        Http::assertSent(fn ($request): bool => $request->hasHeader('Connection', 'close'));
+    });
 });
 
-it('returns the succeeding id and reports the aggregate when a non-Response pool entry lands a failed id', function (): void {
-    // Arrange
-    // a connection failure past retries lands a Throwable (not a Response) at the
-    // pool slot; the loop must collect that id, not blow up dereferencing it
-    Sleep::fake();
-    Exceptions::fake();
-    Http::fake([
-        '*/item/1*' => fn () => throw new ConnectionException('Connection timed out'),
-        '*/item/2*' => Http::response(['id' => 2]),
-    ]);
+describe('pooled() multi-id failure aggregation', function (): void {
+    it('returns the succeeding id and reports every failed id together in one aggregate pooledFailure, not short-circuiting on the first', function (): void {
+        // Arrange
+        // ids 1 and 3 both fail while 2 succeeds; the batch must evaluate all three,
+        // return id 2, and report BOTH failed ids in a single aggregate, not stop at id 1
+        Exceptions::fake();
+        Http::fake([
+            '*/item/1*' => Http::response('', 500),
+            '*/item/2*' => Http::response(['id' => 2]),
+            '*/item/3*' => Http::response('', 500),
+        ]);
 
-    // Act
-    $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
+        // Act
+        $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2, 3]);
 
-    // Assert
-    expect($result->results)->toBe([2 => ['id' => 2]])
-        ->and($result->failedIds)->toBe([1]);
-    Exceptions::assertReported(
-        fn (RuntimeException $e): bool => Str::contains($e->getMessage(), 'failed ids: 1')
-    );
-});
-
-it('returns the succeeding id and reports the aggregate when resolvePooled signals a PooledIdFailed', function (): void {
-    // Arrange
-    // the 500 makes the host's resolvePooled throw PooledIdFailed for id 1; id 2
-    // must still be decoded before the batch reports the aggregate failure
-    Exceptions::fake();
-    Http::fake([
-        '*/item/1*' => Http::response('', 500),
-        '*/item/2*' => Http::response(['id' => 2]),
-    ]);
-
-    // Act
-    $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
-
-    // Assert
-    expect($result->results)->toBe([2 => ['id' => 2]])
-        ->and($result->failedIds)->toBe([1]);
-    Exceptions::assertReported(
-        fn (RuntimeException $e): bool => Str::contains($e->getMessage(), 'failed ids: 1')
-    );
-});
-
-it('sends Connection: close on pooled requests so each socket closes after its response', function (): void {
-    // Arrange
-    Http::fake(['*/item/*' => Http::response(['ok' => true])]);
-
-    // Act
-    resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2]);
-
-    // Assert
-    Http::assertSent(fn ($request): bool => $request->hasHeader('Connection', 'close'));
-});
-
-it('returns the succeeding id and reports every failed id together in one aggregate pooledFailure, not short-circuiting on the first', function (): void {
-    // Arrange
-    // ids 1 and 3 both fail while 2 succeeds; the batch must evaluate all three,
-    // return id 2, and report BOTH failed ids in a single aggregate, not stop at id 1
-    Exceptions::fake();
-    Http::fake([
-        '*/item/1*' => Http::response('', 500),
-        '*/item/2*' => Http::response(['id' => 2]),
-        '*/item/3*' => Http::response('', 500),
-    ]);
-
-    // Act
-    $result = resolve(PoolsIdBatchesTestHost::class)->fetch([1, 2, 3]);
-
-    // Assert
-    expect($result->results)->toBe([2 => ['id' => 2]]);
-    Exceptions::assertReported(
-        fn (RuntimeException $e): bool => Str::contains($e->getMessage(), 'failed ids: 1,3')
-    );
+        // Assert
+        expect($result->results)->toBe([2 => ['id' => 2]]);
+        Exceptions::assertReported(
+            fn (RuntimeException $e): bool => Str::contains($e->getMessage(), 'failed ids: 1,3')
+        );
+    });
 });

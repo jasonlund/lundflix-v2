@@ -100,105 +100,109 @@ $scanParentlessClasses = function (): Collection {
         ->values();
 };
 
-it('declares every class in App\Domains final', function () use ($domainAbstractBases): void {
-    // Arrange
-    // no state to set up — the namespace tree is the subject
+describe('the final rule', function () use ($domainAbstractBases, $httpAbstractBases, $testsAbstractBases): void {
+    it('declares every class in App\Domains final', function () use ($domainAbstractBases): void {
+        // Arrange
+        // no state to set up — the namespace tree is the subject
 
-    // Act & Assert
-    expect('App\Domains')
-        ->classes()
-        ->toBeFinal()
-        ->ignoring($domainAbstractBases);
+        // Act & Assert
+        expect('App\Domains')
+            ->classes()
+            ->toBeFinal()
+            ->ignoring($domainAbstractBases);
+    });
+
+    it('declares every class in App\Http final', function () use ($httpAbstractBases): void {
+        // Arrange
+        // no state to set up — the namespace tree is the subject
+
+        // Act & Assert
+        expect('App\Http')
+            ->classes()
+            ->toBeFinal()
+            ->ignoring($httpAbstractBases);
+    });
+
+    it('declares every class in App\Providers and App\Filament final', function (): void {
+        // Arrange
+        // no state to set up — the namespace trees are the subject
+
+        // Act & Assert
+        expect(['App\Providers', 'App\Filament'])
+            ->classes()
+            ->toBeFinal();
+    });
+
+    it('declares every class in Database\Seeders and Database\Factories final', function (): void {
+        // Arrange
+        // no state to set up — the namespace trees are the subject
+
+        // Naming the two mapped namespaces is what keeps database/migrations out:
+        // composer PSR-4 maps only database/factories and database/seeders, so no
+        // namespace target can resolve a migration — and its `return new class`
+        // body is anonymous, where `final` has nothing to attach to.
+        // Act & Assert
+        expect(['Database\Seeders', 'Database\Factories'])
+            ->classes()
+            ->toBeFinal();
+    });
+
+    it('declares every helper class under tests/ final', function () use ($testsAbstractBases): void {
+        // Arrange
+        // no state to set up — the namespace tree is the subject
+
+        // A Pest test file declares no class, so this targets only the helper
+        // classes tests declare for themselves — notifications, command hosts, and
+        // the one remaining PHPUnit-style test case.
+        // Act & Assert
+        expect('Tests')
+            ->classes()
+            ->toBeFinal()
+            ->ignoring($testsAbstractBases);
+    });
+
+    it('exempts only genuinely abstract bases from the final rule', function () use ($domainAbstractBases, $httpAbstractBases, $testsAbstractBases): void {
+        // Arrange
+        $exempt = [...$domainAbstractBases, ...$httpAbstractBases, ...$testsAbstractBases];
+
+        // Act
+        $stale = collect($exempt)
+            ->reject(fn (string $class): bool => class_exists($class) && (new ReflectionClass($class))->isAbstract())
+            ->values()
+            ->all();
+
+        // Assert
+        expect($stale)->toBe([]);
+    });
 });
 
-it('declares every class in App\Http final', function () use ($httpAbstractBases): void {
-    // Arrange
-    // no state to set up — the namespace tree is the subject
+describe('the readonly rule', function () use ($scanParentlessClasses): void {
+    it('declares every parentless class under app/ readonly', function () use ($scanParentlessClasses): void {
+        // Arrange
+        $targets = $scanParentlessClasses();
 
-    // Act & Assert
-    expect('App\Http')
-        ->classes()
-        ->toBeFinal()
-        ->ignoring($httpAbstractBases);
-});
+        // Act
+        $violators = $targets
+            ->reject(fn (string $class): bool => (new ReflectionClass($class))->isReadOnly())
+            ->values()
+            ->all();
 
-it('declares every class in App\Providers and App\Filament final', function (): void {
-    // Arrange
-    // no state to set up — the namespace trees are the subject
+        // Assert
+        expect($violators)->toBe([], sprintf(
+            "%d parentless classes are missing `readonly`:\n  - %s",
+            count($violators),
+            implode("\n  - ", $violators),
+        ));
+    });
 
-    // Act & Assert
-    expect(['App\Providers', 'App\Filament'])
-        ->classes()
-        ->toBeFinal();
-});
+    it('applies the readonly rule to no enum, trait, interface or abstract class', function () use ($scanParentlessClasses): void {
+        // Arrange
+        $outsideTheRule = [ArtworkType::class, PlexLibraryCommand::class];
 
-it('declares every class in Database\Seeders and Database\Factories final', function (): void {
-    // Arrange
-    // no state to set up — the namespace trees are the subject
+        // Act
+        $wronglyTargeted = $scanParentlessClasses()->intersect($outsideTheRule)->values()->all();
 
-    // Naming the two mapped namespaces is what keeps database/migrations out:
-    // composer PSR-4 maps only database/factories and database/seeders, so no
-    // namespace target can resolve a migration — and its `return new class`
-    // body is anonymous, where `final` has nothing to attach to.
-    // Act & Assert
-    expect(['Database\Seeders', 'Database\Factories'])
-        ->classes()
-        ->toBeFinal();
-});
-
-it('declares every helper class under tests/ final', function () use ($testsAbstractBases): void {
-    // Arrange
-    // no state to set up — the namespace tree is the subject
-
-    // A Pest test file declares no class, so this targets only the helper
-    // classes tests declare for themselves — notifications, command hosts, and
-    // the one remaining PHPUnit-style test case.
-    // Act & Assert
-    expect('Tests')
-        ->classes()
-        ->toBeFinal()
-        ->ignoring($testsAbstractBases);
-});
-
-it('exempts only genuinely abstract bases from the final rule', function () use ($domainAbstractBases, $httpAbstractBases, $testsAbstractBases): void {
-    // Arrange
-    $exempt = [...$domainAbstractBases, ...$httpAbstractBases, ...$testsAbstractBases];
-
-    // Act
-    $stale = collect($exempt)
-        ->reject(fn (string $class): bool => class_exists($class) && (new ReflectionClass($class))->isAbstract())
-        ->values()
-        ->all();
-
-    // Assert
-    expect($stale)->toBe([]);
-});
-
-it('declares every parentless class under app/ readonly', function () use ($scanParentlessClasses): void {
-    // Arrange
-    $targets = $scanParentlessClasses();
-
-    // Act
-    $violators = $targets
-        ->reject(fn (string $class): bool => (new ReflectionClass($class))->isReadOnly())
-        ->values()
-        ->all();
-
-    // Assert
-    expect($violators)->toBe([], sprintf(
-        "%d parentless classes are missing `readonly`:\n  - %s",
-        count($violators),
-        implode("\n  - ", $violators),
-    ));
-});
-
-it('applies the readonly rule to no enum, trait, interface or abstract class', function () use ($scanParentlessClasses): void {
-    // Arrange
-    $outsideTheRule = [ArtworkType::class, PlexLibraryCommand::class];
-
-    // Act
-    $wronglyTargeted = $scanParentlessClasses()->intersect($outsideTheRule)->values()->all();
-
-    // Assert
-    expect($wronglyTargeted)->toBe([]);
+        // Assert
+        expect($wronglyTargeted)->toBe([]);
+    });
 });

@@ -7,6 +7,8 @@ namespace App\Domains\Catalog\Services;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Exceptions\CannotOpenImdbDatasetArchive;
 use App\Domains\Catalog\Exceptions\CorruptImdbDatasetArchive;
+use Closure;
+use Generator;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
@@ -25,7 +27,7 @@ final readonly class ImdbDatasetService
                 ->timeout(600)
                 ->withOptions(['retry_enabled' => false])
                 ->retry(3, 1000)
-                ->get(self::BASE_URL.'/'.$dataset->filename())
+                ->get($this->url($dataset))
                 ->throw();
         } catch (Throwable $e) {
             @unlink($path);
@@ -34,6 +36,23 @@ final readonly class ImdbDatasetService
         }
 
         return $path;
+    }
+
+    public function lastModified(ImdbDataset $dataset): ?string
+    {
+        try {
+            $response = Http::head($this->url($dataset));
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $lastModified = $response->header('Last-Modified');
+
+        return $lastModified === '' ? null : $lastModified;
     }
 
     /**
@@ -50,17 +69,7 @@ final readonly class ImdbDatasetService
         try {
             $this->readHeader($handle, $path);
 
-            $count = 0;
-
-            while (($line = gzgets($handle)) !== false) {
-                if (Str::rtrim($line, "\r\n") === '') {
-                    continue;
-                }
-
-                $count++;
-            }
-
-            return $count;
+            return iterator_count($this->dataLines($handle));
         } finally {
             gzclose($handle);
         }
@@ -81,20 +90,118 @@ final readonly class ImdbDatasetService
 
             try {
                 $header = $this->fields($this->readHeader($handle, $path));
+                $casts = $dataset->casts();
 
-                while (($line = gzgets($handle)) !== false) {
-                    if (Str::rtrim($line, "\r\n") === '') {
-                        continue;
-                    }
-
-                    $raw = $this->mapRow($header, $this->fields($line));
-
-                    yield $this->cast($raw, $dataset->casts());
+                foreach ($this->dataLines($handle) as $line) {
+                    yield $this->cast($this->mapRow($header, $this->fields($line)), $casts);
                 }
             } finally {
                 gzclose($handle);
             }
         });
+    }
+
+    /**
+     * Stream only the catalog-matched rows of a dataset, fully parsed, in file order.
+     *
+     * Each data line surrenders only its first tab-delimited field (the id) until its
+     * probe batch resolves; unmatched lines are discarded without column mapping or
+     * casting. A probe batch closes at an id change once $batchSize distinct ids are
+     * buffered — never mid-run of one id — plus a final tail batch.
+     *
+     * IMPORTANT: like rows(), this holds an open gz handle for the life of the
+     * generator, so callers MUST consume the collection to the end.
+     *
+     * @param  Closure(list<string>): array<string, true>  $existing  batched catalog probe
+     * @param  Closure(int): void|null  $scanned  cumulative scanned data-row count, called once per probe batch (tail included)
+     * @return LazyCollection<int, array<string, mixed>> rows cast identically to rows()
+     */
+    public function matchedRows(string $path, ImdbDataset $dataset, Closure $existing, int $batchSize, ?Closure $scanned = null): LazyCollection
+    {
+        return LazyCollection::make(function () use ($path, $dataset, $existing, $batchSize, $scanned) {
+            $handle = $this->open($path);
+
+            try {
+                $header = $this->fields($this->readHeader($handle, $path));
+                $casts = $dataset->casts();
+
+                /** @var list<array{0: string, 1: string}> $bufferedLines */
+                $bufferedLines = [];
+                /** @var list<string> $bufferedIds */
+                $bufferedIds = [];
+                $lastId = null;
+                $scannedRows = 0;
+
+                foreach ($this->dataLines($handle) as $line) {
+                    $id = Str::rtrim(explode("\t", $line, 2)[0], "\r\n");
+                    $startsNewId = $id !== $lastId;
+
+                    // Only an id change may close a batch: one id spans dozens of
+                    // consecutive akas rows, and splitting that run would probe the
+                    // same id twice and yield its rows out of file order.
+                    if ($startsNewId && count($bufferedIds) >= $batchSize) {
+                        yield from $this->admittedRows($bufferedLines, $bufferedIds, $header, $casts, $existing);
+
+                        $bufferedLines = [];
+                        $bufferedIds = [];
+
+                        if ($scanned instanceof Closure) {
+                            $scanned($scannedRows);
+                        }
+                    }
+
+                    if ($startsNewId) {
+                        $bufferedIds[] = $id;
+                        $lastId = $id;
+                    }
+
+                    $bufferedLines[] = [$id, $line];
+                    $scannedRows++;
+                }
+
+                if ($bufferedLines !== []) {
+                    yield from $this->admittedRows($bufferedLines, $bufferedIds, $header, $casts, $existing);
+
+                    if ($scanned instanceof Closure) {
+                        $scanned($scannedRows);
+                    }
+                }
+            } finally {
+                gzclose($handle);
+            }
+        });
+    }
+
+    /**
+     * Resolve one probe batch and yield its admitted lines, parsed, in file order.
+     *
+     * A buffered line is split into columns and cast only once the probe admits its
+     * id, so an unmatched line — including a malformed one short a column — never
+     * reaches mapRow().
+     *
+     * @param  list<array{0: string, 1: string}>  $bufferedLines  id/raw-line pairs, in file order
+     * @param  list<string>  $ids
+     * @param  list<string>  $header
+     * @param  array<string, string>  $casts
+     * @param  Closure(list<string>): array<string, true>  $existing
+     * @return Generator<int, array<string, mixed>>
+     */
+    private function admittedRows(array $bufferedLines, array $ids, array $header, array $casts, Closure $existing): Generator
+    {
+        $matches = $existing($ids);
+
+        foreach ($bufferedLines as [$id, $line]) {
+            if (! isset($matches[$id])) {
+                continue;
+            }
+
+            yield $this->cast($this->mapRow($header, $this->fields($line)), $casts);
+        }
+    }
+
+    private function url(ImdbDataset $dataset): string
+    {
+        return self::BASE_URL.'/'.$dataset->filename();
     }
 
     /**
@@ -115,6 +222,26 @@ final readonly class ImdbDatasetService
         }
 
         return $header;
+    }
+
+    /**
+     * Stream the raw data lines of an open, past-the-header archive.
+     *
+     * Blank lines are skipped rather than yielded, so what count() totals and what
+     * rows()/matchedRows() walk are the same set of lines.
+     *
+     * @param  resource  $handle
+     * @return Generator<int, string>
+     */
+    private function dataLines($handle): Generator
+    {
+        while (($line = gzgets($handle)) !== false) {
+            if (Str::rtrim($line, "\r\n") === '') {
+                continue;
+            }
+
+            yield $line;
+        }
     }
 
     /**

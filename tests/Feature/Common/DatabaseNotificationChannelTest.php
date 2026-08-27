@@ -26,33 +26,35 @@ final class DatabaseChannelTestNotification extends Notification
     }
 }
 
-it('persists a row morphed to the user with its data', function (): void {
-    // Arrange
-    $user = User::factory()->create();
-    $notification = new DatabaseChannelTestNotification;
+describe('database channel delivery', function (): void {
+    it('persists a row morphed to the user with its data', function (): void {
+        // Arrange
+        $user = User::factory()->create();
+        $notification = new DatabaseChannelTestNotification;
 
-    // Act
-    $user->notify($notification);
+        // Act
+        $user->notify($notification);
 
-    // Assert
-    assertDatabaseHas('notifications', [
-        'notifiable_type' => $user->getMorphClass(),
-        'notifiable_id' => $user->getKey(),
-        'data' => json_encode(['message' => 'hello']),
-    ]);
-    expect($user->notifications)->toHaveCount(1);
-});
+        // Assert
+        assertDatabaseHas('notifications', [
+            'notifiable_type' => $user->getMorphClass(),
+            'notifiable_id' => $user->getKey(),
+            'data' => json_encode(['message' => 'hello']),
+        ]);
+        expect($user->notifications)->toHaveCount(1);
+    });
 
-it('unread by default', function (): void {
-    // Arrange
-    $user = User::factory()->create();
+    it('unread by default', function (): void {
+        // Arrange
+        $user = User::factory()->create();
 
-    // Act
-    $user->notify(new DatabaseChannelTestNotification);
+        // Act
+        $user->notify(new DatabaseChannelTestNotification);
 
-    // Assert
-    $unread = $user->fresh()->unreadNotifications;
+        // Assert
+        $unread = $user->fresh()->unreadNotifications;
 
-    expect($unread)->toHaveCount(1);
-    expect($unread->first()->read_at)->toBeNull();
+        expect($unread)->toHaveCount(1);
+        expect($unread->first()->read_at)->toBeNull();
+    });
 });

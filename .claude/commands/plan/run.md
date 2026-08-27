@@ -22,6 +22,12 @@ Invoke the `plan-draft` skill — interview the rough ticket into one concrete,
 decision-locked plan (architecture, files, decisions; zero TDD concern). It is
 interactive and ends with the locked plan.
 
+**Synthesis branch.** If the user says the decisions are already settled (a prior
+`grilling` session, a long design thread), pass that through — `plan-draft` skips
+its interview phases and assembles the plan from what was settled, keeping its
+full-plan approval gate. **Only on the user's say-so**; never infer it from a long
+conversation.
+
 ### Stage 2: branch on scope
 Judge how much work the locked plan covers:
 

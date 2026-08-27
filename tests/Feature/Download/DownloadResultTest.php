@@ -9,100 +9,102 @@ use App\Domains\Download\Enums\Quality;
 use App\Domains\Download\Enums\ReleaseTag;
 use App\Domains\Download\Enums\Source;
 
-it('exposes every property unchanged from direct construction', function (): void {
-    // Arrange
-    // enum-and-scalar DTO, no state to set up
+describe('DownloadResult DTO construction & hydration', function (): void {
+    it('exposes every property unchanged from direct construction', function (): void {
+        // Arrange
+        // enum-and-scalar DTO, no state to set up
 
-    // Act
-    $result = new DownloadResult(
-        downloadId: 42,
-        name: 'Some.Release.1080p.x265',
-        filename: 'Some.Release.1080p.x265',
-        quality: Quality::P1080,
-        codec: Codec::Hevc,
-        source: Source::WebDl,
-        releaseTag: ReleaseTag::None,
-        availability: 17,
-        sizeBytes: 4_294_967_296,
-        isRar: true,
-    );
+        // Act
+        $result = new DownloadResult(
+            downloadId: 42,
+            name: 'Some.Release.1080p.x265',
+            filename: 'Some.Release.1080p.x265',
+            quality: Quality::P1080,
+            codec: Codec::Hevc,
+            source: Source::WebDl,
+            releaseTag: ReleaseTag::None,
+            availability: 17,
+            sizeBytes: 4_294_967_296,
+            isRar: true,
+        );
 
-    // Assert
-    expect($result->downloadId)->toBe(42)
-        ->and($result->name)->toBe('Some.Release.1080p.x265')
-        ->and($result->filename)->toBe('Some.Release.1080p.x265')
-        ->and($result->quality)->toBe(Quality::P1080)
-        ->and($result->codec)->toBe(Codec::Hevc)
-        ->and($result->source)->toBe(Source::WebDl)
-        ->and($result->availability)->toBe(17)
-        ->and($result->sizeBytes)->toBe(4_294_967_296)
-        ->and($result->isRar)->toBeTrue()
-        ->and($result->releaseTag)->toBe(ReleaseTag::None);
-});
+        // Assert
+        expect($result->downloadId)->toBe(42)
+            ->and($result->name)->toBe('Some.Release.1080p.x265')
+            ->and($result->filename)->toBe('Some.Release.1080p.x265')
+            ->and($result->quality)->toBe(Quality::P1080)
+            ->and($result->codec)->toBe(Codec::Hevc)
+            ->and($result->source)->toBe(Source::WebDl)
+            ->and($result->availability)->toBe(17)
+            ->and($result->sizeBytes)->toBe(4_294_967_296)
+            ->and($result->isRar)->toBeTrue()
+            ->and($result->releaseTag)->toBe(ReleaseTag::None);
+    });
 
-it('defaults every enrichment field to null when constructed from required args only', function (): void {
-    // Arrange
-    // enum-and-scalar DTO, no state to set up
+    it('defaults every enrichment field to null when constructed from required args only', function (): void {
+        // Arrange
+        // enum-and-scalar DTO, no state to set up
 
-    // Act
-    $result = new DownloadResult(
-        downloadId: 42,
-        name: 'Some.Release.1080p.x265',
-        filename: 'Some.Release.1080p.x265',
-        quality: Quality::P1080,
-        codec: Codec::Hevc,
-        source: Source::WebDl,
-        releaseTag: ReleaseTag::None,
-        availability: 17,
-        sizeBytes: 4_294_967_296,
-        isRar: true,
-    );
+        // Act
+        $result = new DownloadResult(
+            downloadId: 42,
+            name: 'Some.Release.1080p.x265',
+            filename: 'Some.Release.1080p.x265',
+            quality: Quality::P1080,
+            codec: Codec::Hevc,
+            source: Source::WebDl,
+            releaseTag: ReleaseTag::None,
+            availability: 17,
+            sizeBytes: 4_294_967_296,
+            isRar: true,
+        );
 
-    // Assert
-    expect($result->demand)->toBeNull()
-        ->and($result->subcategory)->toBeNull()
-        ->and($result->uploader)->toBeNull()
-        ->and($result->imdbId)->toBeNull()
-        ->and($result->tmdbId)->toBeNull()
-        ->and($result->files)->toBeNull()
-        ->and($result->description)->toBeNull();
-});
+        // Assert
+        expect($result->demand)->toBeNull()
+            ->and($result->subcategory)->toBeNull()
+            ->and($result->uploader)->toBeNull()
+            ->and($result->imdbId)->toBeNull()
+            ->and($result->tmdbId)->toBeNull()
+            ->and($result->files)->toBeNull()
+            ->and($result->description)->toBeNull();
+    });
 
-it('exposes html and screenshots on a DownloadDescription', function (): void {
-    // Arrange
-    // scalar-and-array DTO, no state to set up
+    it('exposes html and screenshots on a DownloadDescription', function (): void {
+        // Arrange
+        // scalar-and-array DTO, no state to set up
 
-    // Act
-    $d = new DownloadDescription(html: '<b>x</b><br>', screenshots: ['a.jpg', 'b.jpg']);
+        // Act
+        $d = new DownloadDescription(html: '<b>x</b><br>', screenshots: ['a.jpg', 'b.jpg']);
 
-    // Assert
-    expect($d->html)->toBe('<b>x</b><br>')
-        ->and($d->screenshots)->toBe(['a.jpg', 'b.jpg']);
-});
+        // Assert
+        expect($d->html)->toBe('<b>x</b><br>')
+            ->and($d->screenshots)->toBe(['a.jpg', 'b.jpg']);
+    });
 
-it('hydrates from an array casting enum strings', function (): void {
-    // Arrange
-    $payload = [
-        'downloadId' => 7,
-        'name' => 'Another.Release.1080p.HEVC',
-        'filename' => 'Another.Release.1080p.HEVC',
-        'quality' => '1080p',
-        'codec' => 'hevc',
-        'source' => 'web-dl',
-        'availability' => 3,
-        'sizeBytes' => 2_147_483_648,
-        'isRar' => false,
-        'releaseTag' => 'none',
-    ];
+    it('hydrates from an array casting enum strings', function (): void {
+        // Arrange
+        $payload = [
+            'downloadId' => 7,
+            'name' => 'Another.Release.1080p.HEVC',
+            'filename' => 'Another.Release.1080p.HEVC',
+            'quality' => '1080p',
+            'codec' => 'hevc',
+            'source' => 'web-dl',
+            'availability' => 3,
+            'sizeBytes' => 2_147_483_648,
+            'isRar' => false,
+            'releaseTag' => 'none',
+        ];
 
-    // Act
-    $result = DownloadResult::from($payload);
+        // Act
+        $result = DownloadResult::from($payload);
 
-    // Assert
-    expect($result->quality)->toBe(Quality::P1080)
-        ->and($result->codec)->toBe(Codec::Hevc)
-        ->and($result->source)->toBe(Source::WebDl)
-        ->and($result->sizeBytes)->toBe(2_147_483_648)
-        ->and($result->filename)->toBe('Another.Release.1080p.HEVC')
-        ->and($result->releaseTag)->toBe(ReleaseTag::None);
+        // Assert
+        expect($result->quality)->toBe(Quality::P1080)
+            ->and($result->codec)->toBe(Codec::Hevc)
+            ->and($result->source)->toBe(Source::WebDl)
+            ->and($result->sizeBytes)->toBe(2_147_483_648)
+            ->and($result->filename)->toBe('Another.Release.1080p.HEVC')
+            ->and($result->releaseTag)->toBe(ReleaseTag::None);
+    });
 });

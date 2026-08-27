@@ -26,45 +26,47 @@ final class SlackChannelTestNotification extends Notification
     }
 }
 
-it('posts to the Slack chat.postMessage endpoint', function (): void {
-    // Arrange
-    Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
-    config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
-    config()->set('services.slack.notifications.channel', '#lundflix');
+describe('slack channel delivery', function (): void {
+    it('posts to the Slack chat.postMessage endpoint', function (): void {
+        // Arrange
+        Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
+        config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
+        config()->set('services.slack.notifications.channel', '#lundflix');
 
-    // Act
-    NotificationFacade::route('slack', config('services.slack.notifications.channel'))
-        ->notify(new SlackChannelTestNotification);
+        // Act
+        NotificationFacade::route('slack', config('services.slack.notifications.channel'))
+            ->notify(new SlackChannelTestNotification);
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::endsWith($request->url(), '/api/chat.postMessage'));
-    Http::assertSentCount(1);
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::endsWith($request->url(), '/api/chat.postMessage'));
+        Http::assertSentCount(1);
+    });
 
-it('targets the configured channel', function (): void {
-    // Arrange
-    Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
-    config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
-    config()->set('services.slack.notifications.channel', '#lundflix');
+    it('targets the configured channel', function (): void {
+        // Arrange
+        Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
+        config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
+        config()->set('services.slack.notifications.channel', '#lundflix');
 
-    // Act
-    NotificationFacade::route('slack', config('services.slack.notifications.channel'))
-        ->notify(new SlackChannelTestNotification);
+        // Act
+        NotificationFacade::route('slack', config('services.slack.notifications.channel'))
+            ->notify(new SlackChannelTestNotification);
 
-    // Assert
-    Http::assertSent(fn ($request): bool => $request['channel'] === config('services.slack.notifications.channel'));
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => $request['channel'] === config('services.slack.notifications.channel'));
+    });
 
-it('authenticates with the configured bot token', function (): void {
-    // Arrange
-    Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
-    config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
-    config()->set('services.slack.notifications.channel', '#lundflix');
+    it('authenticates with the configured bot token', function (): void {
+        // Arrange
+        Http::fake(['*slack.com/api/*' => Http::response(['ok' => true])]);
+        config()->set('services.slack.notifications.bot_user_oauth_token', 'xoxb-test-token');
+        config()->set('services.slack.notifications.channel', '#lundflix');
 
-    // Act
-    NotificationFacade::route('slack', config('services.slack.notifications.channel'))
-        ->notify(new SlackChannelTestNotification);
+        // Act
+        NotificationFacade::route('slack', config('services.slack.notifications.channel'))
+            ->notify(new SlackChannelTestNotification);
 
-    // Assert
-    Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer '.config('services.slack.notifications.bot_user_oauth_token')));
+        // Assert
+        Http::assertSent(fn ($request): bool => $request->hasHeader('Authorization', 'Bearer '.config('services.slack.notifications.bot_user_oauth_token')));
+    });
 });

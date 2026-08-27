@@ -6,12 +6,15 @@ use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Laravel\Scout\EngineManager;
+use Laravel\Scout\Engines\Engine;
 use Tests\TestCase;
 
 /*
@@ -159,6 +162,57 @@ function fakePlexSeedCrawl(
 }
 
 /**
+ * Point Scout at a spy engine and hand back a getter for the model keys the
+ * engine has been handed, each `update()` call kept in its own group.
+ *
+ * The suite runs `SCOUT_DRIVER=collection`, whose engine writes nothing a DB
+ * assertion can see — what the engine is handed is the only observable evidence
+ * of what was (or wasn't) indexed. The groups are kept unflattened because the
+ * call boundaries can themselves be the subject: a flat list of ids can't tell
+ * one 5-row call from three smaller ones.
+ *
+ * Call this LAST in Arrange: the `Searchable` trait syncs on every model save,
+ * so a spy registered earlier also captures the arranged rows' create-time syncs
+ * — every row looks reindexed and nothing can look quiet.
+ *
+ * @return Closure(): list<list<int|string>>
+ */
+function spyOnScoutEngine(): Closure
+{
+    $captured = [];
+
+    $spy = Mockery::spy(Engine::class);
+
+    $spy->shouldReceive('update')->andReturnUsing(
+        function (EloquentCollection $models) use (&$captured): void {
+            $captured[] = $models->modelKeys();
+        },
+    );
+
+    resolve(EngineManager::class)->extend('spy', fn (): Engine => $spy);
+    config(['scout.driver' => 'spy']);
+
+    return function () use (&$captured): array {
+        return $captured;
+    };
+}
+
+/**
+ * Every key spyOnScoutEngine() captured, in call order, with the chunk grouping
+ * dropped. For the assertions that care only about WHICH rows reached the engine
+ * and how many times — a row split across two update() calls must still read as
+ * two occurrences. The tests whose subject IS the chunking read the groups
+ * unflattened instead.
+ *
+ * @param  list<list<int|string>>  $chunks
+ * @return list<int|string>
+ */
+function reindexedIds(array $chunks): array
+{
+    return collect($chunks)->flatten()->all();
+}
+
+/**
  * The query-log entries whose SQL satisfies $matches.
  *
  * The predicate always receives LOWERCASED SQL, and every matcher must stick to
@@ -191,10 +245,10 @@ function loggedInsertsInto(string $table): Collection
 /**
  * Whether a statement is a probe of our already-synced rows — SQL naming the
  * `tmdb_synced_at` predicate, minus the upsert, whose `insert into` column list
- * names that column too. Deliberately NOT "a select against the table": every
- * upsert is trailed by Scout's SearchableScope chunkById, so counting those
- * selects would measure Scout, not the probe. Lowercases its own input, since it
- * is also called directly on raw QueryExecuted SQL.
+ * names that column too. Deliberately NOT "a select against the table": keying
+ * on the predicate is what keeps the leg's other reads from answering to the
+ * same description. Lowercases its own input, since it is also called directly
+ * on raw QueryExecuted SQL.
  *
  * $requiresIdList additionally demands a buffered `in (…)` list, for the ingests
  * whose own candidate stream filters on `tmdb_synced_at` too — see
@@ -214,10 +268,9 @@ function isSyncedProbe(string $sql, bool $requiresIdList = false): bool
  * `*`, and satisfying the caller's $alsoNarrow clauses (which exclude the probe
  * shapes that would otherwise answer to the same description).
  *
- * Only ever asserted as a PRESENCE, never as "no `select *` against the table":
- * every upsert is trailed by Scout's SearchableScope chunkById, which always
- * issues a wide `select * … where _tmdb_id in (…)`, so the negative form could
- * never go green.
+ * Asserted as a PRESENCE — "the narrow select happened" — never as the negative
+ * "no wide `select *` against the table"; a whole-model read elsewhere on the
+ * leg is not this helper's subject.
  *
  * @param  Closure(string): bool  $alsoNarrow
  * @return Collection<int, array{query: string, bindings: array<int, mixed>}>
