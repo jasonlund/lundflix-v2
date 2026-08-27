@@ -9,11 +9,13 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Exception\InvalidOptionException;
 
@@ -45,6 +47,10 @@ uses(RefreshDatabase::class);
 |   hydrate batch, so the changes phase's own batching is observable — which no
 |   committed capture provides; its ids are re-hydrated through the same minimal
 |   `{"id":N,"title":"Movie N"}` detail body.
+| — a single-page `/movie/changes` body listing 1001 arbitrary ids we hold none
+|   of — one over the probe buffer, so a trailing partial slice is observable —
+|   which no committed capture provides. Nothing hydrates off it, so no detail
+|   body pairs with it.
 */
 
 /**
@@ -492,6 +498,111 @@ describe('catalog:sync-movies heartbeat and batch failures', function (): void {
     });
 });
 
+describe('catalog:sync-movies heartbeat and elapsed phase lines', function (): void {
+    it('beats every 10000th export row scanned on a run that upserts nothing', function (): void {
+        // Arrange
+        // The seeded-production case: every exported id is already synced, so the
+        // insert phase hydrates and upserts NOTHING and the upsert heartbeat can never
+        // fire — a scan-unit beat is the only thing that can prove the run is alive.
+        // Bulk inserts, not factories: 20k factory saves each round-trip the Searchable
+        // trait. They also leave `updated_at` NULL on purpose — the leg ends with a
+        // deferred reindex over `updated_at >= <run start>`, and rows saved inside the
+        // run's own start second would otherwise be swept 20k deep through the engine.
+        $ids = range(1, 20_000);
+        $syncedAt = now()->toDateTimeString();
+        foreach (array_chunk($ids, 5_000) as $chunk) {
+            Movie::insert(array_map(
+                static fn (int $id): array => ['_tmdb_id' => $id, 'tmdb_synced_at' => $syncedAt],
+                $chunk,
+            ));
+        }
+        fakeTmdbIdsExport($ids);
+
+        // Act
+        Artisan::call('catalog:sync-movies');
+
+        // Assert
+        // The row count pins the scenario itself: it can only still read 20000 if the
+        // run hydrated nothing, so these beats can't be passing off upsert work as scan.
+        $output = Artisan::output();
+        expect($output)->toContain('  [scan 10000]');
+        expect($output)->toContain('  [scan 20000]');
+        expect(Movie::count())->toBe(20_000);
+    });
+
+    it('beats every 1000th changes-feed id probed', function (): void {
+        // Arrange
+        // 1001 changed ids we hold none of: the export is empty so the insert phase is
+        // a no-op, and no id resolves locally so nothing hydrates — today the whole run
+        // is silent. 1001 straddles the 1000-id probe buffer, so the trailing partial
+        // slice must NOT beat a second time.
+        $ids = range(4_000_000, 4_001_000);
+        Http::fake([
+            '*movie_ids*' => Http::response(gzencode('')),
+            '*/movie/changes*' => Http::response(json_encode([
+                'results' => array_map(static fn (int $id): array => ['id' => $id], $ids),
+                'page' => 1,
+                'total_pages' => 1,
+                'total_results' => count($ids),
+            ])),
+            '*api.themoviedb.org*' => Http::response('', 404),
+        ]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-movies')
+            ->expectsOutputToContain('  [probe 1000]')
+            ->doesntExpectOutputToContain('[probe 1001]');
+    });
+
+    it('prints the reindex phase line and the heartbeat', function (): void {
+        // Arrange
+        fakeTmdbSync();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-movies')
+            ->expectsOutputToContain('Reindexing movies…')
+            ->expectsOutputToContain('  [reindex 1]');
+    });
+
+    it('prints the reindex phase line in queued wording when scout queues its index writes', function (): void {
+        // Production runs SCOUT_QUEUE=true, where the phase only DISPATCHES the index
+        // writes — its elapsed seconds time the dispatch, not the indexing, so the
+        // lines must not claim the movies were indexed.
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        config(['scout.queue' => true]);
+        Queue::fake();
+        fakeTmdbSync();
+
+        // Act
+        // Read back as one string rather than chaining expectsOutputToContain(): the
+        // closing line CONTAINS the opening one, and the mocked writer hands each write
+        // to the first matching substring expectation, so the pair would shadow.
+        Artisan::call('catalog:sync-movies');
+
+        // Assert
+        expect(Artisan::output())
+            ->toContain('Queueing movies for reindex…')
+            ->toContain('  [reindex 1 queued]')
+            ->toContain('Queueing movies for reindex… done in 0s');
+    });
+
+    it('closes every phase line with its elapsed seconds', function (): void {
+        // The clock is frozen so `0s` is deterministic: on the real clock a phase that
+        // happened to straddle a second boundary would print `1s` and flake.
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTmdbSync();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-movies')
+            ->expectsOutputToContain('Downloading movie-ids export… done in 0s')
+            ->expectsOutputToContain('Syncing movies… done in 0s')
+            ->expectsOutputToContain('Updating changed movies… done in 0s')
+            ->expectsOutputToContain('Reindexing movies… done in 0s');
+    });
+});
+
 describe('catalog:sync-movies changes-feed update phase', function (): void {
     it('refreshes an existing synced movie present in the changes feed', function (): void {
         // Arrange
@@ -754,5 +865,70 @@ describe('catalog:sync-movies marker advancement', function (): void {
 
         // Assert
         expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
+    });
+});
+
+describe('catalog:sync-movies end-of-leg reindex', function (): void {
+    it('reindexes every movie the leg touched, exactly once', function (): void {
+        // Arrange
+        // The spy is registered LAST: the Searchable trait syncs on every model save, so
+        // a spy installed earlier would also capture Arrange's own writes and no row
+        // could ever look un-reindexed.
+        fakeTmdbSync();
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        $matrix = Movie::where('_tmdb_id', 603)->firstOrFail();
+        expect(reindexedIds($capturedChunks()))->toBe([$matrix->id]);
+    });
+
+    it('does not reindex a movie the leg never touched', function (): void {
+        // Arrange
+        // _tmdb_id 9000001 appears in neither the export nor the changes feed, so the
+        // leg never writes this row. Its updated_at is stamped stale EXPLICITLY: the
+        // watermark comparison is `>=` over second-precision timestamps, so a row saved
+        // inside the leg's own start second would otherwise sweep in as "touched".
+        $untouched = Movie::factory()->create(['_tmdb_id' => 9_000_001, 'tmdb_synced_at' => now()]);
+        Movie::query()->whereKey($untouched->id)->update(['updated_at' => now()->subDay()]);
+        fakeTmdbSync();
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        // Both halves in one test: asserting the absence alone would pass on a run that
+        // indexed nothing at all.
+        $matrix = Movie::where('_tmdb_id', 603)->firstOrFail();
+        expect(reindexedIds($capturedChunks()))->toContain($matrix->id);
+        expect(reindexedIds($capturedChunks()))->not->toContain($untouched->id);
+    });
+
+    it('still reindexes rows touched before a changes-feed failure', function (): void {
+        // Arrange
+        Cache::flush();
+        Exceptions::fake();
+        // The real export still inserts 603, so the leg genuinely touches a row, while
+        // every /movie/changes page 404s — TMDB raises that as a fatal TmdbRequestFailed
+        // the update phase reports rather than propagates, holding the marker back.
+        Http::fake([
+            '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
+            '*/movie/changes*' => Http::response('', 404),
+            '*api.themoviedb.org*' => fn (Request $request) => Str::contains($request->url(), '/movie/603')
+                ? Http::response(fixtureBytes('Catalog/tmdb/movie.json'))
+                : Http::response('', 404),
+        ]);
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        $this->artisan('catalog:sync-movies')->assertExitCode(0);
+
+        // Assert
+        $matrix = Movie::where('_tmdb_id', 603)->firstOrFail();
+        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
+        expect(reindexedIds($capturedChunks()))->toContain($matrix->id);
     });
 });

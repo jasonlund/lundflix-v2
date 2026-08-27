@@ -433,6 +433,65 @@ describe('catalog:sync-episodes-tvdb progress output', function (): void {
     });
 });
 
+describe('catalog:sync-episodes-tvdb index silence and elapsed phase lines', function (): void {
+    /*
+    |--------------------------------------------------------------------------
+    | Index silence & elapsed phase lines
+    |--------------------------------------------------------------------------
+    | The leg writes no searchable content — SeedTvdbEpisodes ends on an
+    | `episodes_synced_at` stamp, whose model save the `Searchable` trait syncs to
+    | the engine inline, once per show walked. That bookkeeping traffic is what the
+    | leg must suppress, and there is no reindex phase to pair it with: nothing the
+    | engine cares about changed. The tests below freeze the clock, which pins both
+    | phases' elapsed readings at `0s`.
+    */
+    it('sends nothing to the search engine while syncing episodes', function (): void {
+        // Arrange
+        fakeTvdbEpisodes();
+        Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        $this->artisan('catalog:sync-episodes-tvdb')->run();
+
+        // Assert
+        expect($capturedChunks())->toBe([]);
+    });
+
+    it('prints the feed-drain completion line with elapsed time', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTvdbEpisodes();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('Read the episodes update feed in 0s');
+    });
+
+    it('prints the synced-episodes completion line with the run\'s episode count and elapsed time', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTvdbEpisodes();
+        Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('Synced 6 episodes in 0s');
+    });
+
+    it('a window matching no seeded shows still prints both completion lines and exits 0', function (): void {
+        // Arrange
+        // A quiet window, not a failed one: the feed's shows are all unseeded, so no
+        // show is walked, yet both phases still report and the run exits clean.
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTvdbEpisodes();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-episodes-tvdb')
+            ->expectsOutputToContain('Read the episodes update feed in 0s')
+            ->expectsOutputToContain('Synced 0 episodes in 0s')
+            ->assertExitCode(0);
+    });
+});
+
 describe('catalog:sync-episodes-tvdb feed page failure', function (): void {
     it('aborts the run and leaves the marker untouched when a feed page fails', function (): void {
         // Arrange

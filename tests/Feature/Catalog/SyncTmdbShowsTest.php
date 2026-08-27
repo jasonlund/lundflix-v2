@@ -652,6 +652,60 @@ describe('catalog:sync-shows-tmdb candidate chunking and batching', function ():
     });
 });
 
+describe('catalog:sync-shows-tmdb heartbeat and elapsed phase lines', function (): void {
+    it('beats every 1000th candidate row walked', function (): void {
+        // Arrange
+        // 1001 candidates, each carrying a distinct _tmdb_id (the column is uniquely
+        // indexed), whose every /tv/{id} detail 404s — so nothing hydrates, nothing is
+        // upserted, and the upsert heartbeat can never fire. A scan-unit beat is then
+        // the only thing that can show the walk is alive. A 404 stays present-as-key in
+        // the pooled result, so it is a miss, not a fetch failure.
+        $rows = [];
+        for ($i = 0; $i < 1001; $i++) {
+            $rows[] = ['_tmdb_id' => 900_000 + $i];
+        }
+        Show::insert($rows);
+        Http::fake([
+            '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+            '*api.themoviedb.org*' => Http::response('', 404),
+        ]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tmdb')
+            ->expectsOutputToContain('  [scan 1000]')
+            ->doesntExpectOutputToContain('[tmdb shows');
+    });
+
+    it('prints the reindex phase line and the heartbeat', function (): void {
+        // Arrange
+        // A single touched show, so the Action's cumulative count reads 1.
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+        fakeTmdbShowSync();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tmdb')
+            ->expectsOutputToContain('Reindexing shows…')
+            ->expectsOutputToContain('  [reindex 1]');
+    });
+
+    it('closes every phase line with its elapsed seconds', function (): void {
+        // The clock is frozen so `0s` is deterministic: on the real clock a phase that
+        // happened to straddle a second boundary would print `1s` and flake. The lone
+        // unsynced candidate makes the hydrate phase do real work rather than walk an
+        // empty table.
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+        fakeTmdbShowSync();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tmdb')
+            ->expectsOutputToContain('Hydrating TMDB shows… done in 0s')
+            ->expectsOutputToContain('Updating changed shows… done in 0s')
+            ->expectsOutputToContain('Reindexing shows… done in 0s');
+    });
+});
+
 describe('catalog:sync-shows-tmdb marker advancement', function (): void {
     it('advances the shows marker to run-start on a clean default run', function (): void {
         // Arrange
@@ -727,5 +781,53 @@ describe('catalog:sync-shows-tmdb marker advancement', function (): void {
 
         // Assert
         expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
+    });
+});
+
+describe('catalog:sync-shows-tmdb end-of-leg reindex', function (): void {
+    it('reindexes every show the leg touched, exactly once', function (): void {
+        // Arrange
+        // Both hydrate paths in one run: a direct _tmdb_id row, and an imdb-only row the
+        // reconcile stamps before hydrating — a second write to the same row, which the
+        // movies leg has no equivalent of. The spy is registered LAST: the Searchable
+        // trait syncs on every model save, so a spy installed earlier would also
+        // capture the arranged rows' own writes and no row could look un-reindexed.
+        $direct = Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+        $reconciled = Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+        fakeTmdbShowSync();
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        // Two keys total, both present: each row reached the engine exactly once, however
+        // many phases wrote it.
+        $reindexed = reindexedIds($capturedChunks());
+        expect($reindexed)->toHaveCount(2);
+        expect($reindexed)->toContain($direct->id);
+        expect($reindexed)->toContain($reconciled->id);
+    });
+
+    it('does not reindex a show the leg never touched', function (): void {
+        // Arrange
+        // _tmdb_id 9000001 is already synced and absent from the (empty) changes feed, so
+        // the leg never writes this row. Its updated_at is stamped stale EXPLICITLY: the
+        // watermark comparison is `>=` over second-precision timestamps, so a row saved
+        // inside the leg's own start second would otherwise sweep in as "touched".
+        $touched = Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+        $untouched = Show::factory()->create(['_tmdb_id' => 9_000_001, 'tmdb_synced_at' => now()]);
+        Show::query()->whereKey($untouched->id)->update(['updated_at' => now()->subDay()]);
+        fakeTmdbShowSync();
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        // Both halves in one test: asserting the absence alone would pass on a run that
+        // indexed nothing at all.
+        expect(reindexedIds($capturedChunks()))->toContain($touched->id);
+        expect(reindexedIds($capturedChunks()))->not->toContain($untouched->id);
     });
 });

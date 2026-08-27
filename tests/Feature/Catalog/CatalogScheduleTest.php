@@ -22,9 +22,10 @@ describe('catalog:sync scheduling', function (): void {
         // Arrange
         $schedule = resolve(Schedule::class);
 
+        // anchored on the trailing argument so the sibling catalog:sync-imdb entry can't match
         // Act
         $event = collect($schedule->events())->first(
-            fn ($e): bool => Str::contains($e->command ?? '', 'catalog:sync'),
+            fn ($e): bool => Str::endsWith($e->command ?? '', ' catalog:sync'),
         );
 
         // Assert
@@ -32,5 +33,25 @@ describe('catalog:sync scheduling', function (): void {
         expect($event->expression)->toBe('0 0,12 * * *');
         expect($event->timezone)->toBe('America/Los_Angeles');
         expect($event->withoutOverlapping)->toBeTrue();
+        expect($event->expiresAt)->toBe(360);
+    });
+});
+
+describe('catalog:sync-imdb scheduling', function (): void {
+    it('schedules catalog:sync-imdb daily at 06:00 America/Los_Angeles without overlapping', function (): void {
+        // Arrange
+        $schedule = resolve(Schedule::class);
+
+        // Act
+        $event = collect($schedule->events())->first(
+            fn ($e): bool => Str::endsWith($e->command ?? '', ' catalog:sync-imdb'),
+        );
+
+        // Assert
+        expect($event)->not->toBeNull();
+        expect($event->expression)->toBe('0 6 * * *');
+        expect($event->timezone)->toBe('America/Los_Angeles');
+        expect($event->withoutOverlapping)->toBeTrue();
+        expect($event->expiresAt)->toBe(600);
     });
 });
