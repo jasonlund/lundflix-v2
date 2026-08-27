@@ -1,6 +1,6 @@
 ---
 name: review:run
-description: Orchestrates the full PR review loop end-to-end with confirmation gates — optional cross-ticket refactor sweep, then create-pr → human → suite → process → delta review of the fixes. Each stage pauses for approval before the next.
+description: Orchestrates the full PR review loop end-to-end with confirmation gates — optional cross-slice refactor sweep, then create-pr → human → suite → process → delta review of the fixes. Each stage pauses for approval before the next.
 ---
 
 # Review Loop Orchestrator
@@ -9,7 +9,7 @@ Runs the review pipeline as one guided sequence. Drive each stage **in order**,
 pausing at the ⏸ gates for the user. Each stage's mechanics live in its own
 command — **defer to that file, do not reimplement it here.**
 
-Loop: `[cross-ticket sweep?]` → `/review:create-pr` → `/review:human` →
+Loop: `[cross-slice sweep?]` → `/review:create-pr` → `/review:human` →
 `/review:suite` → `/review:process` → `[delta review]`.
 
 ## Input
@@ -18,13 +18,38 @@ Loop: `[cross-ticket sweep?]` → `/review:create-pr` → `/review:human` →
 
 ## Sequence
 
-### Stage 0: Cross-ticket refactor sweep (conditional)
-Decide whether the branch spans **more than one ticket** — inspect
-`git diff origin/main...HEAD --stat`, the branch name, and the commit history.
+### Stage 0: Cross-slice refactor sweep (conditional)
+Gate on **slice count, not ticket count.** `tdd`'s REFACTOR phase is slice-scoped —
+it spawns `tdd-refactorer` with "the files touched + the passing slice"
+(`.claude/skills/tdd/SKILL.md:106`), so a refactorer that saw one slice never had
+the others in context. One ticket of many slices has the identical blind spot;
+ticket count simply does not predict it.
 
-- **Multi-ticket** → invoke the `review-tdd-cross-ticket` skill (whole-PR REFACTOR
-  sweep). It runs its **own** green-precondition + approval gate — let it.
-- **Single-ticket** → skip and say so (the slice's own REFACTOR already covered it).
+**Count from the ticket backlog, not the diff** — a slice is a process artifact and
+leaves no trace in `git diff`:
+
+1. Resolve the ticket from the branch — **Ticket ID Auto-Extraction** in
+   `.claude/skills/review-pipeline/SKILL.md`.
+2. **Expand parent → sub-tickets.** A decomposed parent's branch name carries only
+   the parent id (`flix-246-…`), while the backlogs live on its children. Skipping
+   this step is why the sweep missed FLIX-246.
+3. Count `### Slice N` headings under `## TDD Slice Backlog` across the ticket **and**
+   every sub-ticket.
+
+Then branch:
+
+- **≥2 slices countable** → invoke the `review-tdd-cross-slice` skill (whole-PR
+  REFACTOR sweep). It runs its **own** green-precondition + approval gate — let it.
+- **Exactly 1 slice** → skip and say so (that slice's own REFACTOR already covered it).
+- **Anything else** — no ticket id, Linear unreachable, no backlog section, or a
+  backlog section yielding 0 slices → **run the sweep.** Unknown is not one.
+
+**Branch on ≥2, never on "not 1".** The skip branch requires a positive count of
+exactly one; every other outcome falls through to the run. Phrasing it as "1 or
+fewer → skip" silently converts a zero-count parse failure into a skip — which is
+the original detection bug again, one layer down. A needless sweep costs one
+green-gated behavior-preserving pass; a wrong skip shipped seven duplication
+clusters on FLIX-246.
 
 ### Stage 1: create-pr  ⏸
 If the branch has **no open PR**, follow `.claude/commands/review/create-pr.md`

@@ -54,6 +54,10 @@ before speaking.
    or cross-system/integration issue. Style, formatting, naming taste, and
    "alternative approach" preferences are **not** defects — cap them at NIT and
    respect the nit cap, or say nothing.
+   **Verbatim duplication also qualifies as objective** — that two blocks are
+   byte-identical is a measurable fact, not taste, so it is not NIT-capped. This
+   exemption is narrow and belongs to `duplication-reviewer`: it covers repetition
+   it can quote twice, never "these two look similar".
 4. **Ownership bar — not already owned.** A deterministic gate
    (Pint/Rector/ESLint/Vitest/Pest) or an endorsed convention does not already own
    it. Repeating a gate or flagging an endorsed pattern is itself a review defect
