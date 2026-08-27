@@ -154,6 +154,24 @@ prioritize the most-changed files.
    record `SUPPRESSED_NITS = {count}` for the Phase 6 tally ("suppressed N more").
    Gate-owned nits (formatting/style/import-order/type-hints) should never have made
    it this far — if any did, drop them, they're a reviewer defect.
+6. **Split out the requirements axis — never rerank across it.** Pull every
+   `CATEGORY: requirements` finding into `SPEC_FINDINGS`; everything else stays in
+   the standards pool. The two axes measure different things and are **not
+   commensurable**: code can follow every convention while implementing the wrong
+   thing (standards pass, spec fail), or do exactly what the ticket asked in a way
+   that breaks conventions (spec pass, standards fail). Merging them into one
+   ranked list lets the louder category bury the other — typically a pile of
+   convention findings hiding a missing acceptance criterion.
+
+   Dedup, grounding, and adversarial verification all still apply to
+   `SPEC_FINDINGS` exactly as before. This splits *presentation and ranking*, not
+   rigor. Never rank a spec finding against a standards finding, and never report
+   a single "worst issue" across both — report the worst **within each axis**.
+
+   Each `SPEC_FINDINGS` item keeps its `SEVERITY`, `FILE`, and `LINE` so the
+   Phase 6 Spec section can render the full field block that `/review:add` posts
+   to the PR. A finding that names the absence of code has no file — it posts in
+   the review body.
 
 ---
 
@@ -183,16 +201,42 @@ collapsible `<details>` block, not the top line.
 ```markdown
 # PR Review: PR #{number}{ against {ticket_id} if present}
 
-**{X} blocking · {Y} should-fix · {Z} consider · {N} nits{, suppressed {M} more}**
+**Spec: {S} findings · Standards: {X} blocking · {Y} should-fix · {Z} consider ·
+{N} nits{, suppressed {M} more}**
+
+## Spec — does it do what the ticket asked?
+
+[`SPEC_FINDINGS` only, and every one of them — this section is the whole spec
+axis, and `/review:add` posts the PR comments from here. If none: "Implements the
+ticket as specified." If the ticket was unavailable: "No ticket — spec axis not
+reviewed."]
+[One entry per finding, covering (a) an acceptance criterion missing or partial,
+(b) behavior in the diff nobody asked for, (c) a criterion implemented wrong.
+Carry the same fields as the severity sections below, plus `Severity` — the
+severity sections rank the standards pool, so a spec finding carries its own:]
+
+- **Severity:** 🔴 BLOCKING | 🟠 SHOULD_FIX | 🟡 CONSIDER
+- **File:** `path/to/file.php` (lines N-M) — write `_no file_` when the finding is
+  the absence of code, e.g. an acceptance criterion nothing implements
+- **Issue:** [description]
+- **Violates:** [the ticket line, quoted verbatim]
+- **Fix:** [specific recommendation]
+- **Found by:** [agent] | **Confidence:** [HIGH/MEDIUM]
+
+Order the entries by severity **within this section**. **This section is never
+merged into the one below, and the two are never ranked against each other.** A
+clean standards review does not offset a spec failure.
 
 ## Key Defects
 
 [If no BLOCKING or SHOULD_FIX findings: "No blocking or should-fix defects found."]
-[Otherwise one concise bullet per BLOCKING/SHOULD_FIX finding — what & where, not
-the fix. 🔴 BLOCKING, 🟡 SHOULD_FIX. Ordered by severity. Bury per-finding
-reasoning in a `<details>` block so the bullet stays one line.]
+[Otherwise one concise bullet per standards-pool BLOCKING/SHOULD_FIX finding —
+what & where, not the fix. 🔴 BLOCKING, 🟡 SHOULD_FIX. Ordered by severity. Bury
+per-finding reasoning in a `<details>` block so the bullet stays one line. The
+Spec section above stands on its own.]
 
 ## Summary
+- **Spec Findings:** {count}
 - **Blocking Issues:** {count}
 - **Should Fix:** {count}
 - **Consider:** {count}
@@ -220,7 +264,7 @@ reasoning in a `<details>` block so the bullet stays one line.]
 
 ## Blocking Issues (must fix before merge)
 
-[For each finding:]
+[Standards pool. For each finding:]
 - **File:** `path/to/file.php` (lines N-M)
 - **Issue:** [description]
 - **Violates:** [requirement/convention with quote]

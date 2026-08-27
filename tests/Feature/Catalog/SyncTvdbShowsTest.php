@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Show;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
@@ -56,157 +59,300 @@ beforeEach(function (): void {
     config(['services.tvdb.key' => 'test-key']);
 });
 
-it('hydrates ids from the updates feed and persists them', function (): void {
-    // Arrange
-    fakeTvdbUpdates();
+describe('catalog:sync-shows-tvdb updates-feed hydration and marker', function (): void {
+    it('hydrates ids from the updates feed and persists them', function (): void {
+        // Arrange
+        fakeTvdbUpdates();
 
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
 
-    // Assert
-    expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+        // Assert
+        expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
+    });
+
+    it('queries /updates with since = the cached marker minus a 6h overlap', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        $marker = now()->subHours(10)->toImmutable();
+        Cache::forever(SyncFeed::TvdbShows->cacheKey(), $marker);
+        fakeTvdbUpdates();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
+
+        // Assert
+        Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'since='.$marker->subHours(6)->timestamp));
+    });
+
+    it('queries /updates with since = now minus 24h when no marker is cached', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTvdbUpdates();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
+
+        // Assert
+        Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'since='.now()->subHours(24)->timestamp));
+    });
+
+    it('advances the marker to run-start after a clean run', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTvdbUpdates();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
+
+        // Assert
+        expect(Cache::get(SyncFeed::TvdbShows->cacheKey())->equalTo(now()))->toBeTrue();
+    });
+
+    it('does not advance the marker when a hydrate fails', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
+                ? Http::response('', 500)
+                : Http::response('', 404),
+            '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+                ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
+        ]);
+
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
+
+        // Assert
+        expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBeNull();
+    });
+
+    it('does not advance the marker when a whole chunk fails', function (): void {
+        // Arrange
+        // Deliberate pair with the per-id test above: the marker must hold on BOTH failure
+        // paths. That one covers a pooled per-id miss; this one covers syncChunkSafely()'s
+        // catch — a 401 forgets the JWT and throws out of the pool, failing the whole chunk,
+        // and those chunk-wide ids are exactly the ones the marker gate depends on.
+        Date::setTestNow('2026-07-16 12:00:00');
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/*/extended*' => Http::response('', 401),
+            '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+                ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
+        ]);
+
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
+
+        // Assert
+        expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBeNull();
+    });
 });
 
-it('queries /updates with since = the cached marker minus a 6h overlap', function (): void {
-    // Arrange
-    Date::setTestNow('2026-07-16 12:00:00');
-    $marker = now()->subHours(10)->toImmutable();
-    Cache::forever(SyncFeed::TvdbShows->cacheKey(), $marker);
-    fakeTvdbUpdates();
+describe('catalog:sync-shows-tvdb feed scope and run output', function (): void {
+    it('uses the updates feed only and never crawls /series?page', function (): void {
+        // Arrange
+        fakeTvdbUpdates();
 
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
 
-    // Assert
-    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'since='.$marker->subHours(6)->timestamp));
+        // Assert
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
+    });
+
+    it('re-hydrates an already-synced show that appears in the window', function (): void {
+        // Arrange
+        Show::factory()->create(['_tvdb_id' => 434847, 'tvdb_synced_at' => now()]);
+        fakeTvdbUpdates();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
+
+        // Assert
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series/434847/extended'));
+    });
+
+    it('exits SUCCESS', function (): void {
+        // Arrange
+        fakeTvdbUpdates();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tvdb')->assertExitCode(0);
+    });
+
+    it('announces it is starting before the pipeline runs', function (): void {
+        // Arrange
+        fakeTvdbUpdates();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tvdb')->expectsOutputToContain('Syncing shows…');
+    });
 });
 
-it('queries /updates with since = now minus 24h when no marker is cached', function (): void {
-    // Arrange
-    Date::setTestNow('2026-07-16 12:00:00');
-    fakeTvdbUpdates();
+describe('catalog:sync-shows-tvdb season persistence', function (): void {
+    it('persists the hydrated show\'s seasons linked by show_id', function (): void {
+        // Arrange
+        fakeTvdbUpdates();
 
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
 
-    // Assert
-    Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'since='.now()->subHours(24)->timestamp));
+        // Assert
+        $show = Show::where('_tvdb_id', 81189)->firstOrFail();
+        expect($show->seasons()->count())->toBe(13);
+        $this->assertDatabaseHas('seasons', ['show_id' => $show->id, '_tvdb_id' => 30272, '_tvdb_number' => 1]);
+    });
+
+    it('makes no extra HTTP call beyond the existing /extended hydration for seasons', function (): void {
+        // Arrange
+        fakeTvdbUpdates();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb');
+
+        // Assert
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/seasons'));
+    });
 });
 
-it('advances the marker to run-start after a clean run', function (): void {
-    // Arrange
-    Date::setTestNow('2026-07-16 12:00:00');
-    fakeTvdbUpdates();
+/*
+|--------------------------------------------------------------------------
+| End-of-leg reindex
+|--------------------------------------------------------------------------
+| The ingest upserts through `Show::upsert()`, which fires no model events, so
+| nothing is indexed during the leg; the leg reindexes exactly the rows it
+| touched (updated_at >= run start) once, after ingest. Every test below freezes
+| the clock, which both pins the elapsed phase lines at `0s` and makes the
+| run-start watermark exactly equal to the `updated_at` the upsert writes.
+*/
 
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
+/**
+ * Stamp a row's `updated_at` without the model touching timestamps itself.
+ */
+$stampUpdatedAt = function (Show $row, CarbonImmutable $updatedAt): void {
+    $row->newQuery()->whereKey($row->getKey())->update(['updated_at' => $updatedAt]);
+};
 
-    // Assert
-    expect(Cache::get(SyncFeed::TvdbShows->cacheKey())->equalTo(now()))->toBeTrue();
-});
+describe('catalog:sync-shows-tvdb end-of-leg reindex', function () use ($stampUpdatedAt): void {
+    it('passes exactly the shows touched by the leg to the engine, once, at end of leg', function () use ($stampUpdatedAt): void {
+        // Arrange
+        // 9_000_001 is in neither the updates feed nor the extended payload, so this row
+        // is never re-upserted — only its stale updated_at keeps it out of the reindex.
+        Date::setTestNow('2026-07-16 12:00:00');
+        $stale = Show::factory()->withTvdb()->create(['_tvdb_id' => 9_000_001]);
+        $stampUpdatedAt($stale, CarbonImmutable::now()->subDay());
+        fakeTvdbUpdates();
+        $capturedChunks = spyOnScoutEngine();
 
-it('does not advance the marker when a hydrate fails', function (): void {
-    // Arrange
-    Date::setTestNow('2026-07-16 12:00:00');
-    Http::fake([
-        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
-            ? Http::response('', 500)
-            : Http::response('', 404),
-        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
-            ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
-            : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
-    ]);
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb')->run();
 
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
+        // Assert
+        $touched = Show::query()->where('_tvdb_id', 81189)->firstOrFail();
+        expect($capturedChunks())->toBe([[$touched->id]]);
+    });
 
-    // Assert
-    expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBeNull();
-});
+    it('emits the reindex heartbeat in the command output', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTvdbUpdates();
 
-it('does not advance the marker when a whole chunk fails', function (): void {
-    // Arrange
-    // Deliberate pair with the per-id test above: the marker must hold on BOTH failure
-    // paths. That one covers a pooled per-id miss; this one covers syncChunkSafely()'s
-    // catch — a 401 forgets the JWT and throws out of the pool, failing the whole chunk,
-    // and those chunk-wide ids are exactly the ones the marker gate depends on.
-    Date::setTestNow('2026-07-16 12:00:00');
-    Http::fake([
-        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-        '*api4.thetvdb.com/v4/series/*/extended*' => Http::response('', 401),
-        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
-            ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
-            : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
-    ]);
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tvdb')->expectsOutputToContain('  [reindex 1]');
+    });
 
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
+    it('prints the reindex phase lines with elapsed time', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTvdbUpdates();
 
-    // Assert
-    expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBeNull();
-});
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tvdb')
+            ->expectsOutputToContain('Reindexing shows…')
+            ->expectsOutputToContain('Reindexed 1 show in 0s');
+    });
 
-it('uses the updates feed only and never crawls /series?page', function (): void {
-    // Arrange
-    fakeTvdbUpdates();
+    it('prints the reindex phase lines in queued wording when scout queues its index writes', function (): void {
+        // Production runs SCOUT_QUEUE=true, where the phase only DISPATCHES the index
+        // writes — its elapsed seconds time the dispatch, not the indexing, so the
+        // lines must not claim the shows were indexed.
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        config(['scout.queue' => true]);
+        Queue::fake();
+        fakeTvdbUpdates();
 
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
+        // Act
+        Artisan::call('catalog:sync-shows-tvdb');
 
-    // Assert
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
-});
+        // Assert
+        expect(Artisan::output())
+            ->toContain('Queueing shows for reindex…')
+            ->toContain('  [reindex 1 queued]')
+            ->toContain('Queued 1 show for reindex in 0s');
+    });
 
-it('re-hydrates an already-synced show that appears in the window', function (): void {
-    // Arrange
-    Show::factory()->create(['_tvdb_id' => 434847, 'tvdb_synced_at' => now()]);
-    fakeTvdbUpdates();
+    it('prints the ingest completion line with elapsed time', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTvdbUpdates();
 
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tvdb')->expectsOutputToContain('Synced shows in 0s');
+    });
 
-    // Assert
-    Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series/434847/extended'));
-});
+    it('still reindexes the touched rows when a later hydrate fails', function (): void {
+        // Arrange
+        // Inverted twin of the marker-hold fake above: 434847 hydrates, every other id
+        // 500s, so the leg both persists one show and reports a failure.
+        Date::setTestNow('2026-07-16 12:00:00');
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
+                ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
+                : Http::response('', 500),
+            '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+                ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
+        ]);
+        $capturedChunks = spyOnScoutEngine();
 
-it('exits SUCCESS', function (): void {
-    // Arrange
-    fakeTvdbUpdates();
+        // Act
+        $this->artisan('catalog:sync-shows-tvdb')->run();
 
-    // Act & Assert
-    $this->artisan('catalog:sync-shows-tvdb')->assertExitCode(0);
-});
+        // Assert
+        $touched = Show::query()->where('_tvdb_id', 81189)->firstOrFail();
+        expect($capturedChunks())->toBe([[$touched->id]]);
+    });
 
-it('announces it is starting before the pipeline runs', function (): void {
-    // Arrange
-    fakeTvdbUpdates();
+    it('a window that hydrates nothing still prints every phase line and sends nothing to the engine', function (): void {
+        // Arrange
+        // Every /extended 404s: a quiet window, not a failed one — nothing is upserted
+        // yet the leg still runs its reindex phase and exits clean.
+        Date::setTestNow('2026-07-16 12:00:00');
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/*/extended*' => Http::response('', 404),
+            '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+                ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
+        ]);
+        $capturedChunks = spyOnScoutEngine();
 
-    // Act & Assert
-    $this->artisan('catalog:sync-shows-tvdb')->expectsOutputToContain('Syncing shows…');
-});
+        // Act
+        $exitCode = Artisan::call('catalog:sync-shows-tvdb');
 
-it('persists the hydrated show\'s seasons linked by show_id', function (): void {
-    // Arrange
-    fakeTvdbUpdates();
-
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
-
-    // Assert
-    $show = Show::where('_tvdb_id', 81189)->firstOrFail();
-    expect($show->seasons()->count())->toBe(13);
-    $this->assertDatabaseHas('seasons', ['show_id' => $show->id, '_tvdb_id' => 30272, '_tvdb_number' => 1]);
-});
-
-it('makes no extra HTTP call beyond the existing /extended hydration for seasons', function (): void {
-    // Arrange
-    fakeTvdbUpdates();
-
-    // Act
-    $this->artisan('catalog:sync-shows-tvdb');
-
-    // Assert
-    Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/seasons'));
+        // Assert
+        expect(Artisan::output())->toContain('Syncing shows…')
+            ->toContain('Synced shows in 0s')
+            ->toContain('Reindexing shows…')
+            ->toContain('Reindexed 0 shows in 0s')
+            ->and($capturedChunks())->toBe([])
+            ->and($exitCode)->toBe(0);
+    });
 });

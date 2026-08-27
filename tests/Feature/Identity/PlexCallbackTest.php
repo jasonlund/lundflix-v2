@@ -29,60 +29,62 @@ use Illuminate\Support\Facades\Http;
 | name must not quietly repoint this assertion.
 */
 
-it('forwards the guest to the registration form when the claimed PIN belongs to a user with server access', function (): void {
-    // Arrange
-    config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
-        '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-    ]);
-    $this->withSession(['plex_pin_id' => 538114995]);
+describe('auth.plex.callback happy path', function (): void {
+    it('forwards the guest to the registration form when the claimed PIN belongs to a user with server access', function (): void {
+        // Arrange
+        config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
+            '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
+            '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        ]);
+        $this->withSession(['plex_pin_id' => 538114995]);
 
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
 
-    // Assert
-    $response->assertRedirect('/register');
-});
+        // Assert
+        $response->assertRedirect('/register');
+    });
 
-it('stashes the verified Plex identity for the registration form', function (): void {
-    // Arrange
-    config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
-        '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-    ]);
-    $this->withSession(['plex_pin_id' => 538114995]);
+    it('stashes the verified Plex identity for the registration form', function (): void {
+        // Arrange
+        config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
+            '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
+            '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        ]);
+        $this->withSession(['plex_pin_id' => 538114995]);
 
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
 
-    // Assert
-    $response->assertSessionHas('plex_registration', [
-        'id' => 1001,
-        'uuid' => '0000000000000001',
-        'username' => 'plexuser1',
-        'email' => 'user1@example.com',
-        'thumb' => 'https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1',
-        'token' => 'REDACTED-authToken',
-    ]);
-});
+        // Assert
+        $response->assertSessionHas('plex_registration', [
+            'id' => 1001,
+            'uuid' => '0000000000000001',
+            'username' => 'plexuser1',
+            'email' => 'user1@example.com',
+            'thumb' => 'https://plex.tv/users/aaaaaaaaaaaaaaaa/avatar?c=1',
+            'token' => 'REDACTED-authToken',
+        ]);
+    });
 
-it('clears the consumed PIN id from the session', function (): void {
-    // Arrange
-    config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
-        '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-    ]);
-    $this->withSession(['plex_pin_id' => 538114995]);
+    it('clears the consumed PIN id from the session', function (): void {
+        // Arrange
+        config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
+            '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
+            '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        ]);
+        $this->withSession(['plex_pin_id' => 538114995]);
 
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
 
-    // Assert
-    $response->assertSessionMissing('plex_pin_id');
+        // Assert
+        $response->assertSessionMissing('plex_pin_id');
+    });
 });

@@ -79,327 +79,337 @@ uses(RefreshDatabase::class);
 | here (a 5xx is retried then read as empty leaves, never thrown).
 */
 
-it('upserts the plex server row', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
+describe('plex:seed row import', function (): void {
+    it('upserts the plex server row', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
 
-    // Act
-    $this->artisan('plex:seed')->run();
+        // Act
+        $this->artisan('plex:seed')->run();
 
-    // Assert
-    expect(PlexServer::query()->count())->toBe(1);
+        // Assert
+        expect(PlexServer::query()->count())->toBe(1);
+    });
+
+    it('imports the two library rows', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:seed')->run();
+
+        // Assert
+        expect(PlexLibrary::query()->count())->toBe(2);
+    });
+
+    it('imports the three movie rows', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:seed')->run();
+
+        // Assert
+        expect(PlexMovie::query()->count())->toBe(3);
+    });
+
+    it('imports the three show rows', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:seed')->run();
+
+        // Assert
+        expect(PlexShow::query()->count())->toBe(3);
+    });
 });
 
-it('imports the two library rows', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
+describe('plex:seed episode crawl & failure', function (): void {
+    // Both halves of a completed crawl, per show: the leaves were fetched, the
+    // watermark was stamped, and the rows landed owned by a real show, season, and
+    // server. preventAccessingMissingAttributes is not enabled anywhere in this app,
+    // so a column the crawl's show selection stops loading reads back as null rather
+    // than throwing — a too-narrow selection can only surface as zero episodes, an
+    // unowned row, or an unstamped watermark, never as a type error. The three
+    // columns under that net are the ones the consumers touch: id and
+    // plex_server_id (ReconcilePlexEpisodes' owner + match keys), and
+    // _plex_ratingKey (the fetch URL). The shared allLeaves fixture serves the same
+    // 24 ratingKeys to every show, so the episode rows are re-parented to whichever
+    // show was crawled last — hence the ownership assertion is over the crawled set,
+    // not per show.
+    it('crawls the episode leaves of every show and lands them under a crawled show', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
 
-    // Act
-    $this->artisan('plex:seed')->run();
+        // Act
+        $this->artisan('plex:seed')->run();
 
-    // Assert
-    expect(PlexLibrary::query()->count())->toBe(2);
+        // Assert
+        foreach (['34112', '27520', '32204'] as $ratingKey) {
+            Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), "/library/metadata/{$ratingKey}/allLeaves"));
+            expect(PlexShow::query()->where('_plex_ratingKey', $ratingKey)->sole()->episodes_synced_at)->not->toBeNull();
+        }
+        expect(PlexEpisode::query()->count())->toBe(24);
+        expect(PlexEpisode::query()
+            ->whereIn('plex_show_id', PlexShow::query()->pluck('id'))
+            ->whereIn('plex_server_id', PlexServer::query()->pluck('id'))
+            ->whereNotNull('plex_season_id')
+            ->count())->toBe(24);
+    });
+
+    it('imports the healthy shows despite one show failing', function (): void {
+        // Arrange
+        fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+
+        // Act
+        $this->artisan('plex:seed')->run();
+
+        // Assert
+        expect(PlexEpisode::query()->count())->toBeGreaterThan(0);
+    });
+
+    it('reports the failing show fetch instead of swallowing it', function (): void {
+        // Arrange
+        Exceptions::fake();
+        fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+
+        // Act
+        $this->artisan('plex:seed')->run();
+
+        // Assert
+        Exceptions::assertReported(PlexRequestFailed::class);
+    });
+
+    it('exits FAILURE when a show failed', function (): void {
+        // Arrange
+        fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+
+        // Act & Assert
+        $this->artisan('plex:seed')->assertExitCode(Command::FAILURE);
+    });
+
+    it('emits heartbeat output for each phase', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+
+        // Act & Assert
+        $this->artisan('plex:seed')
+            ->expectsOutputToContain('Connecting to Plex server')
+            ->expectsOutputToContain('[libraries 2]')
+            ->expectsOutputToContain('[movies 3]')
+            ->expectsOutputToContain('[shows 3]')
+            ->expectsOutputToContain('[episodes 72]')
+            ->expectsOutputToContain('Done.')
+            ->run();
+    });
 });
 
-it('imports the three movie rows', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
+describe('plex:seed announcement suppression', function (): void {
+    // The channel IS configured, so the silence is the seed's own policy rather
+    // than an unroutable notification: a first-time seed imports the entire library
+    // and would otherwise announce every row in it.
+    it('announces nothing even though it imports the whole library', function (): void {
+        // Arrange
+        Notification::fake();
+        config()->set('services.slack.notifications.channel', '#lundflix');
+        fakePlexSeedCrawl();
 
-    // Act
-    $this->artisan('plex:seed')->run();
+        // Act
+        $this->artisan('plex:seed')->run();
 
-    // Assert
-    expect(PlexMovie::query()->count())->toBe(3);
+        // Assert
+        Notification::assertNothingSent();
+    });
+
+    // The row counts are what keep this honest: "no pending rows" is vacuously true
+    // on an empty table, so the seed has to be proven to have inserted the rows it
+    // then declared already-announced.
+    it('leaves nothing pending for a later run to announce', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:seed')->run();
+
+        // Assert
+        expect(PlexMovie::query()->count())->toBe(3);
+        expect(PlexEpisode::query()->count())->toBeGreaterThan(0);
+        expect(PlexMovie::query()->whereNull('announced_at')->count())->toBe(0);
+        expect(PlexEpisode::query()->whereNull('announced_at')->count())->toBe(0);
+    });
+
+    // The seed speaks only for the server it just crawled, so a sibling server's
+    // backlog is somebody else's news — stamping it would silently drop rows
+    // SelectRipeAnnouncements can never reach again (it only ever selects nulls).
+    it('leaves another server pending', function (): void {
+        // Arrange
+        $other = PlexServer::factory()->create();
+        $library = PlexLibrary::factory()->create(['plex_server_id' => $other->id]);
+        $show = PlexShow::factory()->create(['plex_server_id' => $other->id, 'plex_library_id' => $library->id]);
+        $season = PlexSeason::factory()->create(['plex_show_id' => $show->id]);
+        $movie = PlexMovie::factory()->create([
+            'plex_server_id' => $other->id,
+            'plex_library_id' => $library->id,
+            'announced_at' => null,
+        ]);
+        $episode = PlexEpisode::factory()->create(['plex_season_id' => $season->id, 'announced_at' => null]);
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:seed')->run();
+
+        // Assert
+        expect($movie->refresh()->announced_at)->toBeNull();
+        expect($episode->refresh()->announced_at)->toBeNull();
+    });
+
+    // A seed that crashed mid-crawl leaves its own rows pending with an arrival time
+    // older than the retry, and the retry's upsert only updates them, so created_at
+    // still predates it. Those rows are the seed's own backlog: leaving them pending
+    // hands the whole stranded batch to the next sync as news. Arranged by writing
+    // created_at directly rather than travelling the clock.
+    it('stamps a row on its own server that predates the run', function (): void {
+        // Arrange
+        $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
+        $library = PlexLibrary::factory()->create([
+            'plex_server_id' => $server->id,
+            '_plex_key' => '1',
+            '_plex_type' => 'movie',
+        ]);
+        $movie = PlexMovie::factory()->create([
+            'plex_server_id' => $server->id,
+            'plex_library_id' => $library->id,
+            '_plex_ratingKey' => '26278',
+            'announced_at' => null,
+            'created_at' => now()->subMinute(),
+        ]);
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:seed')->run();
+
+        // Assert
+        expect($movie->refresh()->announced_at)->not->toBeNull();
+    });
 });
 
-it('imports the three show rows', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
+describe('plex:seed episode heartbeat cadence', function (): void {
+    it('emits an episode-count heartbeat every 100 episodes', function (): void {
+        // Arrange
+        fakePlexSeedCrawl(showSection: 'PlexLibrary/plex/section_show_all_twelve_includeGuids.json');
 
-    // Act
-    $this->artisan('plex:seed')->run();
-
-    // Assert
-    expect(PlexShow::query()->count())->toBe(3);
+        // Act & Assert
+        $this->artisan('plex:seed')
+            ->doesntExpectOutputToContain('[episodes 120]')
+            ->doesntExpectOutputToContain('[episodes 216]')
+            ->expectsOutputToContain('[episodes 100]')
+            ->expectsOutputToContain('[episodes 200]')
+            ->expectsOutputToContain('[episodes 288]')
+            ->run();
+    });
 });
 
-// Both halves of a completed crawl, per show: the leaves were fetched, the
-// watermark was stamped, and the rows landed owned by a real show, season, and
-// server. preventAccessingMissingAttributes is not enabled anywhere in this app,
-// so a column the crawl's show selection stops loading reads back as null rather
-// than throwing — a too-narrow selection can only surface as zero episodes, an
-// unowned row, or an unstamped watermark, never as a type error. The three
-// columns under that net are the ones the consumers touch: id and
-// plex_server_id (ReconcilePlexEpisodes' owner + match keys), and
-// _plex_ratingKey (the fetch URL). The shared allLeaves fixture serves the same
-// 24 ratingKeys to every show, so the episode rows are re-parented to whichever
-// show was crawled last — hence the ownership assertion is over the crawled set,
-// not per show.
-it('crawls the episode leaves of every show and lands them under a crawled show', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
+describe('plex:seed multi-page movie walk', function (): void {
+    it('imports every row of every page of a multi-page movie library', function (): void {
+        // Arrange
+        fakePlexSeedCrawl(movieSectionPages: [
+            'PlexLibrary/plex/section_all_page1.json',
+            'PlexLibrary/plex/section_all_page2.json',
+        ]);
 
-    // Act
-    $this->artisan('plex:seed')->run();
+        // Act
+        $this->artisan('plex:seed')->run();
 
-    // Assert
-    foreach (['34112', '27520', '32204'] as $ratingKey) {
-        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), "/library/metadata/{$ratingKey}/allLeaves"));
-        expect(PlexShow::query()->where('_plex_ratingKey', $ratingKey)->sole()->episodes_synced_at)->not->toBeNull();
-    }
-    expect(PlexEpisode::query()->count())->toBe(24);
-    expect(PlexEpisode::query()
-        ->whereIn('plex_show_id', PlexShow::query()->pluck('id'))
-        ->whereIn('plex_server_id', PlexServer::query()->pluck('id'))
-        ->whereNotNull('plex_season_id')
-        ->count())->toBe(24);
-});
+        // Assert
+        expect(PlexMovie::query()->pluck('_plex_ratingKey')->all())
+            ->toEqualCanonicalizing(['26278', '36080', '32202']);
+    });
 
-it('imports the healthy shows despite one show failing', function (): void {
-    // Arrange
-    fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+    it('stamps every page of one movie library with a single synced_at', function (): void {
+        // Arrange
+        $this->freezeTime();
+        fakePlexSeedCrawl(movieSectionPages: [
+            'PlexLibrary/plex/section_all_page1.json',
+            function () {
+                // The clock moves only at the page boundary, so a $now taken per page
+                // instead of per library lands page 2 on a second distinct stamp — and
+                // the sweep that follows would then delete page 1.
+                $this->travel(1)->second();
 
-    // Act
-    $this->artisan('plex:seed')->run();
+                return Http::response(fixtureBytes('PlexLibrary/plex/section_all_page2.json'));
+            },
+        ]);
 
-    // Assert
-    expect(PlexEpisode::query()->count())->toBeGreaterThan(0);
-});
+        // Act
+        $this->artisan('plex:seed')->run();
 
-it('reports the failing show fetch instead of swallowing it', function (): void {
-    // Arrange
-    Exceptions::fake();
-    fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+        // Assert
+        expect(PlexMovie::query()->count())->toBe(3);
+        expect(PlexMovie::query()->pluck('synced_at')->unique()->all())->toHaveCount(1);
+    });
 
-    // Act
-    $this->artisan('plex:seed')->run();
+    // The ordering the heartbeat exists for: on a production-sized section the loop
+    // runs for hours, so a beat that only fires once the whole library is walked is
+    // silence, not liveness. Asserted at the seam it can only be observed at — the
+    // output already written when the NEXT page is requested — since a post-hoc read
+    // of the finished output cannot tell a per-page beat from one final burst.
+    it('heartbeats each page of a movie library as it lands, not after the whole library', function (): void {
+        // Arrange
+        $page = fn (int $firstKey): string => json_encode(['MediaContainer' => ['size' => 100, 'totalSize' => 200, 'Metadata' => collect(range($firstKey, $firstKey + 99))
+            ->map(fn (int $key): array => [
+                'ratingKey' => (string) $key,
+                'guid' => "plex://movie/{$key}",
+                'title' => "Synthetic Movie {$key}",
+                'type' => 'movie',
+            ])->all()]]);
+        $console = new BufferedOutput;
+        $writtenWhenSecondPageWasRequested = '';
+        fakePlexSeedCrawl(movieSectionPages: [
+            fn (): PromiseInterface => Http::response($page(900001)),
+            function () use ($console, $page, &$writtenWhenSecondPageWasRequested): PromiseInterface {
+                $writtenWhenSecondPageWasRequested = $console->fetch();
 
-    // Assert
-    Exceptions::assertReported(PlexRequestFailed::class);
-});
+                return Http::response($page(900101));
+            },
+        ]);
 
-it('exits FAILURE when a show failed', function (): void {
-    // Arrange
-    fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+        // Act
+        Artisan::call('plex:seed', [], $console);
 
-    // Act & Assert
-    $this->artisan('plex:seed')->assertExitCode(Command::FAILURE);
-});
+        // Assert
+        expect($writtenWhenSecondPageWasRequested)->toContain('[movies 100]');
+        expect($console->fetch())->toContain('[movies 200]');
+    });
 
-it('emits heartbeat output for each phase', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
+    it('keeps the pages already read and prunes nothing when a page fetch fails mid-walk', function (): void {
+        // Arrange
+        $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
+        $library = PlexLibrary::factory()->create(['plex_server_id' => $server->id, '_plex_key' => '1', '_plex_type' => 'movie']);
+        staleMovie($server, $library, '11111');
+        fakePlexSeedCrawl(movieSectionPages: ['PlexLibrary/plex/section_all_page1.json'], failMoviePage: 2);
 
-    // Act & Assert
-    $this->artisan('plex:seed')
-        ->expectsOutputToContain('Connecting to Plex server')
-        ->expectsOutputToContain('[libraries 2]')
-        ->expectsOutputToContain('[movies 3]')
-        ->expectsOutputToContain('[shows 3]')
-        ->expectsOutputToContain('[episodes 72]')
-        ->expectsOutputToContain('Done.')
-        ->run();
-});
+        // Act & Assert
+        expect(fn () => $this->artisan('plex:seed')->run())->toThrow(PlexRequestFailed::class);
+        expect(PlexMovie::query()->pluck('_plex_ratingKey')->all())
+            ->toEqualCanonicalizing(['26278', '36080', '11111']);
+    });
 
-// The channel IS configured, so the silence is the seed's own policy rather
-// than an unroutable notification: a first-time seed imports the entire library
-// and would otherwise announce every row in it.
-it('announces nothing even though it imports the whole library', function (): void {
-    // Arrange
-    Notification::fake();
-    config()->set('services.slack.notifications.channel', '#lundflix');
-    fakePlexSeedCrawl();
+    it('prunes a movie that vanished from the section once the walk completes', function (): void {
+        // Arrange
+        $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
+        $library = PlexLibrary::factory()->create(['plex_server_id' => $server->id, '_plex_key' => '1', '_plex_type' => 'movie']);
+        staleMovie($server, $library, '11111');
+        fakePlexSeedCrawl(movieSectionPages: [
+            'PlexLibrary/plex/section_all_page1.json',
+            'PlexLibrary/plex/section_all_page2.json',
+        ]);
 
-    // Act
-    $this->artisan('plex:seed')->run();
+        // Act
+        $this->artisan('plex:seed')->run();
 
-    // Assert
-    Notification::assertNothingSent();
-});
-
-// The row counts are what keep this honest: "no pending rows" is vacuously true
-// on an empty table, so the seed has to be proven to have inserted the rows it
-// then declared already-announced.
-it('leaves nothing pending for a later run to announce', function (): void {
-    // Arrange
-    fakePlexSeedCrawl();
-
-    // Act
-    $this->artisan('plex:seed')->run();
-
-    // Assert
-    expect(PlexMovie::query()->count())->toBe(3);
-    expect(PlexEpisode::query()->count())->toBeGreaterThan(0);
-    expect(PlexMovie::query()->whereNull('announced_at')->count())->toBe(0);
-    expect(PlexEpisode::query()->whereNull('announced_at')->count())->toBe(0);
-});
-
-// The seed speaks only for the server it just crawled, so a sibling server's
-// backlog is somebody else's news — stamping it would silently drop rows
-// SelectRipeAnnouncements can never reach again (it only ever selects nulls).
-it('leaves another server pending', function (): void {
-    // Arrange
-    $other = PlexServer::factory()->create();
-    $library = PlexLibrary::factory()->create(['plex_server_id' => $other->id]);
-    $show = PlexShow::factory()->create(['plex_server_id' => $other->id, 'plex_library_id' => $library->id]);
-    $season = PlexSeason::factory()->create(['plex_show_id' => $show->id]);
-    $movie = PlexMovie::factory()->create([
-        'plex_server_id' => $other->id,
-        'plex_library_id' => $library->id,
-        'announced_at' => null,
-    ]);
-    $episode = PlexEpisode::factory()->create(['plex_season_id' => $season->id, 'announced_at' => null]);
-    fakePlexSeedCrawl();
-
-    // Act
-    $this->artisan('plex:seed')->run();
-
-    // Assert
-    expect($movie->refresh()->announced_at)->toBeNull();
-    expect($episode->refresh()->announced_at)->toBeNull();
-});
-
-// A seed that crashed mid-crawl leaves its own rows pending with an arrival time
-// older than the retry, and the retry's upsert only updates them, so created_at
-// still predates it. Those rows are the seed's own backlog: leaving them pending
-// hands the whole stranded batch to the next sync as news. Arranged by writing
-// created_at directly rather than travelling the clock.
-it('stamps a row on its own server that predates the run', function (): void {
-    // Arrange
-    $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
-    $library = PlexLibrary::factory()->create([
-        'plex_server_id' => $server->id,
-        '_plex_key' => '1',
-        '_plex_type' => 'movie',
-    ]);
-    $movie = PlexMovie::factory()->create([
-        'plex_server_id' => $server->id,
-        'plex_library_id' => $library->id,
-        '_plex_ratingKey' => '26278',
-        'announced_at' => null,
-        'created_at' => now()->subMinute(),
-    ]);
-    fakePlexSeedCrawl();
-
-    // Act
-    $this->artisan('plex:seed')->run();
-
-    // Assert
-    expect($movie->refresh()->announced_at)->not->toBeNull();
-});
-
-it('emits an episode-count heartbeat every 100 episodes', function (): void {
-    // Arrange
-    fakePlexSeedCrawl(showSection: 'PlexLibrary/plex/section_show_all_twelve_includeGuids.json');
-
-    // Act & Assert
-    $this->artisan('plex:seed')
-        ->doesntExpectOutputToContain('[episodes 120]')
-        ->doesntExpectOutputToContain('[episodes 216]')
-        ->expectsOutputToContain('[episodes 100]')
-        ->expectsOutputToContain('[episodes 200]')
-        ->expectsOutputToContain('[episodes 288]')
-        ->run();
-});
-
-it('imports every row of every page of a multi-page movie library', function (): void {
-    // Arrange
-    fakePlexSeedCrawl(movieSectionPages: [
-        'PlexLibrary/plex/section_all_page1.json',
-        'PlexLibrary/plex/section_all_page2.json',
-    ]);
-
-    // Act
-    $this->artisan('plex:seed')->run();
-
-    // Assert
-    expect(PlexMovie::query()->pluck('_plex_ratingKey')->all())
-        ->toEqualCanonicalizing(['26278', '36080', '32202']);
-});
-
-it('stamps every page of one movie library with a single synced_at', function (): void {
-    // Arrange
-    $this->freezeTime();
-    fakePlexSeedCrawl(movieSectionPages: [
-        'PlexLibrary/plex/section_all_page1.json',
-        function () {
-            // The clock moves only at the page boundary, so a $now taken per page
-            // instead of per library lands page 2 on a second distinct stamp — and
-            // the sweep that follows would then delete page 1.
-            $this->travel(1)->second();
-
-            return Http::response(fixtureBytes('PlexLibrary/plex/section_all_page2.json'));
-        },
-    ]);
-
-    // Act
-    $this->artisan('plex:seed')->run();
-
-    // Assert
-    expect(PlexMovie::query()->count())->toBe(3);
-    expect(PlexMovie::query()->pluck('synced_at')->unique()->all())->toHaveCount(1);
-});
-
-// The ordering the heartbeat exists for: on a production-sized section the loop
-// runs for hours, so a beat that only fires once the whole library is walked is
-// silence, not liveness. Asserted at the seam it can only be observed at — the
-// output already written when the NEXT page is requested — since a post-hoc read
-// of the finished output cannot tell a per-page beat from one final burst.
-it('heartbeats each page of a movie library as it lands, not after the whole library', function (): void {
-    // Arrange
-    $page = fn (int $firstKey): string => json_encode(['MediaContainer' => ['size' => 100, 'totalSize' => 200, 'Metadata' => collect(range($firstKey, $firstKey + 99))
-        ->map(fn (int $key): array => [
-            'ratingKey' => (string) $key,
-            'guid' => "plex://movie/{$key}",
-            'title' => "Synthetic Movie {$key}",
-            'type' => 'movie',
-        ])->all()]]);
-    $console = new BufferedOutput;
-    $writtenWhenSecondPageWasRequested = '';
-    fakePlexSeedCrawl(movieSectionPages: [
-        fn (): PromiseInterface => Http::response($page(900001)),
-        function () use ($console, $page, &$writtenWhenSecondPageWasRequested): PromiseInterface {
-            $writtenWhenSecondPageWasRequested = $console->fetch();
-
-            return Http::response($page(900101));
-        },
-    ]);
-
-    // Act
-    Artisan::call('plex:seed', [], $console);
-
-    // Assert
-    expect($writtenWhenSecondPageWasRequested)->toContain('[movies 100]');
-    expect($console->fetch())->toContain('[movies 200]');
-});
-
-it('keeps the pages already read and prunes nothing when a page fetch fails mid-walk', function (): void {
-    // Arrange
-    $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
-    $library = PlexLibrary::factory()->create(['plex_server_id' => $server->id, '_plex_key' => '1', '_plex_type' => 'movie']);
-    staleMovie($server, $library, '11111');
-    fakePlexSeedCrawl(movieSectionPages: ['PlexLibrary/plex/section_all_page1.json'], failMoviePage: 2);
-
-    // Act & Assert
-    expect(fn () => $this->artisan('plex:seed')->run())->toThrow(PlexRequestFailed::class);
-    expect(PlexMovie::query()->pluck('_plex_ratingKey')->all())
-        ->toEqualCanonicalizing(['26278', '36080', '11111']);
-});
-
-it('prunes a movie that vanished from the section once the walk completes', function (): void {
-    // Arrange
-    $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
-    $library = PlexLibrary::factory()->create(['plex_server_id' => $server->id, '_plex_key' => '1', '_plex_type' => 'movie']);
-    staleMovie($server, $library, '11111');
-    fakePlexSeedCrawl(movieSectionPages: [
-        'PlexLibrary/plex/section_all_page1.json',
-        'PlexLibrary/plex/section_all_page2.json',
-    ]);
-
-    // Act
-    $this->artisan('plex:seed')->run();
-
-    // Assert
-    expect(PlexMovie::query()->pluck('_plex_ratingKey')->all())
-        ->toEqualCanonicalizing(['26278', '36080', '32202']);
+        // Assert
+        expect(PlexMovie::query()->pluck('_plex_ratingKey')->all())
+            ->toEqualCanonicalizing(['26278', '36080', '32202']);
+    });
 });

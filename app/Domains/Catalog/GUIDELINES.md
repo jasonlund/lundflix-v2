@@ -36,8 +36,11 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
 
 ## IMDb dataset ingest (`catalog:sync-ratings` / `-titles` / `-akas`)
 
-Three commands, one per title-level dataset, all keyed `tconst` → `_imdb_id` and
-all last in the `catalog:sync` order (TMDB/TVDB create the rows; IMDb enriches).
+Three commands, one per title-level dataset, all keyed `tconst` → `_imdb_id`. They
+run under the daily `catalog:sync-imdb` wrapper (`SyncImdbCatalog`), not inside
+`catalog:sync` — the datasets are far too large to pull on that twice-daily sync.
+Each is gated on its own `Last-Modified` header, so an unchanged dataset skips in
+seconds. TMDB/TVDB still create the rows; IMDb enriches them.
 
 - **Titles and akas write only rows already in the catalog, and decide that per
   batch** — every streamed row/group is buffered, and `flush()` resolves membership
@@ -72,8 +75,13 @@ all last in the `catalog:sync` order (TMDB/TVDB create the rows; IMDb enriches).
 ## Bulk CASE updates (`Support\BulkCaseUpdate`)
 
 All three IMDb ingest actions write via one bulk `CASE _imdb_id WHEN … END`
-update per table, returning the matched ids (the caller then `->searchable()`s
-them). CASE bindings live in the query's **join**-binding slot and are appended,
+update per table, returning the matched ids. The caller does **not** index them —
+search indexing is deferred to one watermark pass at the end of the whole
+`catalog:sync-imdb` run, which is why the update also stamps `updated_at` (a bare
+`toBase()->update()` would not, and the watermark would miss every row it wrote).
+A leg run standalone (`catalog:sync-ratings` and friends) therefore does not
+reindex; only the wrapper does. CASE bindings live in the query's
+**join**-binding slot and are appended,
 never replaced — see the in-code comment for the ordering mechanics before
 touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
 (`_imdb_genres`, `_imdb_akas`) must be json-encoded on the way in.

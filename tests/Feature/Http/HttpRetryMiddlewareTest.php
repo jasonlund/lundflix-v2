@@ -18,69 +18,71 @@ use Illuminate\Support\Facades\Http;
 | 0 so the suite stays sleep-free.
 */
 
-it('retries a transient 429 through to the eventual 200', function (): void {
-    Http::fake(['retry.test/*' => Http::sequence()
-        ->push('', 429, ['Retry-After' => '0'])
-        ->push('{"ok":true}', 200)]);
+describe('global retry middleware retry behavior', function (): void {
+    it('retries a transient 429 through to the eventual 200', function (): void {
+        Http::fake(['retry.test/*' => Http::sequence()
+            ->push('', 429, ['Retry-After' => '0'])
+            ->push('{"ok":true}', 200)]);
 
-    $response = Http::get('https://retry.test/ping');
+        $response = Http::get('https://retry.test/ping');
 
-    Http::assertSentCount(2);
-    expect($response->json())->toBe(['ok' => true]);
-});
+        Http::assertSentCount(2);
+        expect($response->json())->toBe(['ok' => true]);
+    });
 
-it('retries a transient 500 through to the eventual 200', function (): void {
-    Http::fake(['retry.test/*' => Http::sequence()
-        ->push('', 500)
-        ->push('{"ok":true}', 200)]);
+    it('retries a transient 500 through to the eventual 200', function (): void {
+        Http::fake(['retry.test/*' => Http::sequence()
+            ->push('', 500)
+            ->push('{"ok":true}', 200)]);
 
-    $response = Http::get('https://retry.test/ping');
+        $response = Http::get('https://retry.test/ping');
 
-    Http::assertSentCount(2);
-    expect($response->json())->toBe(['ok' => true]);
-});
+        Http::assertSentCount(2);
+        expect($response->json())->toBe(['ok' => true]);
+    });
 
-it('retries a 5xx outside the library default status filter', function (): void {
-    Http::fake(['retry.test/*' => Http::sequence()
-        ->push('', 502)
-        ->push('{"ok":true}', 200)]);
+    it('retries a 5xx outside the library default status filter', function (): void {
+        Http::fake(['retry.test/*' => Http::sequence()
+            ->push('', 502)
+            ->push('{"ok":true}', 200)]);
 
-    $response = Http::get('https://retry.test/ping');
+        $response = Http::get('https://retry.test/ping');
 
-    Http::assertSentCount(2);
-    expect($response->json())->toBe(['ok' => true]);
-});
+        Http::assertSentCount(2);
+        expect($response->json())->toBe(['ok' => true]);
+    });
 
-it('sends a first-try 200 only once', function (): void {
-    Http::fake(['retry.test/*' => Http::response('{"ok":true}', 200)]);
+    it('sends a first-try 200 only once', function (): void {
+        Http::fake(['retry.test/*' => Http::response('{"ok":true}', 200)]);
 
-    Http::get('https://retry.test/ping');
+        Http::get('https://retry.test/ping');
 
-    Http::assertSentCount(1);
-});
+        Http::assertSentCount(1);
+    });
 
-it('caps retries at two attempts on a persistent 500', function (): void {
-    Http::fake(['retry.test/*' => Http::response('', 500)]);
+    it('caps retries at two attempts on a persistent 500', function (): void {
+        Http::fake(['retry.test/*' => Http::response('', 500)]);
 
-    Http::get('https://retry.test/ping');
+        Http::get('https://retry.test/ping');
 
-    Http::assertSentCount(3);
-});
+        Http::assertSentCount(3);
+    });
 
-it('caps retries at two attempts on a persistent 429', function (): void {
-    Http::fake(['retry.test/*' => Http::response('', 429, ['Retry-After' => '0'])]);
+    it('caps retries at two attempts on a persistent 429', function (): void {
+        Http::fake(['retry.test/*' => Http::response('', 429, ['Retry-After' => '0'])]);
 
-    Http::get('https://retry.test/ping');
+        Http::get('https://retry.test/ping');
 
-    Http::assertSentCount(3);
-});
+        Http::assertSentCount(3);
+    });
 
-it('does not retry a 404', function (): void {
-    Http::fake(['retry.test/*' => Http::response('', 404)]);
+    it('does not retry a 404', function (): void {
+        Http::fake(['retry.test/*' => Http::response('', 404)]);
 
-    Http::get('https://retry.test/ping');
+        Http::get('https://retry.test/ping');
 
-    Http::assertSentCount(1);
+        Http::assertSentCount(1);
+    });
 });
 
 /*
@@ -95,19 +97,21 @@ it('does not retry a 404', function (): void {
 | middleware is applied and configured correctly (below).
 */
 
-it('registers a global retry middleware on the HTTP client', function (): void {
-    $middleware = Http::getGlobalMiddleware();
+describe('global retry middleware registration and options', function (): void {
+    it('registers a global retry middleware on the HTTP client', function (): void {
+        $middleware = Http::getGlobalMiddleware();
 
-    expect($middleware)->not->toBeEmpty();
-});
+        expect($middleware)->not->toBeEmpty();
+    });
 
-it('configures connection-timeout retry capped at two attempts', function (): void {
-    $options = HttpClientServiceProvider::retryOptions();
+    it('configures connection-timeout retry capped at two attempts', function (): void {
+        $options = HttpClientServiceProvider::retryOptions();
 
-    expect($options)->toMatchArray([
-        'retry_on_timeout' => true,
-        'max_retry_attempts' => 2,
-    ])
-        ->and($options['default_retry_multiplier'])->toBe((float) config('services.http_retry.retry_multiplier'))
-        ->and($options['should_retry_callback'])->toBeCallable();
+        expect($options)->toMatchArray([
+            'retry_on_timeout' => true,
+            'max_retry_attempts' => 2,
+        ])
+            ->and($options['default_retry_multiplier'])->toBe((float) config('services.http_retry.retry_multiplier'))
+            ->and($options['should_retry_callback'])->toBeCallable();
+    });
 });

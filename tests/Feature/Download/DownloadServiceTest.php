@@ -46,91 +46,93 @@ uses(RefreshDatabase::class);
 |   is the string `do-login.php`.
 */
 
-it('sends the uid/pass cookie from DownloadSettings', function (): void {
-    // Arrange
-    Storage::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response('ok', 200)]);
+describe('download() credentials & error mapping', function (): void {
+    it('sends the uid/pass cookie from DownloadSettings', function (): void {
+        // Arrange
+        Storage::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response('ok', 200)]);
 
-    // Act
-    resolve(DownloadService::class)->download(7537888, 'x.bin');
+        // Act
+        resolve(DownloadService::class)->download(7537888, 'x.bin');
 
-    // Assert
-    Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=cookie-uid; pass=cookie-pass'));
-});
+        // Assert
+        Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=cookie-uid; pass=cookie-pass'));
+    });
 
-it('falls back to the env/config credential when settings are blank', function (): void {
-    // Arrange
-    // no operator value stored → settings resolve to empty; env DOWNLOADS_UID/PASS is test-uid/test-pass
-    Storage::fake();
-    Http::fake(['*' => Http::response('ok', 200)]);
+    it('falls back to the env/config credential when settings are blank', function (): void {
+        // Arrange
+        // no operator value stored → settings resolve to empty; env DOWNLOADS_UID/PASS is test-uid/test-pass
+        Storage::fake();
+        Http::fake(['*' => Http::response('ok', 200)]);
 
-    // Act
-    resolve(DownloadService::class)->download(7537888, 'x.bin');
+        // Act
+        resolve(DownloadService::class)->download(7537888, 'x.bin');
 
-    // Assert
-    Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=test-uid; pass=test-pass'));
-});
+        // Assert
+        Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=test-uid; pass=test-pass'));
+    });
 
-it('prefers a stored setting over the env credential', function (): void {
-    // Arrange
-    Storage::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'op-uid';
-    $settings->pass = 'op-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response('ok', 200)]);
+    it('prefers a stored setting over the env credential', function (): void {
+        // Arrange
+        Storage::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'op-uid';
+        $settings->pass = 'op-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response('ok', 200)]);
 
-    // Act
-    resolve(DownloadService::class)->download(7537888, 'x.bin');
+        // Act
+        resolve(DownloadService::class)->download(7537888, 'x.bin');
 
-    // Assert
-    Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=op-uid; pass=op-pass'));
-});
+        // Assert
+        Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=op-uid; pass=op-pass'));
+    });
 
-it('takes the stored pair verbatim when only one stored half is set', function (): void {
-    // Arrange
-    // operator has begun configuring: stored uid filled, stored pass still blank —
-    // the pair must come wholly from storage (blank pass), never the env pass
-    Storage::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'op-uid';
-    $settings->pass = '';
-    $settings->save();
-    Http::fake(['*' => Http::response('ok', 200)]);
+    it('takes the stored pair verbatim when only one stored half is set', function (): void {
+        // Arrange
+        // operator has begun configuring: stored uid filled, stored pass still blank —
+        // the pair must come wholly from storage (blank pass), never the env pass
+        Storage::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'op-uid';
+        $settings->pass = '';
+        $settings->save();
+        Http::fake(['*' => Http::response('ok', 200)]);
 
-    // Act
-    resolve(DownloadService::class)->download(7537888, 'x.bin');
+        // Act
+        resolve(DownloadService::class)->download(7537888, 'x.bin');
 
-    // Assert
-    Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=op-uid; pass='));
-});
+        // Assert
+        Http::assertSent(fn ($request) => $request->hasHeader('Cookie', 'uid=op-uid; pass='));
+    });
 
-it('throws InvalidDownloadCredentials when the response is the login page', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/login.html'), 200)]);
+    it('throws InvalidDownloadCredentials when the response is the login page', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/login.html'), 200)]);
 
-    // Act & Assert
-    expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(InvalidDownloadCredentials::class);
-});
+        // Act & Assert
+        expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(InvalidDownloadCredentials::class);
+    });
 
-it('throws DownloadRequestFailed on a non-2xx response', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response('', 500)]);
+    it('throws DownloadRequestFailed on a non-2xx response', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response('', 500)]);
 
-    // Act & Assert
-    expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(DownloadRequestFailed::class);
+        // Act & Assert
+        expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(DownloadRequestFailed::class);
+    });
 });
 
 /*
@@ -145,65 +147,67 @@ it('throws DownloadRequestFailed on a non-2xx response', function (): void {
 |     download file bytes.
 */
 
-it('stores the download bytes and returns the path', function (): void {
-    // Arrange
-    Storage::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/sample.bin'), 200)]);
+describe('download() file storage', function (): void {
+    it('stores the download bytes and returns the path', function (): void {
+        // Arrange
+        Storage::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/sample.bin'), 200)]);
 
-    // Act
-    $path = resolve(DownloadService::class)->download(7537888, 'the-matrix-reloaded.bin');
+        // Act
+        $path = resolve(DownloadService::class)->download(7537888, 'the-matrix-reloaded.bin');
 
-    // Assert
-    expect($path)->toBe('downloads/the-matrix-reloaded.bin');
-    Storage::disk()->assertExists('downloads/the-matrix-reloaded.bin');
-    expect(Storage::disk()->get('downloads/the-matrix-reloaded.bin'))->toBe(fixtureBytes('Download/downloads/sample.bin'));
-});
+        // Assert
+        expect($path)->toBe('downloads/the-matrix-reloaded.bin');
+        Storage::disk()->assertExists('downloads/the-matrix-reloaded.bin');
+        expect(Storage::disk()->get('downloads/the-matrix-reloaded.bin'))->toBe(fixtureBytes('Download/downloads/sample.bin'));
+    });
 
-it('requests the correct download URL', function (): void {
-    // Arrange
-    Storage::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/sample.bin'), 200)]);
+    it('requests the correct download URL', function (): void {
+        // Arrange
+        Storage::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/sample.bin'), 200)]);
 
-    // Act
-    resolve(DownloadService::class)->download(7537888, 'x.bin');
+        // Act
+        resolve(DownloadService::class)->download(7537888, 'x.bin');
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/download.php/7537888/'));
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/download.php/7537888/'));
+    });
 
-it('maps a failed download to DownloadRequestFailed', function (): void {
-    // Arrange
-    Storage::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response('', 500)]);
+    it('maps a failed download to DownloadRequestFailed', function (): void {
+        // Arrange
+        Storage::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response('', 500)]);
 
-    // Act & Assert
-    expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(DownloadRequestFailed::class);
-});
+        // Act & Assert
+        expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(DownloadRequestFailed::class);
+    });
 
-it('maps a failed disk write to DownloadRequestFailed', function (): void {
-    // Arrange
-    // Storage::put returns false when the write fails; the path must NOT be reported as success
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response('data', 200)]);
-    Storage::shouldReceive('put')->once()->andReturnFalse();
+    it('maps a failed disk write to DownloadRequestFailed', function (): void {
+        // Arrange
+        // Storage::put returns false when the write fails; the path must NOT be reported as success
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response('data', 200)]);
+        Storage::shouldReceive('put')->once()->andReturnFalse();
 
-    // Act & Assert
-    expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(DownloadRequestFailed::class);
+        // Act & Assert
+        expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(DownloadRequestFailed::class);
+    });
 });
 
 /*
@@ -218,25 +222,27 @@ it('maps a failed disk write to DownloadRequestFailed', function (): void {
 | filename, and drive download() with it.
 */
 
-it('round-trips a parser-produced filename unchanged into the download request path', function (): void {
-    // Arrange
-    Storage::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake([
-        '*/download.php/*' => Http::response(fixtureBytes('Download/downloads/sample.bin'), 200),
-        '*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200),
-    ]);
-    $service = resolve(DownloadService::class);
-    $row = $service->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
+describe('download() filename round-trip', function (): void {
+    it('round-trips a parser-produced filename unchanged into the download request path', function (): void {
+        // Arrange
+        Storage::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake([
+            '*/download.php/*' => Http::response(fixtureBytes('Download/downloads/sample.bin'), 200),
+            '*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200),
+        ]);
+        $service = resolve(DownloadService::class);
+        $row = $service->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
 
-    // Act
-    $service->download($row->downloadId, $row->filename);
+        // Act
+        $service->download($row->downloadId, $row->filename);
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::endsWith((string) $request->url(), '/download.php/'.$row->downloadId.'/'.$row->filename));
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::endsWith((string) $request->url(), '/download.php/'.$row->downloadId.'/'.$row->filename));
+    });
 });
 
 /*
@@ -257,159 +263,161 @@ it('round-trips a parser-produced filename unchanged into the download request p
 | tests/Feature/Download/RequestThrottleTest.php.
 */
 
-it('retries a transient 429 through to the eventual 200', function (): void {
-    // Arrange
-    Storage::fake();
-    Cache::flush();
-    Sleep::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::sequence()
-        ->push('', 429, ['Retry-After' => '0'])
-        ->push(fixtureBytes('Download/downloads/sample.bin'), 200)]);
+describe('download() retry & throttle', function (): void {
+    it('retries a transient 429 through to the eventual 200', function (): void {
+        // Arrange
+        Storage::fake();
+        Cache::flush();
+        Sleep::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::sequence()
+            ->push('', 429, ['Retry-After' => '0'])
+            ->push(fixtureBytes('Download/downloads/sample.bin'), 200)]);
 
-    // Act
-    $path = resolve(DownloadService::class)->download(7537888, 'x.bin');
+        // Act
+        $path = resolve(DownloadService::class)->download(7537888, 'x.bin');
 
-    // Assert
-    expect($path)->toBe('downloads/x.bin');
-    Http::assertSentCount(2);
-});
-
-it('logs a warning for the retried 429 including the URL and status', function (): void {
-    // Arrange
-    Storage::fake();
-    Cache::flush();
-    Sleep::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::sequence()
-        ->push('', 429, ['Retry-After' => '0'])
-        ->push(fixtureBytes('Download/downloads/sample.bin'), 200)]);
-    $spy = Log::spy();
-
-    // Act
-    resolve(DownloadService::class)->download(7537888, 'x.bin');
-
-    // Assert
-    $spy->shouldHaveReceived('warning')->once()->withArgs(function (string $message, array $context): bool {
-        $values = collect($context)->map(fn ($value): string => (string) $value);
-
-        return $message !== ''
-            && $values->contains(fn (string $value): bool => Str::contains($value, '/download.php/'))
-            && $values->contains(fn (string $value): bool => Str::contains($value, '429'));
+        // Assert
+        expect($path)->toBe('downloads/x.bin');
+        Http::assertSentCount(2);
     });
-});
 
-it('caps at one retry on a persistent 429', function (): void {
-    // Arrange
-    Storage::fake();
-    Cache::flush();
-    Sleep::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response('', 429, ['Retry-After' => '0'])]);
+    it('logs a warning for the retried 429 including the URL and status', function (): void {
+        // Arrange
+        Storage::fake();
+        Cache::flush();
+        Sleep::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::sequence()
+            ->push('', 429, ['Retry-After' => '0'])
+            ->push(fixtureBytes('Download/downloads/sample.bin'), 200)]);
+        $spy = Log::spy();
 
-    // Act
-    $thrown = null;
-    try {
+        // Act
         resolve(DownloadService::class)->download(7537888, 'x.bin');
-    } catch (DownloadRequestFailed $e) {
-        $thrown = $e;
-    }
 
-    // Assert
-    expect($thrown)->toBeInstanceOf(DownloadRequestFailed::class);
-    Http::assertSentCount(2);
-});
+        // Assert
+        $spy->shouldHaveReceived('warning')->once()->withArgs(function (string $message, array $context): bool {
+            $values = collect($context)->map(fn ($value): string => (string) $value);
 
-it('caps at one retry on a persistent 500', function (): void {
-    // Arrange
-    Storage::fake();
-    Cache::flush();
-    Sleep::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response('', 500)]);
+            return $message !== ''
+                && $values->contains(fn (string $value): bool => Str::contains($value, '/download.php/'))
+                && $values->contains(fn (string $value): bool => Str::contains($value, '429'));
+        });
+    });
 
-    // Act
-    $thrown = null;
-    try {
-        resolve(DownloadService::class)->download(7537888, 'x.bin');
-    } catch (DownloadRequestFailed $e) {
-        $thrown = $e;
-    }
+    it('caps at one retry on a persistent 429', function (): void {
+        // Arrange
+        Storage::fake();
+        Cache::flush();
+        Sleep::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response('', 429, ['Retry-After' => '0'])]);
 
-    // Assert
-    expect($thrown)->toBeInstanceOf(DownloadRequestFailed::class);
-    Http::assertSentCount(2);
-});
+        // Act
+        $thrown = null;
+        try {
+            resolve(DownloadService::class)->download(7537888, 'x.bin');
+        } catch (DownloadRequestFailed $e) {
+            $thrown = $e;
+        }
 
-it('does not push the throttle slot cursor on a 429', function (): void {
-    // Arrange
-    Storage::fake();
-    Cache::flush();
-    Sleep::fake();
-    $this->freezeTime();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    Http::fake(['*' => Http::response('', 429)]);
-    $now = now()->getTimestampMs();
+        // Assert
+        expect($thrown)->toBeInstanceOf(DownloadRequestFailed::class);
+        Http::assertSentCount(2);
+    });
 
-    // Act
-    rescue(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'));
+    it('caps at one retry on a persistent 500', function (): void {
+        // Arrange
+        Storage::fake();
+        Cache::flush();
+        Sleep::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response('', 500)]);
 
-    // Assert
-    $advance = (int) Cache::get('download:request-throttle:next-slot') - $now;
-    expect($advance)->toBeGreaterThanOrEqual(100)->toBeLessThanOrEqual(250);
-});
+        // Act
+        $thrown = null;
+        try {
+            resolve(DownloadService::class)->download(7537888, 'x.bin');
+        } catch (DownloadRequestFailed $e) {
+            $thrown = $e;
+        }
 
-it('awaits the throttle before issuing a request', function (): void {
-    // Arrange
-    Storage::fake();
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    // RequestThrottle is final, so Mockery proxies a partial mock of a real
-    // instance (the container binds it), which the service resolves via app().
-    $throttle = Mockery::mock(new RequestThrottle);
-    $throttle->shouldReceive('await')->once();
-    $this->app->instance(RequestThrottle::class, $throttle);
-    Http::fake(['*' => Http::response('ok', 200)]);
+        // Assert
+        expect($thrown)->toBeInstanceOf(DownloadRequestFailed::class);
+        Http::assertSentCount(2);
+    });
 
-    // Act
-    $path = resolve(DownloadService::class)->download(7537888, 'x.bin');
+    it('does not push the throttle slot cursor on a 429', function (): void {
+        // Arrange
+        Storage::fake();
+        Cache::flush();
+        Sleep::fake();
+        $this->freezeTime();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        Http::fake(['*' => Http::response('', 429)]);
+        $now = now()->getTimestampMs();
 
-    // Assert
-    expect($path)->toBe('downloads/x.bin');
-});
+        // Act
+        rescue(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'));
 
-it('propagates RateLimitExceeded from the throttle', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'cookie-uid';
-    $settings->pass = 'cookie-pass';
-    $settings->save();
-    // RequestThrottle is final, so Mockery proxies a partial mock of a real
-    // instance (the container binds it), which the service resolves via app().
-    $throttle = Mockery::mock(new RequestThrottle);
-    $throttle->shouldReceive('await')->andThrow(RateLimitExceeded::fromLockContention(new LockTimeoutException));
-    $this->app->instance(RequestThrottle::class, $throttle);
-    Http::fake(['*' => Http::response('ok', 200)]);
+        // Assert
+        $advance = (int) Cache::get('download:request-throttle:next-slot') - $now;
+        expect($advance)->toBeGreaterThanOrEqual(100)->toBeLessThanOrEqual(250);
+    });
 
-    // Act & Assert
-    expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(RateLimitExceeded::class);
+    it('awaits the throttle before issuing a request', function (): void {
+        // Arrange
+        Storage::fake();
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        // RequestThrottle is final, so Mockery proxies a partial mock of a real
+        // instance (the container binds it), which the service resolves via app().
+        $throttle = Mockery::mock(new RequestThrottle);
+        $throttle->shouldReceive('await')->once();
+        $this->app->instance(RequestThrottle::class, $throttle);
+        Http::fake(['*' => Http::response('ok', 200)]);
+
+        // Act
+        $path = resolve(DownloadService::class)->download(7537888, 'x.bin');
+
+        // Assert
+        expect($path)->toBe('downloads/x.bin');
+    });
+
+    it('propagates RateLimitExceeded from the throttle', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'cookie-uid';
+        $settings->pass = 'cookie-pass';
+        $settings->save();
+        // RequestThrottle is final, so Mockery proxies a partial mock of a real
+        // instance (the container binds it), which the service resolves via app().
+        $throttle = Mockery::mock(new RequestThrottle);
+        $throttle->shouldReceive('await')->andThrow(RateLimitExceeded::fromLockContention(new LockTimeoutException));
+        $this->app->instance(RequestThrottle::class, $throttle);
+        Http::fake(['*' => Http::response('ok', 200)]);
+
+        // Act & Assert
+        expect(fn () => resolve(DownloadService::class)->download(7537888, 'x.bin'))->toThrow(RateLimitExceeded::class);
+    });
 });
 
 /*
@@ -438,136 +446,138 @@ it('propagates RateLimitExceeded from the throttle', function (): void {
 |     isRar true (no NORAR token → assumed rar'd, per the established rule).
 */
 
-it('requests the Movies feed URL verbatim', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = 'rsskey123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
+describe('rss() feed requests & mapping', function (): void {
+    it('requests the Movies feed URL verbatim', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
 
-    // Act
-    resolve(DownloadService::class)->rss(Category::Movies);
+        // Act
+        resolve(DownloadService::class)->rss(Category::Movies);
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::endsWith((string) $request->url(), '/t.rss?u=u123;tp=rsskey123;72'));
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::endsWith((string) $request->url(), '/t.rss?u=u123;tp=rsskey123;72'));
+    });
 
-it('requests the TV feed URL', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = 'rsskey123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_tv.xml'), 200)]);
+    it('requests the TV feed URL', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_tv.xml'), 200)]);
 
-    // Act
-    resolve(DownloadService::class)->rss(Category::Tv);
+        // Act
+        resolve(DownloadService::class)->rss(Category::Tv);
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::endsWith((string) $request->url(), ';tp=rsskey123;73'));
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::endsWith((string) $request->url(), ';tp=rsskey123;73'));
+    });
 
-it('maps an item to a DownloadResult', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = 'rsskey123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
+    it('maps an item to a DownloadResult', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
 
-    // Act
-    $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563849);
+        // Act
+        $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563849);
 
-    // Assert
-    expect($result->downloadId)->toBe(7563849)
-        ->and($result->name)->toBe('The Mummy 2026 UHD 1080p BluRay DoVi HDR10 DDP 7 1 x265-SPHD')
-        ->and($result->quality)->toBe(Quality::P1080)
-        ->and($result->codec)->toBe(Codec::Hevc)
-        ->and($result->source)->toBe(Source::BluRay)
-        ->and($result->releaseTag)->toBe(ReleaseTag::None)
-        ->and($result->isRar)->toBeTrue()
-        ->and($result->sizeBytes)->toBe(19980788888)
-        ->and($result->availability)->toBe(9)
-        ->and($result->publishedAt->equalTo(CarbonImmutable::parse('Mon, 13 Jul 2026 17:48:43 +0000')))->toBeTrue();
-});
+        // Assert
+        expect($result->downloadId)->toBe(7563849)
+            ->and($result->name)->toBe('The Mummy 2026 UHD 1080p BluRay DoVi HDR10 DDP 7 1 x265-SPHD')
+            ->and($result->quality)->toBe(Quality::P1080)
+            ->and($result->codec)->toBe(Codec::Hevc)
+            ->and($result->source)->toBe(Source::BluRay)
+            ->and($result->releaseTag)->toBe(ReleaseTag::None)
+            ->and($result->isRar)->toBeTrue()
+            ->and($result->sizeBytes)->toBe(19980788888)
+            ->and($result->availability)->toBe(9)
+            ->and($result->publishedAt->equalTo(CarbonImmutable::parse('Mon, 13 Jul 2026 17:48:43 +0000')))->toBeTrue();
+    });
 
-it('carries the demand from the L-count on an rss item', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = 'rsskey123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
+    it('carries the demand from the L-count on an rss item', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
 
-    // Act
-    $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563849);
+        // Act
+        $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563849);
 
-    // Assert
-    expect($result->demand)->toBe(23);
-});
+        // Assert
+        expect($result->demand)->toBe(23);
+    });
 
-it('carries the subcategory from the description label on an rss item', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = 'rsskey123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
+    it('carries the subcategory from the description label on an rss item', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
 
-    // Act
-    $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563849);
+        // Act
+        $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563849);
 
-    // Assert
-    expect($result->subcategory)->toBe('Movie/HD/Bluray');
-});
+        // Assert
+        expect($result->subcategory)->toBe('Movie/HD/Bluray');
+    });
 
-it('carries the download filename on an rss item', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = 'rsskey123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
+    it('carries the download filename on an rss item', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
 
-    // Act
-    $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563851);
+        // Act
+        $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 7563851);
 
-    // Assert
-    expect($result->filename)->toBe('The.Crying.Game.1992.COMPLETE.UHD.BLURAY-B0MBARDiERS');
-});
+        // Assert
+        expect($result->filename)->toBe('The.Crying.Game.1992.COMPLETE.UHD.BLURAY-B0MBARDiERS');
+    });
 
-it('url-decodes the download filename on an rss item', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = 'rsskey123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_tv.xml'), 200)]);
+    it('url-decodes the download filename on an rss item', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_tv.xml'), 200)]);
 
-    // Act
-    $result = resolve(DownloadService::class)->rss(Category::Tv)->firstWhere('downloadId', 7563850);
+        // Act
+        $result = resolve(DownloadService::class)->rss(Category::Tv)->firstWhere('downloadId', 7563850);
 
-    // Assert
-    expect($result->filename)->toBe('R a M S09E08 720p 10bit WEBRip 2CH x265 HEVC-PSA');
-});
+        // Assert
+        expect($result->filename)->toBe('R a M S09E08 720p 10bit WEBRip 2CH x265 HEVC-PSA');
+    });
 
-it('falls back to the config rss_key when the stored value is blank', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = '';
-    $settings->save();
-    config(['services.downloads.rss_key' => 'env-rss']);
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
+    it('falls back to the config rss_key when the stored value is blank', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = '';
+        $settings->save();
+        config(['services.downloads.rss_key' => 'env-rss']);
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200)]);
 
-    // Act
-    resolve(DownloadService::class)->rss(Category::Movies);
+        // Act
+        resolve(DownloadService::class)->rss(Category::Movies);
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), 'u=u123')
-        && Str::contains((string) $request->url(), 'tp=env-rss')
-        && Str::contains((string) $request->url(), ';72'));
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), 'u=u123')
+            && Str::contains((string) $request->url(), 'tp=env-rss')
+            && Str::contains((string) $request->url(), ';72'));
+    });
 });
 
 /*
@@ -586,38 +596,40 @@ it('falls back to the config rss_key when the stored value is blank', function (
 |     pubDate (id 9002).
 */
 
-it('skips a malformed rss item and warns while the rest of the feed survives', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = 'rsskey123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies_drift.xml'), 200)]);
-    Log::shouldReceive('warning')->once();
+describe('rss() per-item resilience', function (): void {
+    it('skips a malformed rss item and warns while the rest of the feed survives', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies_drift.xml'), 200)]);
+        Log::shouldReceive('warning')->once();
 
-    // Act
-    $results = resolve(DownloadService::class)->rss(Category::Movies);
+        // Act
+        $results = resolve(DownloadService::class)->rss(Category::Movies);
 
-    // Assert
-    expect($results)->toHaveCount(1)
-        ->and($results->firstWhere('downloadId', 9001))->not->toBeNull()
-        ->and($results->firstWhere('downloadId', 9002))->toBeNull();
-});
+        // Assert
+        expect($results)->toHaveCount(1)
+            ->and($results->firstWhere('downloadId', 9001))->not->toBeNull()
+            ->and($results->firstWhere('downloadId', 9002))->toBeNull();
+    });
 
-it('parses a comma-grouped S-count on an rss item', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->rss_key = 'rsskey123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies_drift.xml'), 200)]);
-    Log::shouldReceive('warning');
+    it('parses a comma-grouped S-count on an rss item', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/rss_movies_drift.xml'), 200)]);
+        Log::shouldReceive('warning');
 
-    // Act
-    $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 9001);
+        // Act
+        $result = resolve(DownloadService::class)->rss(Category::Movies)->firstWhere('downloadId', 9001);
 
-    // Assert
-    expect($result->availability)->toBe(1024);
+        // Assert
+        expect($result->availability)->toBe(1024);
+    });
 });
 
 /*
@@ -654,172 +666,174 @@ it('parses a comma-grouped S-count on an rss item', function (): void {
 |     null (the listing carries no per-row date).
 */
 
-it('parses a listing page into 50 DownloadResults defaulting to page 1', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
+describe('index() browse pages', function (): void {
+    it('parses a listing page into 50 DownloadResults defaulting to page 1', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
 
-    // Act
-    $page = resolve(DownloadService::class)->index(Category::Movies);
+        // Act
+        $page = resolve(DownloadService::class)->index(Category::Movies);
 
-    // Assert
-    $row = $page->results->firstWhere('downloadId', 7563851);
-    expect($page->results)->toBeInstanceOf(Collection::class)
-        ->and($page->results)->toHaveCount(50)
-        ->and($page->results->every(fn ($result): bool => $result instanceof DownloadResult))->toBeTrue()
-        ->and($row->name)->toBe('The Crying Game 1992 COMPLETE UHD BLURAY-B0MBARDiERS')
-        ->and($row->source)->toBe(Source::BluRay)
-        ->and($row->quality)->toBeNull()
-        ->and($row->releaseTag)->toBe(ReleaseTag::None)
-        ->and($row->isRar)->toBeTrue()
-        ->and($row->sizeBytes)->toBe((int) round(81.8 * 1024 ** 3))
-        ->and($row->availability)->toBe(1)
-        ->and($row->publishedAt)->toBeNull()
-        ->and($page->page)->toBe(1);
-});
+        // Assert
+        $row = $page->results->firstWhere('downloadId', 7563851);
+        expect($page->results)->toBeInstanceOf(Collection::class)
+            ->and($page->results)->toHaveCount(50)
+            ->and($page->results->every(fn ($result): bool => $result instanceof DownloadResult))->toBeTrue()
+            ->and($row->name)->toBe('The Crying Game 1992 COMPLETE UHD BLURAY-B0MBARDiERS')
+            ->and($row->source)->toBe(Source::BluRay)
+            ->and($row->quality)->toBeNull()
+            ->and($row->releaseTag)->toBe(ReleaseTag::None)
+            ->and($row->isRar)->toBeTrue()
+            ->and($row->sizeBytes)->toBe((int) round(81.8 * 1024 ** 3))
+            ->and($row->availability)->toBe(1)
+            ->and($row->publishedAt)->toBeNull()
+            ->and($page->page)->toBe(1);
+    });
 
-it('carries the download filename on a listing row', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
+    it('carries the download filename on a listing row', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
 
-    // Act
-    $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
+        // Act
+        $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
 
-    // Assert
-    expect($row->filename)->toBe('The.Crying.Game.1992.COMPLETE.UHD.BLURAY-B0MBARDiERS');
-});
+        // Assert
+        expect($row->filename)->toBe('The.Crying.Game.1992.COMPLETE.UHD.BLURAY-B0MBARDiERS');
+    });
 
-it('carries the demand distinct from availability on a listing row', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
+    it('carries the demand distinct from availability on a listing row', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
 
-    // Act
-    $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
+        // Act
+        $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
 
-    // Assert
-    expect($row->demand)->toBe(11)->and($row->availability)->toBe(1);
-});
+        // Assert
+        expect($row->demand)->toBe(11)->and($row->availability)->toBe(1);
+    });
 
-it('carries the subcategory from the row category image on a listing row', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
+    it('carries the subcategory from the row category image on a listing row', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
 
-    // Act
-    $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
+        // Act
+        $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
 
-    // Assert
-    expect($row->subcategory)->toBe('Movie/BD-R');
-});
+        // Assert
+        expect($row->subcategory)->toBe('Movie/BD-R');
+    });
 
-it('carries the uploader from the row sub-line on a listing row', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
+    it('carries the uploader from the row sub-line on a listing row', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
 
-    // Act
-    $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
+        // Act
+        $row = resolve(DownloadService::class)->index(Category::Movies)->results->firstWhere('downloadId', 7563851);
 
-    // Assert
-    expect($row->uploader)->toBe('TvTeam');
-});
+        // Assert
+        expect($row->uploader)->toBe('TvTeam');
+    });
 
-it('requests the /t?72=&p=2 page and reports page 2', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p2.html'), 200)]);
+    it('requests the /t?72=&p=2 page and reports page 2', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p2.html'), 200)]);
 
-    // Act
-    $page = resolve(DownloadService::class)->index(Category::Movies, 2);
+        // Act
+        $page = resolve(DownloadService::class)->index(Category::Movies, 2);
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/t?72=&p=2'));
-    expect($page->page)->toBe(2);
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/t?72=&p=2'));
+        expect($page->page)->toBe(2);
+    });
 
-it('parses the lastPage from the pagination links', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
+    it('parses the lastPage from the pagination links', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200)]);
 
-    // Act
-    $page = resolve(DownloadService::class)->index(Category::Movies);
+        // Act
+        $page = resolve(DownloadService::class)->index(Category::Movies);
 
-    // Assert
-    expect($page->lastPage)->toBe(6865);
-});
+        // Assert
+        expect($page->lastPage)->toBe(6865);
+    });
 
-it('requests the /t?73= page for the TV category', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_tv_p1.html'), 200)]);
+    it('requests the /t?73= page for the TV category', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_tv_p1.html'), 200)]);
 
-    // Act
-    resolve(DownloadService::class)->index(Category::Tv);
+        // Act
+        resolve(DownloadService::class)->index(Category::Tv);
 
-    // Assert
-    Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '73='));
-});
+        // Assert
+        Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '73='));
+    });
 
-it('warns and falls back lastPage to the current page when pagination links are missing', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_no_pagination.html'), 200)]);
-    Log::shouldReceive('warning')->once();
+    it('warns and falls back lastPage to the current page when pagination links are missing', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_no_pagination.html'), 200)]);
+        Log::shouldReceive('warning')->once();
 
-    // Act
-    $page = resolve(DownloadService::class)->index(Category::Movies);
+        // Act
+        $page = resolve(DownloadService::class)->index(Category::Movies);
 
-    // Assert
-    expect($page->lastPage)->toBe(1)
-        ->and($page->results)->toHaveCount(50);
-});
+        // Assert
+        expect($page->lastPage)->toBe(1)
+            ->and($page->results)->toHaveCount(50);
+    });
 
-it('warns and returns an empty page when the results table is missing', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_no_table.html'), 200)]);
-    Log::shouldReceive('warning')->once();
+    it('warns and returns an empty page when the results table is missing', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_no_table.html'), 200)]);
+        Log::shouldReceive('warning')->once();
 
-    // Act
-    $page = resolve(DownloadService::class)->index(Category::Movies);
+        // Act
+        $page = resolve(DownloadService::class)->index(Category::Movies);
 
-    // Assert
-    expect($page)->toBeInstanceOf(DownloadPage::class)
-        ->and($page->results)->toBeInstanceOf(Collection::class)
-        ->and($page->results)->toHaveCount(0);
+        // Assert
+        expect($page)->toBeInstanceOf(DownloadPage::class)
+            ->and($page->results)->toBeInstanceOf(Collection::class)
+            ->and($page->results)->toHaveCount(0);
+    });
 });
 
 /*
@@ -839,41 +853,43 @@ it('warns and returns an empty page when the results table is missing', function
 |     (id 3002).
 */
 
-it('skips a row missing its download anchor and warns while the rest of the page parses', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_missing_download_anchor.html'), 200)]);
-    Log::shouldReceive('warning')->once();
+describe('index() row resilience', function (): void {
+    it('skips a row missing its download anchor and warns while the rest of the page parses', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_missing_download_anchor.html'), 200)]);
+        Log::shouldReceive('warning')->once();
 
-    // Act
-    $page = resolve(DownloadService::class)->index(Category::Movies);
+        // Act
+        $page = resolve(DownloadService::class)->index(Category::Movies);
 
-    // Assert
-    expect($page->results)->toHaveCount(2)
-        ->and($page->results->firstWhere('downloadId', 2000))->not->toBeNull()
-        ->and($page->results->firstWhere('downloadId', 2001))->toBeNull()
-        ->and($page->results->firstWhere('downloadId', 2002))->not->toBeNull();
-});
+        // Assert
+        expect($page->results)->toHaveCount(2)
+            ->and($page->results->firstWhere('downloadId', 2000))->not->toBeNull()
+            ->and($page->results->firstWhere('downloadId', 2001))->toBeNull()
+            ->and($page->results->firstWhere('downloadId', 2002))->not->toBeNull();
+    });
 
-it('skips a short row and parses comma-grouped and dash availability cells', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_availability_drift.html'), 200)]);
+    it('skips a short row and parses comma-grouped and dash availability cells', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_availability_drift.html'), 200)]);
 
-    // Act
-    $page = resolve(DownloadService::class)->index(Category::Movies);
+        // Act
+        $page = resolve(DownloadService::class)->index(Category::Movies);
 
-    // Assert
-    expect($page->results)->toHaveCount(2)
-        ->and($page->results->firstWhere('downloadId', 3002))->toBeNull()
-        ->and($page->results->firstWhere('downloadId', 3000)->availability)->toBe(1024)
-        ->and($page->results->firstWhere('downloadId', 3001)->availability)->toBe(0);
+        // Assert
+        expect($page->results)->toHaveCount(2)
+            ->and($page->results->firstWhere('downloadId', 3002))->toBeNull()
+            ->and($page->results->firstWhere('downloadId', 3000)->availability)->toBe(1024)
+            ->and($page->results->firstWhere('downloadId', 3001)->availability)->toBe(0);
+    });
 });
 
 /*
@@ -916,234 +932,236 @@ it('skips a short row and parses comma-grouped and dash availability cells', fun
 |     2 rows: …-HHWEB.mkv (7.91 GB) and …-HHWEB.mkv.nfo (809 B).
 */
 
-it('parses a movie detail into a DownloadResult', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+describe('item() detail parsing', function (): void {
+    it('parses a movie detail into a DownloadResult', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item)->toBeInstanceOf(DownloadResult::class)
-        ->and($item->downloadId)->toBe(7537888)
-        ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB')
-        ->and($item->filename)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB')
-        ->and($item->quality)->toBe(Quality::P1080)
-        ->and($item->codec)->toBe(Codec::X264)
-        ->and($item->source)->toBe(Source::WebDl)
-        ->and($item->releaseTag)->toBe(ReleaseTag::None)
-        ->and($item->isRar)->toBeTrue()
-        ->and($item->sizeBytes)->toBe((int) round(7.91 * 1024 ** 3))
-        ->and($item->availability)->toBe(56)
-        ->and($item->demand)->toBe(0)
-        ->and($item->files)->toBeNull();
-});
+        // Assert
+        expect($item)->toBeInstanceOf(DownloadResult::class)
+            ->and($item->downloadId)->toBe(7537888)
+            ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB')
+            ->and($item->filename)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB')
+            ->and($item->quality)->toBe(Quality::P1080)
+            ->and($item->codec)->toBe(Codec::X264)
+            ->and($item->source)->toBe(Source::WebDl)
+            ->and($item->releaseTag)->toBe(ReleaseTag::None)
+            ->and($item->isRar)->toBeTrue()
+            ->and($item->sizeBytes)->toBe((int) round(7.91 * 1024 ** 3))
+            ->and($item->availability)->toBe(56)
+            ->and($item->demand)->toBe(0)
+            ->and($item->files)->toBeNull();
+    });
 
-it('item() sets the subcategory from a movie detail page', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+    it('item() sets the subcategory from a movie detail page', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->subcategory)->toBe('Movie/HD/Bluray');
-});
+        // Assert
+        expect($item->subcategory)->toBe('Movie/HD/Bluray');
+    });
 
-it('item() sets the uploader from a movie detail page', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+    it('item() sets the uploader from a movie detail page', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->uploader)->toBe('Lama');
-});
+        // Assert
+        expect($item->uploader)->toBe('Lama');
+    });
 
-it('item() sets the imdbId from a movie detail page', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+    it('item() sets the imdbId from a movie detail page', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->imdbId)->toBe('tt0234215');
-});
+        // Assert
+        expect($item->imdbId)->toBe('tt0234215');
+    });
 
-it('item() sets the tmdbId from a movie detail page', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+    it('item() sets the tmdbId from a movie detail page', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->tmdbId)->toBe(604);
-});
+        // Assert
+        expect($item->tmdbId)->toBe(604);
+    });
 
-it('item() sets the tmdbId from a tv detail page /tv/ link', function (): void {
-    // Arrange
-    // the TV detail's TMDB cross-ref is a /tv/<id> link, not /movie/<id>
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_tv.html'), 200)]);
+    it('item() sets the tmdbId from a tv detail page /tv/ link', function (): void {
+        // Arrange
+        // the TV detail's TMDB cross-ref is a /tv/<id> link, not /movie/<id>
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_tv.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7563850);
+        // Act
+        $item = resolve(DownloadService::class)->item(7563850);
 
-    // Assert
-    expect($item->tmdbId)->toBe(86833);
-});
+        // Assert
+        expect($item->tmdbId)->toBe(86833);
+    });
 
-it('item() sets the publishedAt from a movie detail page', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+    it('item() sets the publishedAt from a movie detail page', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->publishedAt->equalTo(CarbonImmutable::parse('Wednesday, July 1, 2026 at 12:23am')))->toBeTrue();
-});
+        // Assert
+        expect($item->publishedAt->equalTo(CarbonImmutable::parse('Wednesday, July 1, 2026 at 12:23am')))->toBeTrue();
+    });
 
-it('leaves the publishedAt null when the uploaded date title is unparseable', function (): void {
-    // Arrange
-    // detail_unparseable_date.html drifts the uploaded elapsedDate title to a
-    // non-Carbon-parseable relative phrase; the optional field degrades to null
-    // rather than letting Carbon's exception escape item()
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_unparseable_date.html'), 200)]);
+    it('leaves the publishedAt null when the uploaded date title is unparseable', function (): void {
+        // Arrange
+        // detail_unparseable_date.html drifts the uploaded elapsedDate title to a
+        // non-Carbon-parseable relative phrase; the optional field degrades to null
+        // rather than letting Carbon's exception escape item()
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_unparseable_date.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->publishedAt)->toBeNull()
-        ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB');
-});
+        // Assert
+        expect($item->publishedAt)->toBeNull()
+            ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB');
+    });
 
-it('parses a TV detail into a DownloadResult media-agnostically', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_tv.html'), 200)]);
+    it('parses a TV detail into a DownloadResult media-agnostically', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_tv.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7563850);
+        // Act
+        $item = resolve(DownloadService::class)->item(7563850);
 
-    // Assert
-    expect($item->name)->toBe('R a M S09E08 720p 10bit WEBRip 2CH x265 HEVC-PSA')
-        ->and($item->filename)->toBe('R a M S09E08 720p 10bit WEBRip 2CH x265 HEVC-PSA')
-        ->and($item->quality)->toBe(Quality::P720)
-        ->and($item->codec)->toBe(Codec::Hevc)
-        ->and($item->source)->toBe(Source::WebRip)
-        ->and($item->sizeBytes)->toBe((int) round(114.22 * 1024 ** 2))
-        ->and($item->availability)->toBe(4)
-        ->and($item->demand)->toBe(1);
-});
+        // Assert
+        expect($item->name)->toBe('R a M S09E08 720p 10bit WEBRip 2CH x265 HEVC-PSA')
+            ->and($item->filename)->toBe('R a M S09E08 720p 10bit WEBRip 2CH x265 HEVC-PSA')
+            ->and($item->quality)->toBe(Quality::P720)
+            ->and($item->codec)->toBe(Codec::Hevc)
+            ->and($item->source)->toBe(Source::WebRip)
+            ->and($item->sizeBytes)->toBe((int) round(114.22 * 1024 ** 2))
+            ->and($item->availability)->toBe(4)
+            ->and($item->demand)->toBe(1);
+    });
 
-it('fetches and maps the file list when withFiles is true', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake([
-        '*/t/7537888/files' => Http::response(fixtureBytes('Download/downloads/files.html'), 200),
-        '*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200),
-    ]);
+    it('fetches and maps the file list when withFiles is true', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake([
+            '*/t/7537888/files' => Http::response(fixtureBytes('Download/downloads/files.html'), 200),
+            '*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200),
+        ]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888, withFiles: true);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888, withFiles: true);
 
-    // Assert
-    $mkv = $item->files->firstWhere('name', 'The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB.mkv');
-    $nfo = $item->files->firstWhere('name', 'The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB.mkv.nfo');
-    expect($item->files)->toBeInstanceOf(Collection::class)
-        ->and($item->files)->toHaveCount(2)
-        ->and($item->files->every(fn ($file): bool => $file instanceof DownloadFile))->toBeTrue()
-        ->and($mkv->sizeBytes)->toBe((int) round(7.91 * 1024 ** 3))
-        ->and($nfo->sizeBytes)->toBe(809);
-    Http::assertSentCount(2);
-});
+        // Assert
+        $mkv = $item->files->firstWhere('name', 'The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB.mkv');
+        $nfo = $item->files->firstWhere('name', 'The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB.mkv.nfo');
+        expect($item->files)->toBeInstanceOf(Collection::class)
+            ->and($item->files)->toHaveCount(2)
+            ->and($item->files->every(fn ($file): bool => $file instanceof DownloadFile))->toBeTrue()
+            ->and($mkv->sizeBytes)->toBe((int) round(7.91 * 1024 ** 3))
+            ->and($nfo->sizeBytes)->toBe(809);
+        Http::assertSentCount(2);
+    });
 
-it('sends one request and leaves files null when withFiles defaults to false', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+    it('sends one request and leaves files null when withFiles defaults to false', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->files)->toBeNull();
-    Http::assertSentCount(1);
-});
+        // Assert
+        expect($item->files)->toBeNull();
+        Http::assertSentCount(1);
+    });
 
-it('throws when a detail page is missing its required nodes', function (): void {
-    // Arrange
-    // a 200 stub (pulled/restricted page) carrying none of the required detail nodes
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_stub.html'), 200)]);
+    it('throws when a detail page is missing its required nodes', function (): void {
+        // Arrange
+        // a 200 stub (pulled/restricted page) carrying none of the required detail nodes
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_stub.html'), 200)]);
 
-    // Act & Assert
-    expect(fn () => resolve(DownloadService::class)->item(7537888))->toThrow(DownloadDetailPageIncomplete::class);
-});
+        // Act & Assert
+        expect(fn () => resolve(DownloadService::class)->item(7537888))->toThrow(DownloadDetailPageIncomplete::class);
+    });
 
-it('parses a comma-grouped availability figure on a detail page', function (): void {
-    // Arrange
-    // the `a.peer` up-count is `1,024`; the comma must not split it into 1 and 024
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_high_availability.html'), 200)]);
+    it('parses a comma-grouped availability figure on a detail page', function (): void {
+        // Arrange
+        // the `a.peer` up-count is `1,024`; the comma must not split it into 1 and 024
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_high_availability.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->availability)->toBe(1024)
-        ->and($item->demand)->toBe(0);
+        // Assert
+        expect($item->availability)->toBe(1024)
+            ->and($item->demand)->toBe(0);
+    });
 });
 
 /*
@@ -1163,53 +1181,55 @@ it('parses a comma-grouped availability figure on a detail page', function (): v
 |     a.peer) intact, so item() still returns with a null description.
 */
 
-it('sets the description screenshots from a movie detail page', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+describe('item() description parsing', function (): void {
+    it('sets the description screenshots from a movie detail page', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->description->screenshots)->toBe([
-        'https://lookpic.com/cdn/i2/s/TheMatrixReloaded20031080pMAWEBDLH264DDP51HHWEBmkv07012026022312-001.jpg',
-        'https://lookpic.com/cdn/i2/s/TheMatrixReloaded20031080pMAWEBDLH264DDP51HHWEBmkv07012026022312-002.jpg',
-        'https://lookpic.com/cdn/i2/s/TheMatrixReloaded20031080pMAWEBDLH264DDP51HHWEBmkv07012026022312-003.jpg',
-    ]);
-});
+        // Assert
+        expect($item->description->screenshots)->toBe([
+            'https://lookpic.com/cdn/i2/s/TheMatrixReloaded20031080pMAWEBDLH264DDP51HHWEBmkv07012026022312-001.jpg',
+            'https://lookpic.com/cdn/i2/s/TheMatrixReloaded20031080pMAWEBDLH264DDP51HHWEBmkv07012026022312-002.jpg',
+            'https://lookpic.com/cdn/i2/s/TheMatrixReloaded20031080pMAWEBDLH264DDP51HHWEBmkv07012026022312-003.jpg',
+        ]);
+    });
 
-it('sets the description html from a movie detail page', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
+    it('sets the description html from a movie detail page', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->description->html)->toContain('Title : The Matrix Reloaded')
-        ->and($item->description->html)->toContain('<br>');
-});
+        // Assert
+        expect($item->description->html)->toContain('Title : The Matrix Reloaded')
+            ->and($item->description->html)->toContain('<br>');
+    });
 
-it('leaves the description null when the detail page has no readme', function (): void {
-    // Arrange
-    $settings = resolve(DownloadSettings::class);
-    $settings->uid = 'u123';
-    $settings->pass = 'p123';
-    $settings->save();
-    Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_no_readme.html'), 200)]);
+    it('leaves the description null when the detail page has no readme', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake(['*' => Http::response(fixtureBytes('Download/downloads/detail_no_readme.html'), 200)]);
 
-    // Act
-    $item = resolve(DownloadService::class)->item(7537888);
+        // Act
+        $item = resolve(DownloadService::class)->item(7537888);
 
-    // Assert
-    expect($item->description)->toBeNull()
-        ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB');
+        // Assert
+        expect($item->description)->toBeNull()
+            ->and($item->name)->toBe('The Matrix Reloaded 2003 1080p MA WEB-DL H 264 DDP5 1-HHWEB');
+    });
 });

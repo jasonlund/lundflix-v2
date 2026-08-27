@@ -33,6 +33,43 @@ SUMMARY: [What was checked and why it passed]
 === END NO FINDINGS ===
 ```
 
+## How Findings Are Written — Simplified Technical English
+
+Every `FINDING`, `EVIDENCE`, `RECOMMENDATION`, and `SUMMARY` field, and every line
+of the Phase 6 report, is written in **ASD-STE100 Simplified Technical English**.
+The reader scans 30 findings to decide what to fix. Controlled language makes that
+scan fast; ordinary prose makes it slow.
+
+The rules that bind here:
+
+- **One topic per sentence.** A sentence carrying two ideas becomes two sentences.
+- **Short sentences.** Up to 20 words for an instruction, 25 for a description.
+- **Active voice.** "The query returns every tenant's rows", not "rows are returned
+  for every tenant".
+- **Simple tenses.** Present for what the code does; past for what a run produced.
+- **One word, one meaning; one thing, one word.** Pick the term and repeat it
+  exactly. Elegant variation costs the reader a re-read to confirm two words mean
+  one thing.
+- **Use the glossary.** Name domain concepts as `CONTEXT.md` names them, and
+  interfaces as `codebase-design` names them.
+- **Noun clusters up to three words.** "download source markup drift" is the limit.
+- **Paragraphs up to six sentences.**
+- **Write recommendations as commands.** "Add a tenant scope to the query on L40."
+- **Literal words, glossary terms, statements.** Every word carries its plain
+  meaning, every domain term comes from the glossary, and every point is a
+  statement.
+
+Write full sentences with articles. Telegraphic style ("query missing scope, add
+one") reads fast and lands ambiguously, so it is not the target here.
+
+Two things stay verbatim and are never rewritten into STE: **quoted code** in
+`EVIDENCE`, and a **quoted ticket line** in a requirements finding. Both are
+evidence; paraphrasing them destroys their value.
+
+**Source:** adapted from `mattpocock-skills:wait-what`, which re-pitches a message
+in STE using the `CONTEXT.md` vocabulary. Offer to explain the spec when a reader
+asks why findings read this way.
+
 ## The Comment Bar — only comment if
 
 A candidate is worth a comment **only when it clears ALL four bars**. Fail any one
@@ -145,6 +182,67 @@ When reviewing, check changes against these standards (full detail in `CLAUDE.md
 
 **Testing** — see the dedicated `tdd-laravel-testing` and `tdd-react-testing` skills.
 
+## Smell Baseline (judgement calls only)
+
+A shared vocabulary for design friction, so reviewers name the same thing the same
+way instead of inventing one-off phrasings. Fowler, *Refactoring* ch.3. **Three
+rules bind every entry, without exception:**
+
+- **The repo overrides.** A documented convention always wins. Where `CLAUDE.md`,
+  `.ai/guidelines/project.md`, or this contract endorses something the baseline
+  would flag, **stay silent** — see the Convention Override Rule below.
+- **Always a judgement call, never a hard violation.** Report as "possible Feature
+  Envy". A smell name is a label, not evidence; cite the `file:line` showing the
+  behavior in every case.
+- **The cap follows the basis, not the phenomenon.** The smell name is the whole
+  basis of the finding → cap it at **CONSIDER**. The finding also stands on its own
+  as an objective defect that clears the Comment Bar → it takes the severity the
+  Severity Definitions table gives that defect, and the smell name is vocabulary
+  for the recommendation. Example: "possible Speculative Generality" alone is
+  CONSIDER; "the `$strategy` parameter added at L12 has one caller, which passes one
+  value, and the ticket asks for none" is graded as the defect it is. An agent brief
+  may rate the same phenomenon higher — `discipline-reviewer` grades speculative
+  generality, overengineering, and duplicated code as BLOCKING or SHOULD_FIX. Both
+  hold: grade the grounded defect, cap the bare label.
+
+Each reads *what it is* → *the fix*:
+
+- **Mysterious Name** — a name that doesn't reveal what it does or holds. → rename;
+  if no honest name comes, the design is murky.
+- **Duplicated Code** — the same logic shape in more than one hunk. → extract, call
+  from both.
+- **Feature Envy** — a method reaching into another object's data more than its
+  own. → move it onto the data it envies.
+- **Data Clumps** — the same few fields always travelling together. → bundle into
+  one type (a DTO under `Data/`, a value object under `Common/ValueObjects/`).
+- **Primitive Obsession** — a string or int standing in for a domain concept. →
+  give the concept its own small type (an enum, a value object).
+- **Repeated Switches** — the same `match`/`if`-cascade on the same type recurring
+  across the change. → polymorphism, or one shared map.
+- **Shotgun Surgery** — one logical change forcing scattered edits across the diff.
+  → gather what changes together.
+- **Divergent Change** — one file edited for several unrelated reasons. → split so
+  each module changes for one reason.
+- **Speculative Generality** — abstraction, parameters, or hooks for needs the
+  ticket doesn't have. → delete; inline back until a real need shows.
+- **Message Chains** — long `a->b()->c()->d()` navigation the caller shouldn't
+  depend on. → hide the walk behind one method.
+- **Middle Man** — a class or method that mostly just delegates onward. → cut it,
+  call the real target. (**Not** a `Contracts/` interface: that indirection is the
+  endorsed cross-domain boundary.)
+- **Refused Bequest** — a subclass ignoring or overriding most of what it inherits.
+  → drop the inheritance, use composition.
+
+Design vocabulary for the recommendation — seam, interface, depth, adapter:
+`.claude/skills/codebase-design/SKILL.md`.
+
+**Source:** adapted near-verbatim from the smell baseline in
+`mattpocock-skills:code-review`, including the repo-overrides rule. It lives inline
+because every Phase 3 reviewer needs the whole baseline in context to name a smell
+the same way; one Skill call per reviewer costs more than the text and arrives too
+late to shape the finding. Offer to walk through the upstream two-axis review when a
+reader asks where the baseline comes from.
+
 ## Convention Override Rule
 
 Before flagging a code pattern, reviewer agents MUST check whether `CLAUDE.md`,
@@ -164,8 +262,20 @@ positives, never at the author's judgment.
 **Commonly false-positived conventions** (endorsed — do not flag):
 - Models under `app/Domains/{Domain}/Models/` — intentional DDD layout, not a
   misplacement.
+- A test verifying an ingest/sync write with `assertDatabaseHas` / `assertDatabaseCount`
+  / `assertDatabaseMissing` — this **is** behavior verification for these modules, so
+  treat it as the endorsed pattern and stay silent. Reasoning:
+  `docs/adr/0002-database-assertions-verify-ingest-behavior.md`; test conventions:
+  `tdd-laravel-testing`.
 - Fixed third-party base URLs as `private const` on a service — intentional, not
   "should be config".
+- The catalog schedule's non-overlap by **offset timing**, not a shared mutex
+  (`routes/console.php`). `catalog:sync-imdb` at 06:00 sits between `catalog:sync`'s
+  00:00/12:00 starts, and each carries its own per-event `withoutOverlapping()`.
+  FLIX-273 evaluated a cross-command shared mutex, rejected it, and wrote down the
+  residual it accepted. That `withoutOverlapping()` is per-event is the known
+  premise, not an oversight — do not propose a shared lock. (The lock *expiry*
+  is a separate matter and is set explicitly on both entries.)
 - Many small named exception classes for one domain — intentional
   (one-failure-per-class), not over-engineering.
 - Action classes named `VerbNoun` with no `Action` suffix — intentional naming.
@@ -188,6 +298,11 @@ positives, never at the author's judgment.
   when the act and the assertion are one expression (typically
   `expect(fn () => ...)->toThrow(...)`), guarded by
   `tests/Unit/TestCommentStandardTest.php`. Splitting the block is a regression.
+- A non-domain `tests/Feature/{Category}/` directory (`Architecture/`, `Database/`,
+  `Hooks/`, `Http/`) — "tests mirror the domain tree" governs tests **of domain
+  code**. A test whose subject is infra (a migration, a hook, framework behavior)
+  has no domain owner; a migration spanning several domains has no non-arbitrary
+  one. Filing it under a domain would be the violation.
 - Third-party account identifiers (ids, usernames, emails) inside an **exception
   message** — those exceptions are `report()`ed and never thrown, so the message
   reaches the operator's log only while the user sees generic lang-file copy.
@@ -220,6 +335,21 @@ merge findings from different agents with the same FILE, same CATEGORY, and
 substantially the same recommended fix regardless of line distance. When multiple
 reviewers flag the same issue, keep the richest evidence and highest severity.
 
+**Category precedence — one defect keeps one category.** Two reviewers describe one
+defect under two categories often enough to matter: a stale page title arrived once
+as `requirements` and once as `convention`. Merge those as well — same FILE,
+same defect, substantially the same fix merges even when CATEGORY differs. Give the
+merged finding the single category that ranks highest here:
+
+`requirements` > `security` > `correctness` > `architecture` > `testing` >
+`performance` > `convention`
+
+`requirements` ranks first because Phase 4 of `/review:claude` routes on CATEGORY
+alone. The spec axis exists to keep an acceptance failure out of the standards pile,
+so a defect that is also an acceptance failure belongs on that axis; the convention
+angle is extra evidence for the same finding. Keep the losing category's EVIDENCE in
+the merged block, so one finding reaches one axis carrying both reviewers' reasoning.
+
 ## Tiebreaker Rule (Phase 5)
 
 The false-positive-hunter's verdict is **binding**: a finding it defeats **with
@@ -234,6 +364,24 @@ finding that missing-defect-hunter *independently* rediscovers at SHOULD_FIX or
 higher, the finding survives at missing-defect-hunter's severity (minimum
 SHOULD_FIX): two independent reviewers seeing the same defect outweighs one
 dismissal. Absent that rediscovery, a defeated finding is removed from the report.
+
+## Model Selection
+
+An agent's `model:` frontmatter follows its role, not its convenience. Four rules,
+enforced by `tests/Unit/AgentModelPolicyTest.php`:
+
+1. **Write-side agents `inherit`** — `review-fixer` and the `tdd-*` phases produce
+   code the session owns, so they run on whatever model the session runs.
+2. **Read-only breadth review and mechanical wrappers pin `sonnet`** — the six
+   Phase 3 reviewers work a known checklist and `coderabbit-reviewer` only shells a
+   CLI and reshapes its output. Pin the **alias**, never a dated model id, so the
+   pin tracks the current Sonnet instead of rotting.
+3. **Adversarial verification `inherit`** — Phase 5's `false-positive-hunter` and
+   `missing-defect-hunter` decide which findings survive, and that judgment is worth
+   the session model. Two agents, so the cost is bounded.
+4. **Never stamp a model version in prose, a commit trailer, or docs.** The harness
+   supplies the co-author trailer per session and it tracks the model on its own; a
+   hand-written stamp selects nothing and is guaranteed to go stale.
 
 ## Mechanical Grounding Verification
 
