@@ -163,6 +163,18 @@ Optionally point LaborForest's terminal launcher at Solo in
 `~/.laborforest/settings.yaml` (`command_launch_terminal`) — a machine-local setting,
 not version-controlled.
 
+#### When a workflow fails
+
+LaborForest stops at the first failing step, skips the rest, and leaves the
+workspace unprovisioned rather than half-built — but it also moves it to **`error`**,
+and only `ready` and `suspended` can launch a workflow. So **fixing the problem is
+not enough to retry**: `lf run up` will print `Running workflow: up`, exit 0, and do
+nothing. Clear it with the status action in the workspace row's ⋮ menu (set it back
+to `suspended`); there is no CLI equivalent.
+
+Read the run logs at `.laborforest/ignored/logs/` — each records every step's exit
+code, output, and `skip_reason`, which is the fastest way to see where a run stopped.
+
 Note `lf validate` is not a check — it exits 0 for a missing or schema-invalid
 workflow. The Pest guards in `tests/Unit/Local/` are what verify these files.
 
