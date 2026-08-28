@@ -26,15 +26,21 @@ blind spot as many tickets. Expect this to fire **routinely, by design** — a
 slice is only 2–6 tests (`.claude/skills/tdd/SKILL.md`), so most non-trivial PRs
 span several; a high hit rate is the gate working, not a misfire.
 
-1. **Authoritative source — the ticket's TDD Slice Backlog.** Resolve the ticket
-   from the branch (Ticket ID Auto-Extraction in
-   `.claude/skills/review-pipeline/SKILL.md`) and read its body: `plan-slices`
-   appends the backlog, one `### Slice N —` block per slice. That count decides.
-2. **Git is a secondary signal, and includes the working tree.** Read
-   `git status --short` **and** `git diff origin/main...HEAD --stat` — at Stage 0
-   the branch is usually **not yet committed** (Stage 1 is what commits it), so
-   committed history alone is routinely empty. Neither maps slices to commits or
-   files; use it only to corroborate the backlog.
+1. **Authoritative source — the tickets' TDD Slice Backlogs.** Resolve **every**
+   `FLIX-\d+` id in the branch name, not just the first: read each body
+   (`plan-slices` appends the backlog, one `### Slice N —` block per slice) and
+   **sum** the slice counts across all of them. That sum decides. This is
+   deliberately broader than Ticket ID Auto-Extraction
+   (`.claude/skills/review-pipeline/SKILL.md`), whose first-match-only rule names
+   one ticket rather than counts work — don't lean on that contract here. A sum of
+   **0** (no backlog, or a "zero TDD slices" verdict) means the backlog can't
+   answer: fall through to step 2, then step 3 — never treat it as single-slice.
+2. **`git status --short` is the secondary signal — only it sees the working
+   tree.** At Stage 0 the branch is usually **not yet committed** (Stage 1 is what
+   commits it), so `git diff origin/main...HEAD --stat` reads committed history
+   only and is routinely empty; run it when Stage 0 is **re-entered** and commits
+   already exist. Neither maps slices to commits or files; use them only to
+   corroborate the backlog.
 3. **Still ambiguous → run the sweep.** A needless sweep costs one green-gated
    refactor pass; a missed one ships the duplication this stage exists to catch.
 
