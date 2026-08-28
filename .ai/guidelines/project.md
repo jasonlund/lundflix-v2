@@ -440,6 +440,28 @@ checkout/workspace has a usable dataset with no third-party API calls (FLIX-194)
   faked load invocation, not reloaded rows — the byte-apply is covered by the
   Conductor setup smoke, not a Pest test.
 
+## Cache: store scalars, never objects
+
+`config/cache.php` sets `'serializable_classes' => false` (Laravel's gadget-chain
+hardening default), so every store reads through
+`unserialize($value, ['allowed_classes' => false])` and **no object survives the
+round trip** — it returns as `__PHP_Incomplete_Class`. A `Cache::put`/`forever` of
+an object writes fine and can never be read back: the value is write-only.
+
+- **Cache strings, ints, bools, and arrays of those.** A timestamp goes in as
+  `->toIso8601String()` and is parsed on read (`SyncMarker`); a header goes in
+  verbatim (`ImdbDatasetMarker`).
+- **Type-check the read** whenever a stale key may predate the rule
+  (`is_string($marker)`) and degrade to the no-value path. An entry poisoned by an
+  older build then self-heals on the next write instead of throwing — no manual
+  `cache:forget` in the deploy.
+- **Never widen `serializable_classes` to rescue a call site** — it weakens a
+  security default app-wide for one value that should have been a scalar.
+- **The test `array` store is `'serialize' => true` on purpose**, against the
+  framework default, so the suite serializes exactly like production. Leaving it
+  false is what let a cached `CarbonImmutable` pass all 1217 tests and fail every
+  production run (FLIX-287). Never flip it back.
+
 ## Linting & formatting (finalize gates)
 
 Before finalizing **any** change, run every linter/formatter for the files you

@@ -252,7 +252,15 @@ abstract class TmdbSyncCommand extends Command
 
         $startedAt = CarbonImmutable::now();
 
-        $result = $work();
+        try {
+            $result = $work();
+        } catch (\Throwable $e) {
+            // Without this the start line is the last thing printed and the phase's
+            // missing closing line is the only symptom a leg died at all.
+            $this->output->writeln("{$label} failed after {$this->secondsSince($startedAt)}s");
+
+            throw $e;
+        }
 
         $this->output->writeln("{$label} done in {$this->secondsSince($startedAt)}s");
 
