@@ -130,6 +130,10 @@ prioritize the most-changed files.
    discipline.
 6. **testing-reviewer** — test *quality* against the `tdd-laravel-testing` /
    `tdd-react-testing` conventions (the Phase 1 gates already prove tests pass).
+7. **duplication-reviewer** — cross-file repetition of code, docblocks, and
+   rationale comments. Nothing else reaches duplicated *prose*: the
+   `review-tdd-cross-slice` sweep is green-gated, so rewriting a comment changes
+   no test.
 
 **Timeout budget:** if an agent hasn't returned after 8 minutes, mark it
 `TIMED_OUT` in the coverage matrix and proceed with the rest.
@@ -253,6 +257,7 @@ Spec section above stands on its own.]
 | integration-reviewer | ✅ completed / ⏱ timed out | {count} |
 | discipline-reviewer | ✅ completed / ⏱ timed out | {count} |
 | testing-reviewer | ✅ completed / ⏱ timed out | {count} |
+| duplication-reviewer | ✅ completed / ⏱ timed out | {count} |
 | grounding check | ✅ {checked} checked | 🗑 {discarded} discarded |
 | false-positive-hunter | ✅ completed | {dismissed} dismissed |
 | missing-defect-hunter | ✅ completed | {new} new findings |

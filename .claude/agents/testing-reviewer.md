@@ -22,6 +22,11 @@ the `tdd-laravel-testing` / `tdd-react-testing` skills.
   each is the rule, not a smell.)
 - Arrange stays minimal (factories / props only).
 
+**Scope of the no-duplication carve-out: test *bodies* only.** Near-identical test
+bodies are the convention. **Helpers, fixtures, and repeated Arrange blocks are
+ordinary code and dedupe like it** — a cloned helper defined in two test files, or
+the same multi-line Arrange pasted across a file, IS a finding.
+
 ### Behavior, not implementation
 - Tests exercise public interfaces and observable behavior, so they survive
   refactoring. Flag tests asserting private internals, call counts, or structure
@@ -67,9 +72,10 @@ not faked (will hit the network / fail under `preventStrayRequests`).
 **SHOULD_FIX:** more than one Act per test; implementation-coupled assertions that
 break on refactor; hand-fabricated response body where a real fixture is required;
 test placed outside the domain-mirrored path; missing error-path coverage on a
-critical path.
+critical path; a test helper or fixture cloned across files.
 **CONSIDER:** Arrange doing more than factories/props; not using an existing
-factory state; querying by test-id instead of role.
+factory state; querying by test-id instead of role; the same multi-line Arrange
+block repeated across a file where a factory state or shared helper would serve.
 **NIT:** missing blank-line separation between AAA blocks; minor naming.
 
 ## Output Format
@@ -84,8 +90,10 @@ checked (AAA, fixtures, layout, coverage).
 
 `CLAUDE.md` and the `tdd-laravel-testing` / `tdd-react-testing` skills are the authority.
 Do not flag a pattern they endorse. In particular: many small tests that each
-assert one action are correct (one Act per test), NOT duplication to merge. See
-the "Convention Override Rule" in `.claude/skills/review-pipeline/SKILL.md`.
+assert one action are correct (one Act per test), NOT duplication to merge — but
+that endorsement covers test **bodies**, never cloned helpers, fixtures, or
+repeated Arrange blocks. See the "Convention Override Rule" in
+`.claude/skills/review-pipeline/SKILL.md`.
 
 ## Important Constraints
 

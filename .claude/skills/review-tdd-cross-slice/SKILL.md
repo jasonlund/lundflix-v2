@@ -12,7 +12,7 @@ description: >-
 
 This skill is a **trigger + scope shim**, nothing more. It exists to close one gap:
 the `tdd` loop's REFACTOR phase is **slice-scoped** — each cycle's refactorer sees
-only the files it touched plus that slice (`tdd/SKILL.md:106`). Across N slices in
+only the files it touched plus that slice (`tdd/SKILL.md`, "Step 3 — REFACTOR"). Across N slices in
 one PR, **nothing in the loop ever looks at the combined diff.** So per-slice refactors
 structurally cannot catch:
 
@@ -79,6 +79,10 @@ content.** Concretely:
   branches directly.
 - Not a code-review of prose/markdown — for non-tested artifacts there is no green gate
   to anchor a refactor; use the `/review:claude` command instead.
+- **Not a reviewer of duplicated comment prose.** Being green-gated and
+  behavior-preserving, this sweep can only move code; rewriting a duplicated
+  rationale comment changes no test, so it falls outside the gate that makes this
+  pass safe. `duplication-reviewer` in `/review:claude` Phase 3 owns that.
 
 ## Reference
 

@@ -21,7 +21,7 @@ Loop: `[cross-slice sweep?]` → `/review:create-pr` → `/review:human` →
 ### Stage 0: Cross-slice refactor sweep (conditional)
 Decide whether the branch spans **more than one TDD slice**. Ticket count is
 irrelevant: `tdd-refactorer` is spawned per slice with only that slice's files
-(`.claude/skills/tdd/SKILL.md:106`), so one ticket of many slices has the same
+(`.claude/skills/tdd/SKILL.md`, "Step 3 — REFACTOR"), so one ticket of many slices has the same
 blind spot as many tickets. Expect this to fire **routinely, by design** — a
 slice is only 2–6 tests (`.claude/skills/tdd/SKILL.md`), so most non-trivial PRs
 span several; a high hit rate is the gate working, not a misfire.

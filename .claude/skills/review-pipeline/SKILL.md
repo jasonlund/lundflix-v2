@@ -91,6 +91,10 @@ before speaking.
    or cross-system/integration issue. Style, formatting, naming taste, and
    "alternative approach" preferences are **not** defects — cap them at NIT and
    respect the nit cap, or say nothing.
+   **Verbatim duplication also qualifies as objective** — that two blocks are
+   byte-identical is a measurable fact, not taste, so it is not NIT-capped. This
+   exemption is narrow and belongs to `duplication-reviewer`: it covers repetition
+   it can quote twice, never "these two look similar".
 4. **Ownership bar — not already owned.** A deterministic gate
    (Pint/Rector/ESLint/Vitest/Pest) or an endorsed convention does not already own
    it. Repeating a gate or flagging an endorsed pattern is itself a review defect
@@ -198,8 +202,10 @@ rules bind every entry, without exception:**
   CONSIDER; "the `$strategy` parameter added at L12 has one caller, which passes one
   value, and the ticket asks for none" is graded as the defect it is. An agent brief
   may rate the same phenomenon higher — `discipline-reviewer` grades speculative
-  generality, overengineering, and duplicated code as BLOCKING or SHOULD_FIX. Both
-  hold: grade the grounded defect, cap the bare label.
+  generality and overengineering as BLOCKING or SHOULD_FIX. Both hold: grade the
+  grounded defect, cap the bare label. **Duplication is the exception and is never
+  BLOCKING** — it breaks no behavior, so it is not on the BLOCKING list above.
+  `duplication-reviewer` owns it and floors at CONSIDER.
 
 Each reads *what it is* → *the fix*:
 
@@ -380,7 +386,7 @@ enforced by `tests/Unit/AgentModelPolicyTest.php`:
 
 1. **Write-side agents `inherit`** — `review-fixer` and the `tdd-*` phases produce
    code the session owns, so they run on whatever model the session runs.
-2. **Read-only breadth review and mechanical wrappers pin `sonnet`** — the six
+2. **Read-only breadth review and mechanical wrappers pin `sonnet`** — the seven
    Phase 3 reviewers work a known checklist and `coderabbit-reviewer` only shells a
    CLI and reshapes its output. Pin the **alias**, never a dated model id, so the
    pin tracks the current Sonnet instead of rotting.

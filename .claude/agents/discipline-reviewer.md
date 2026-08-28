@@ -27,12 +27,17 @@ behavior).
 - No "flexibility" or "configurability" that wasn't requested.
 - No error handling for impossible states.
 - If 200 lines could be 50, it should be 50.
+- **Duplication removal is exempt.** "Single-use" means used once — extracting a
+  helper shared by two or more callers is not speculative abstraction, it is the
+  opposite. Never flag a change for consolidating repeated code.
 
 ### 3. Surgical Changes
 - Touch only what the requirement needs.
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken; don't bundle a refactor with a
-  feature.
+  feature. **Duplication is "broken"**, and a sanctioned cross-slice sweep
+  (`review-tdd-cross-slice`) is not a bundled drive-by — this rule targets scope
+  creep, not deduplication.
 - Match existing style even if you'd do it differently.
 - Remove orphans your change creates; leave pre-existing dead code alone (mention
   it, don't delete it).
