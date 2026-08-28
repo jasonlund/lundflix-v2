@@ -232,7 +232,12 @@ describe('catalog:sync exit codes and failure handling', function (): void {
         // Act & Assert
         // The defect this pins: a leg that threw was report()ed and nothing was
         // printed, so a run that lost a leg read as a clean exit at the prompt.
+        // The 500 lands inside the download phase, so the phase must close itself
+        // too — without that line its start line is the last thing printed and a
+        // dead phase is indistinguishable from a hung one. Asserted as a prefix
+        // because the elapsed seconds vary.
         $this->artisan('catalog:sync')
+            ->expectsOutputToContain('Downloading movie-ids export… failed after')
             ->expectsOutputToContain('catalog:sync-movies failed:')
             ->expectsOutputToContain('Completed with 1 failed leg: catalog:sync-movies')
             ->assertExitCode(Command::FAILURE);

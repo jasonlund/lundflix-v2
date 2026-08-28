@@ -20,11 +20,20 @@ class SyncCatalog extends Command
         $failed = [];
 
         foreach ($this->commands() as $command => $arguments) {
-            $name = $this->commandName($command);
+            // The class-string stands in until the friendly name resolves. Reading that
+            // name builds the command through the container, which can throw — inside
+            // the try that costs one leg; outside it would kill every remaining leg and
+            // the closing summary, in the one command that exists to survive a failure.
+            $name = $command;
 
             try {
+                $name = $this->commandName($command);
+
                 $exitCode = Artisan::call($command, $arguments, $this->output);
 
+                // Defensive and currently unreachable: every leg returns SUCCESS even
+                // when individual ids failed, spending its failure flag on holding the
+                // sync marker back instead. No test exercises this — don't read it as covered.
                 if ($exitCode !== self::SUCCESS) {
                     $this->output->writeln("{$name} failed with exit code {$exitCode}");
                     $failed[] = $name;
@@ -55,6 +64,8 @@ class SyncCatalog extends Command
     /**
      * The artisan signature behind a class-string key — `catalog:sync-movies`, the
      * name an operator can re-run, rather than an FQCN they would have to translate.
+     * Resolving it is container work that can throw, so callers read it from inside
+     * their own failure handling.
      *
      * @param  class-string<Command>  $command
      */
