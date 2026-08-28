@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Models\Movie;
+use App\Domains\Catalog\Support\SyncMarker;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -675,7 +676,7 @@ describe('catalog:sync-movies changes-feed update phase', function (): void {
         // window starts fall on three different calendar days, the only granularity
         // the assertion compares: marker − 6h → 2026-07-13; overlap dropped →
         // 2026-07-14; marker ignored for the 24h fallback → 2026-07-15.
-        Cache::put(SyncFeed::TmdbMovies->cacheKey(), now()->subDays(2)->subHours(8)->toImmutable());
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(2)->subHours(8)->toImmutable());
         Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
         fakeTmdbUpdateSync();
 
@@ -801,7 +802,7 @@ describe('catalog:sync-movies marker advancement', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey())->equalTo(now()))->toBeTrue();
+        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
     });
 
     it('advances the movies marker on a --fresh run', function (): void {
@@ -814,7 +815,7 @@ describe('catalog:sync-movies marker advancement', function (): void {
         $this->artisan('catalog:sync-movies', ['--fresh' => true]);
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey())->equalTo(now()))->toBeTrue();
+        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
     });
 
     it('does not advance the movies marker when an insert-phase batch fails', function (): void {

@@ -222,6 +222,32 @@ describe('catalog:sync exit codes and failure handling', function (): void {
         expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
     });
 
+    it('names the failed leg on the console and closes with a summary', function (): void {
+        // Arrange
+        Sleep::fake();
+        Exceptions::fake();
+        Http::fake(['*movie_ids*' => Http::response('', 500)]);
+        fakeCatalogSync();
+
+        // Act & Assert
+        // The defect this pins: a leg that threw was report()ed and nothing was
+        // printed, so a run that lost a leg read as a clean exit at the prompt.
+        $this->artisan('catalog:sync')
+            ->expectsOutputToContain('catalog:sync-movies failed:')
+            ->expectsOutputToContain('Completed with 1 failed leg: catalog:sync-movies')
+            ->assertExitCode(Command::FAILURE);
+    });
+
+    it('closes a clean run with Done.', function (): void {
+        // Arrange
+        fakeCatalogSync();
+
+        // Act & Assert
+        $this->artisan('catalog:sync')
+            ->expectsOutputToContain('Done.')
+            ->assertExitCode(Command::SUCCESS);
+    });
+
     it('exits SUCCESS when every command succeeds', function (): void {
         // Arrange
         fakeCatalogSync();

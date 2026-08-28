@@ -196,9 +196,10 @@ window.
 
 - `SyncMarker` (`Support/`) owns read + advance. `window(SyncFeed)` derives the
   fetch interval as a `SyncWindow` VO: `since` = marker − 6h overlap (24h fallback
-  when unset), floored at `now − 14d` (TMDB's max `/changes` span; TVDB matched for
-  parity). `advance(SyncFeed, $startedAt)` persists **run-start** via
-  `Cache::forever` — one key per `SyncFeed` case (`TvdbShows`/`TvdbEpisodes`/
+  when unset or unreadable), floored at `now − 14d` (TMDB's max `/changes` span; TVDB matched for
+  parity). `advance(SyncFeed, $startedAt)` persists **run-start** as an
+  ISO-8601 string via `Cache::forever` (never the Carbon itself — see the
+  scalars-only cache rule in `.ai/guidelines/project.md`) — one key per `SyncFeed` case (`TvdbShows`/`TvdbEpisodes`/
   `TmdbShows`/`TmdbMovies`), so the four feeds advance independently.
 - **Zero-failure gate:** a run advances its marker only if it finished with **no**
   failed ids/chunks; `--fresh` still advances (clean baseline). A per-id hydrate
