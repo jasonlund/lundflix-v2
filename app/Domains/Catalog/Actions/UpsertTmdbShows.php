@@ -80,10 +80,6 @@ final class UpsertTmdbShows
 
         Show::upsert($rows, ['_tmdb_id'], array_keys($rows[0]));
 
-        Show::query()
-            ->whereIn('_tmdb_id', array_column($rows, '_tmdb_id'))
-            ->searchable();
-
         return count($rows);
     }
 

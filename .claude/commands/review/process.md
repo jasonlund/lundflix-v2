@@ -64,12 +64,25 @@ and resolve. The fixing happens in `review-fixer` subagents.
    mutation and **cannot take a direct reply**, so its only durable "handled" signal
    is a resolution comment we posted on a prior run. Build a `handledBodyRefs` set:
    scan the general PR comments (step 5) for the footer ref token
-   `via /review:process · ref: review-body {file}:{line}` (Phase 5). Compute the same
-   `{file}:{line}` ref for each parsed body finding and **skip any whose ref is in
-   `handledBodyRefs`** — this is a deterministic key match, not a fuzzy text match, so
-   handled body findings are reliably not re-picked-up. Items with no ref match are
-   un-handled. **Body findings are first-class — present, fix, and comment their
-   result exactly like inline ones**; only the resolve mechanic differs (Phase 5).
+   `via /review:process · ref: review-body {ref}` (Phase 5). Compute the same `{ref}`
+   for each parsed body finding and **skip any whose ref is in `handledBodyRefs`** —
+   this is a deterministic key match, not a fuzzy text match, so handled body findings
+   are reliably not re-picked-up. Items with no ref match are un-handled. **Body
+   findings are first-class — present, fix, and comment their result exactly like
+   inline ones**; only the resolve mechanic differs (Phase 5).
+
+   **Ref key format** — one key per body finding, stated identically in
+   `.claude/commands/review/add.md`, which posts these findings:
+   - **Has a file** → `{file}:{line}`, and `{file}:0` when the finding names no line.
+   - **No file** (a spec finding about code that does not exist) → `no-file:{hash}`.
+     `/review:add` prints this key in the finding's **File** line, as
+     `_no file — …_ (ref no-file:{hash})` — read it from there. For a review body
+     posted before that token existed, recompute it the way `/review:add` does: the
+     first 8 hex characters of the SHA-256 of the quoted ticket line in the finding's
+     **Violates** field, verbatim without the surrounding quote marks —
+     `printf '%s' '{quoted ticket line}' | shasum -a 256 | cut -c1-8`. The ticket line
+     is what makes such a finding unique, so each one keeps its own key across runs
+     while every other no-file finding on the PR stays separately tracked.
 5. **GitHub general PR comments** (not tied to a diff line):
    ```bash
    gh api repos/{owner}/{repo}/issues/{number}/comments
@@ -243,6 +256,18 @@ the user **your own recommendation on the fix**, not just the reviewer's words:
   positive)?
 - The concrete change you'd make if approved.
 
+**Write all three in Simplified Technical English** — one topic per sentence, active
+voice, ≤20-word instructions, the same word for the same thing, domain terms as
+`CONTEXT.md` names them. The full rules live in the *How Findings Are Written*
+section of `.claude/skills/review-pipeline/SKILL.md`. The user is reading these
+items back to back to make a decision on each, so a presentation that takes two
+readings costs more here than anywhere else in the pipeline. Keep the quoted comment
+line and any quoted code verbatim.
+
+**Three sentences per item is the target.** One for the ask, one for your read, one
+for the change. Reach for more only when the item genuinely carries more, and put the
+overflow below the three, never inside them.
+
 ### Endorsed-pattern dismissals — capture a reinforcement, don't present
 
 Dismissed-as-FP items are **not presented** (Phase 1 auto-dismisses them). But when a
@@ -389,15 +414,16 @@ Reply + resolve mechanics by source:
   mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }'
   ```
 - **gh-review-body** (body finding) — no thread to reply to and no resolve mutation,
-  so post a general PR comment whose footer carries the **stable ref token** keyed on
-  the finding's `{file}:{line}` (this is what Phase 0 matches on to skip it next run):
+  so post a general PR comment whose footer carries the finding's **stable ref token**
+  (this is what Phase 0 matches on to skip it next run):
   ```bash
   gh api repos/{owner}/{repo}/issues/{number}/comments -f body='<result>
 
-  _via /review:process · ref: review-body {file}:{line}_'
+  _via /review:process · ref: review-body {ref}_'
   ```
-  Use `{file}:0` when the body finding has no line. One ref per body finding (batch
-  several into one comment only if each gets its own `ref:` line).
+  `{ref}` is the key built in Phase 0 step 4 — `{file}:{line}`, `{file}:0` when the
+  finding has a file but no line, `no-file:{hash}` when it has no file. One ref per
+  body finding (batch several into one comment only if each gets its own `ref:` line).
 - **gh-comment** (general) — reply only (cannot be resolved):
   ```bash
   gh api repos/{owner}/{repo}/issues/{number}/comments -f body='…'
@@ -435,11 +461,9 @@ Summarize the run:
 - Tests: {pass/fail summary} · Pint: {clean/fixed}
 ```
 
-**Do not auto-commit.** Prompt the user to commit + push. On approval, commit with
-the required trailer and push:
-```
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
-```
+**Do not auto-commit.** Prompt the user to commit + push. On approval, commit with a
+ticket-prefixed subject plus the co-author trailer the harness supplies for this
+session — never hardcode one, it stamps a model version that rots — then push.
 
 ## Orchestration Notes
 

@@ -63,9 +63,7 @@ final readonly class UpsertTvdbShows
 
         $rows = array_map(fn (array $payload): array => $this->rawTvdbRow($payload, $now), $payloads);
 
-        $touchedIds = $this->upsertByTvdbId($this->nullExistingTmdbConflicts($this->nullAmbiguousTmdbIds($this->withValidTvdbId($rows))));
-
-        Show::query()->whereIn('id', $touchedIds)->searchable();
+        $this->upsertByTvdbId($this->nullExistingTmdbConflicts($this->nullAmbiguousTmdbIds($this->withValidTvdbId($rows))));
 
         return count($payloads);
     }
@@ -142,25 +140,18 @@ final readonly class UpsertTvdbShows
     }
 
     /**
-     * Upsert the raw rows by `_tvdb_id` via a cast-bypassing `Model::upsert()`,
-     * then return the ids of the affected shows (so they can be reindexed).
-     * Returns no ids when there are no rows.
+     * Upsert the raw rows by `_tvdb_id` via a cast-bypassing `Model::upsert()`.
+     * An empty batch short-circuits, so `upsert()` is never handed no rows.
      *
      * @param  array<int, array<string, mixed>>  $rows
-     * @return list<int|string>
      */
-    private function upsertByTvdbId(array $rows): array
+    private function upsertByTvdbId(array $rows): void
     {
         if ($rows === []) {
-            return [];
+            return;
         }
 
         Show::upsert($rows, ['_tvdb_id'], array_keys($rows[0]));
-
-        return Show::query()
-            ->whereIn('_tvdb_id', array_column($rows, '_tvdb_id'))
-            ->pluck('id')
-            ->all();
     }
 
     /**

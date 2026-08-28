@@ -65,6 +65,63 @@ Single-purpose actions live in `App\Domains\{Domain}\Actions`.
   auth/profile actions live in `App\Domains\Identity\Actions`, wired in
   `App\Providers\FortifyServiceProvider`.
 
+### DTOs — domain boundaries speak in types, not array shapes
+
+A public method on a domain's `Actions`/`Services` **never takes or returns a bare
+`array`** for an app-shaped struct. `array{id: int, …}` in a docblock is a type the
+language won't check; make it a class. Enforced by
+`tests/Feature/Architecture/DtoBoundaryTest.php`.
+
+- **Location: `App\Domains\{Domain}\Data`** — every data-carrying shape. `Support/`
+  holds **behavior helpers only** (`SourceId`, `RawSourceColumns`, `BulkCaseUpdate`).
+  A class whose job is to carry values belongs in `Data/` even when it exposes
+  accessors over them (`SyncWindow`).
+- **Base class by boundary:** plain `final readonly class` by default; extend spatie
+  `Data` **only** when the object crosses a serialization boundary — Inertia props,
+  `#[TypeScript]`, `::from()` hydration. A reflection-heavy base buys nothing on an
+  internal service→action struct.
+- **Plain carriers.** No `toArray()`, named constructors, or behavior. Marshalling
+  belongs to the seam that needs it, not the DTO (see `PlexSession`).
+- **Nullability states trust.** A DTO of verified data types its fields tightly
+  (`PlexServerConnection`); one carrying unvalidated request data is nullable so a
+  missing field reaches the validator instead of the constructor
+  (`PlexRegistrationInput`). Omitting a field entirely is a real guard —
+  `PlexRegistrationInput` has no `email`, so a spoofed one has nowhere to land.
+
+**Three exemptions, and only these** (the fence documents each entry with its reason):
+
+1. **Raw upstream payloads** — the wire shape is the source's, not ours. Two forms,
+   and which one you have decides how much of the signature is exempt:
+   - **Ingest sinks — the exempt `array` is a *parameter*.** `array $payloads`/`$rows`/
+     `$page`/`$sections` feeding the `_{source}_*` raw-parity columns
+     (`UpsertTmdbMovies::handle`, `ReconcilePlexLibraries::handle`,
+     `ImportImdbTitles::handle`). A DTO there is a transform at ingest and breaks the
+     `RAW_COLUMNS` list-driven mapping. The **return** still converts — these hand
+     back a count or a DTO (`TitleImportCounts`).
+   - **Wire-shape reads — the exempt `array` is the *return*.** A method whose
+     `array`/`?array` return *is* the decoded upstream response body
+     (`TmdbApiService::movie`, `TmdbApiService::configuration`,
+     `PlexLibraryService::fetchSections`, and their TVDB/Plex siblings). No
+     `RAW_COLUMNS` mapping to break and no DTO planned — modelling a third party's
+     response shape buys a class that changes whenever they change. The return
+     stays `array` indefinitely.
+2. **Framework-fixed signatures** — Fortify's `CreatesNewUsers::create(array $input)`,
+   Inertia's `share(): array`. Not ours to retype.
+3. **Scalar lists** — `list<int>`/`list<string>` returns. A list of ints is not a
+   struct.
+
+The fence **throws on an exemption entry that no longer resolves** to a real
+`Class::method`, so the list can't rot into silently exempting nothing. Adding an
+entry is a deliberate act — a new source integration must classify its ingest methods
+consciously.
+
+**Session gotcha:** `config('session.serialization')` is `json`, so a PHP object put
+in the session decodes back as an array. Stash a JSON-safe payload and hydrate on
+read (`PlexSession`). The Feature suite **cannot catch this** — the test client sends
+no session cookie between requests, so each gets a fresh id and an in-memory object
+survives. Round-trip the value through the serializer in the test, as
+`PlexRegistrationTest` does.
+
 ### Exceptions
 
 **One explicitly named class per distinct failure**, named for the condition,
@@ -148,6 +205,12 @@ tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
 - **Tests mirror the domain tree:** `tests/Feature/{Domain}/`,
   `tests/Unit/{Domain}/`, and `tests/Browser/{Domain}/` mirror
   `app/Domains/{Domain}/`.
+- **`tests/Support/` holds helper *classes*** (PSR-4 `Tests\Support\…`; `composer.json`
+  already maps `Tests\` → `tests/`) backing the self-policing guards, e.g.
+  `TestOrganizationScanner`. `tests/Pest.php` stays the home for global helper
+  *functions* (`fixtureBytes`, `staleShow`, …); a cohesive rule engine with its own
+  constants belongs in a class, which also sidesteps the suite-wide uniqueness rule
+  on global helper names.
 - **External-HTTP tests use real-data fixtures: byte-exact, in the API's native
   wire format**, committed under `tests/Fixtures/{Domain}/{source}/` in the exact
   extension the API returns (`.tsv.gz`, `.json`). Load via
@@ -289,6 +352,32 @@ cross-source value "conflicts" to resolve at ingest (e.g. `_imdb_runtime` and
 `_tmdb_runtime` coexist rather than fighting over one `runtime` column). The
 source of truth is chosen per read, not baked into the schema.
 
+### Column position: timestamps always last
+
+**`created_at`/`updated_at` are the final two columns of every table, in that
+order** — a table reads `id` → keys → source blocks `imdb → tmdb → tvdb` (each
+closed by its own `*_synced_at`) → app bookkeeping → timestamps. A new table
+declares `$table->timestamps()` last and gets this for free.
+
+- **A migration that adds a column to an existing table places it with
+  `->after('<preceding column>')`** — the column lands in its source block instead
+  of being appended past `updated_at`, which is how six tables ended up scrambled
+  (FLIX-247). Add a whole block with `$table->after('<col>', function (Blueprint
+  $table): void { … })` so the group stays contiguous. `after` is a MySQL
+  modifier; other grammars ignore it, so it costs nothing on sqlite.
+- **Nothing should need rearranging again.** The one-off repair lives in
+  `2026_08_13_000000_reorder_table_columns_to_keep_timestamps_last.php` and is
+  history, not a pattern to copy — don't write another reposition migration to
+  clean up after a missing `after()`.
+- `App\Domains\Local\Database\ColumnOrder::alterStatement()` exists for that
+  repair: given a table's `SHOW FULL COLUMNS` rows plus a target name order it
+  returns one `ALTER TABLE … MODIFY COLUMN … AFTER …` statement, rebuilding each
+  definition verbatim and throwing `ColumnOrderMismatch` unless the target order
+  is an exact permutation. Reach for it only if a table is already scrambled, and
+  guard the call on the MySQL driver.
+- Column order is a MySQL concern — the sqlite test DB has none, so ordering is
+  never assertable in CI. Verify by hand with `SHOW COLUMNS` after migrating.
+
 ### Crosswalk / queryable-id columns — the one ingest-normalize exception
 
 "No transform at ingest" holds for descriptive fields (normalize at read). It does
@@ -374,8 +463,6 @@ enough that materializing is provably fine — say why in a comment).
 
 - Read-only iteration with no writes → `lazy()`/`cursor()` is fine (streams
   without the PK-pagination overhead).
-- `--limit`-style caps don't compose with `chunkById` directly — track a
-  processed count and `return false` from the closure to halt early.
 
 ## Persistence: version-controlled database seed
 
@@ -386,7 +473,10 @@ checkout/workspace has a usable dataset with no third-party API calls (FLIX-194)
   tooling) — `App\Domains\Local\Console\Commands` (registered in `bootstrap/app.php`
   `withCommands`), with `mysqldump`/`mysql` shelled through the `Process` facade
   (fakeable) and the pure helpers in `App\Domains\Local\Database` (`DumpFit`
-  fitting, `DumpSelection` coherence, `MysqlConnection` args).
+  fitting, `DumpSelection` coherence, `MysqlConnection` args). "Local-development
+  tooling" names the *commands* only — `App\Domains\Local\Database` also holds pure
+  schema helpers called from **migrations** (`ColumnOrder`), which run in every
+  environment, so the domain must ship to production.
 - **`database/dumps/*.sql.gz`** are generated blobs: **one file per table**
   (`movies`, `shows`, `seasons`, `media`, `downloads` — never `settings`, which is
   secret + `APP_KEY`-encrypted), each capped under 50 MB. `movies`/`shows` are the
@@ -406,6 +496,28 @@ checkout/workspace has a usable dataset with no third-party API calls (FLIX-194)
   can't load into sqlite, so `db:import` tests assert the real truncate + the
   faked load invocation, not reloaded rows — the byte-apply is covered by the
   Conductor setup smoke, not a Pest test.
+
+## Cache: store scalars, never objects
+
+`config/cache.php` sets `'serializable_classes' => false` (Laravel's gadget-chain
+hardening default), so every store reads through
+`unserialize($value, ['allowed_classes' => false])` and **no object survives the
+round trip** — it returns as `__PHP_Incomplete_Class`. A `Cache::put`/`forever` of
+an object writes fine and can never be read back: the value is write-only.
+
+- **Cache strings, ints, bools, and arrays of those.** A timestamp goes in as
+  `->toIso8601String()` and is parsed on read (`SyncMarker`); a header goes in
+  verbatim (`ImdbDatasetMarker`).
+- **Type-check the read** whenever a stale key may predate the rule
+  (`is_string($marker)`) and degrade to the no-value path. An entry poisoned by an
+  older build then self-heals on the next write instead of throwing — no manual
+  `cache:forget` in the deploy.
+- **Never widen `serializable_classes` to rescue a call site** — it weakens a
+  security default app-wide for one value that should have been a scalar.
+- **The test `array` store is `'serialize' => true` on purpose**, against the
+  framework default, so the suite serializes exactly like production. Leaving it
+  false is what let a cached `CarbonImmutable` pass all 1217 tests and fail every
+  production run (FLIX-287). Never flip it back.
 
 ## Linting & formatting (finalize gates)
 
@@ -482,6 +594,23 @@ cross-reference — don't duplicate.
   tree; a plan on disk drifts from the ticket and biases future agents who read
   it as a convention. Bars *version-controlled* planning files only — gitignored
   scratch space (e.g. `.context`) is fine; it never enters the repo.
+- **Durable decision records are a different artifact class, and DO live in the
+  repo.** The bar above is on **per-ticket** planning — a plan for one piece of
+  work, which drifts from its ticket the moment either changes. A **glossary**
+  (`CONTEXT.md`) and an **ADR** (`docs/adr/NNNN-slug.md`) are neither: they are
+  cross-ticket, decision-level, and outlive the work that produced them. They also
+  have to be checked in to do their job — skills read them from the working tree
+  while exploring, which a Linear body can't support. Both are created **lazily**,
+  only when a term is actually resolved or a decision actually made; see
+  `docs/agents/domain.md`.
+  - An **ADR is 1–3 sentences** and earns its place only when all three hold:
+    hard to reverse, surprising without context, and the result of a real
+    trade-off. Miss one and skip it — an easily-reversed decision just gets
+    reversed, and an unsurprising one leaves nobody wondering why.
+  - **Don't duplicate what this file already says.** A convention documented here
+    at length (the DDD layout, raw-source column prefixes) does not also get an
+    ADR; two sources drift. ADRs are for decisions with no home here — especially
+    deliberate deviations from an outside authority.
 
 ### Automatic ticket status transitions
 
@@ -493,7 +622,7 @@ boundary named):
 | --- | --- | --- |
 | Planning done (TDD backlog appended) | `plan-slices` | **Todo** |
 | Execution begins (first slice for the ticket) | `tdd` | **In Progress** |
-| PR opened | `review:create-pr` | **In Review** |
+| PR opened | `review:create-pr`, then **verified** (see below) | **In Review** |
 | PR merged | Linear's native GitHub integration | **Done** |
 
 The lifecycle order is `Backlog < Todo < In Progress < In Review < Done`. Each
@@ -514,3 +643,77 @@ rather than restating it:
   at PR-open, every ticket the PR covers moves to In Review together.)
 - **Report, don't ask.** State the transition in one line; the change is
   automatic — never prompt for permission.
+
+### PR-open is contended — write, then verify
+
+At PR-open **both** `review:create-pr` and Linear's GitHub integration write the
+status, and the integration's default mapping for *opened* is In Progress — so our
+In Review write can be reverted milliseconds later, nondeterministically and
+silently. That one transition is therefore **write → read back → correct once**:
+`save_issue(state: "In Review")`, re-read with `get_issue` **after** the PR-created
+call returns, and re-apply once if it was reverted (say so in the report). A
+**second** revert means the integration is fighting the contract — stop, leave it,
+tell the user to fix the mapping, never loop. **The durable cure is one writer, not
+a better retry:** set the integration's PR-opened mapping to In Review in Linear's
+GitHub settings — a vendor-dashboard click, so offer `mattpocock-skills:wizard`.
+
+The incident behind the rule and the timing forensics:
+`docs/agents/linear-pr-open-contention.md`.
+
+## Agent skills
+
+Configuration the installed engineering skills read before they act —
+`mattpocock-skills:triage`, `:to-spec`, `:to-tickets`, `:wayfinder`,
+`:code-review`. They ship as the `mattpocock-skills` plugin, so **every one is
+invoked with that prefix**; the skill files' own cross-references to bare
+`/to-spec`-style names are upstream text and are stale here. Written by
+`mattpocock-skills:setup-matt-pocock-skills`; edit `docs/agents/*.md` directly to
+change the config.
+
+**`/map` is the router** — one user-invoked skill naming every skill, command,
+subagent, and flow here, and pointing at the phase-boundary tree beside it. Open it
+when you've forgotten what exists.
+
+### Borrowed practice carries a Source line
+
+Several native skills adapt practice from the AI Hero plugin rather than calling it,
+each borrowed section closing with a `**Source:**` line naming the upstream skill.
+Two reasons. **20 of the 35 upstream skills set `disable-model-invocation: true`**,
+so nothing here *can* call them — including the two inlined most directly:
+`wait-what` (Source of review-pipeline's Simplified Technical English section) and
+`ask-matt` (Source of `/map`). The rest are callable — `code-review`'s smell
+baseline, `writing-for-agents` — and are inlined anyway, because the practice has to
+be in context *before* the work starts: one Skill call per reviewer costs more than
+the text and lands too late to shape the finding. (A different set from the five
+config readers named above; these are skills whose *text* is adapted here.)
+
+**When you apply a section that carries one, offer to explain its origin** — the
+upstream skill, what it argues, and the file to read. One line, then continue:
+*"This is the seam contract, adapted from `mattpocock-skills:tdd` — want the
+original reasoning?"* Offer once, and paste upstream text only when asked.
+
+### Human-only steps → offer the wizard
+
+When a task needs steps only a human can take — provisioning a third-party
+credential, clicking through a vendor dashboard, setting a CI secret, a one-off
+cutover — offer `mattpocock-skills:wizard`. It generates an interactive bash script
+that opens each URL, captures each value, and writes it where it belongs, so the
+procedure stops being re-explained every time. Adding an API credential here is the
+standard case: the value must reach `.env.example`, the README key table, **and**
+the Conductor root `.env`. Do the work directly whenever you can; the wizard is for
+where a human is genuinely in the loop.
+
+### Issue tracker
+
+Linear, team `lundflix` (`FLIX-123`), via `mcp__linear-server__*` only — GitHub
+Issues are unused. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See
+`docs/agents/domain.md`.

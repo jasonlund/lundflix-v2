@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Actions;
 
+use App\Domains\Catalog\Data\TitleImportCounts;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\BulkCaseUpdate;
@@ -28,14 +29,13 @@ final readonly class UpdateImdbRatings
 
     /**
      * @param  array<string, array{numVotes: int, averageRating: float}>  $ratings
-     * @return array{movies: int, shows: int}
      */
-    public function handle(array $ratings): array
+    public function handle(array $ratings): TitleImportCounts
     {
-        return [
-            'movies' => $this->updateTable(Movie::query(), $ratings),
-            'shows' => $this->updateTable(Show::query(), $ratings),
-        ];
+        return new TitleImportCounts(
+            movies: $this->updateTable(Movie::query(), $ratings),
+            shows: $this->updateTable(Show::query(), $ratings),
+        );
     }
 
     /**
@@ -57,12 +57,6 @@ final readonly class UpdateImdbRatings
             $valuesById,
             RawSourceColumns::names(self::SOURCE, self::RAW_COLUMNS),
         );
-
-        if ($matchedIds === []) {
-            return 0;
-        }
-
-        (clone $query)->whereIn('_imdb_id', $matchedIds)->searchable();
 
         return count($matchedIds);
     }

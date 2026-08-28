@@ -89,14 +89,13 @@ The skill owns the commit.
 1. Stage everything: `git add -A`.
 2. If nothing is staged (branch already fully committed and lint changed nothing),
    skip to push.
-3. Commit with a ticket-prefixed subject matching the repo convention
-   (`FLIX-XXX: <concise summary>`), and the standard trailer:
+3. Commit with a ticket-prefixed subject matching the repo convention:
    ```
    FLIX-XXX: <concise summary of the change>
-
-   Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
    ```
-   Squash lint fixups into this commit rather than adding a separate "lint" commit.
+   Append the co-author trailer the harness supplies for this session — never
+   hardcode one, it stamps a model version that rots. Squash lint fixups into this
+   commit rather than adding a separate "lint" commit.
 4. Push and set upstream: `git push -u origin HEAD`.
 
 ---
@@ -148,7 +147,16 @@ Delete the temp file after. Do not pass `--draft`.
 Once the PR is confirmed open, advance **every ticket the PR covers** to **In
 Review** via the `linear-server` MCP `save_issue`, per the *Automatic ticket
 status transitions* contract in `project.md` (forward-only; skip
-Canceled/Duplicate; no-op if already In Review or later). "Covered" = the union of
+Canceled/Duplicate; no-op if already In Review or later).
+
+**Then read it back — PR-open is contended.** Linear's GitHub integration reacts to
+the same `pull_request.opened` event and its default mapping for *opened* is In
+Progress, so it can revert our write within a few hundred milliseconds. Follow the
+contract's **write → read back → correct once** clause: `get_issue` after the write,
+re-apply once if it was reverted, and stop after a second revert rather than
+looping. Report the correction when one was needed.
+
+"Covered" = the union of
 the ticket resolved in Phase 0 (explicit arg → branch name → PR title) **and**
 every `FLIX-XXX` id in the branch name — so a ticket passed explicitly or found in
 the PR title but absent from the branch name still moves, and a multi-ticket branch
@@ -163,7 +171,7 @@ moves all of them together at PR open. No ticket resolves → skip silently.
    {title}
 
 Branch pushed · {N} commit(s) · lint clean · tests green
-{ticket(s)} → In Review
+{ticket(s)} → In Review{ (corrected after the GitHub integration reverted it)}
 
 View: {PR URL}
 

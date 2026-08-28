@@ -13,15 +13,11 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Support\Str;
 
 #[Description('Sync IMDb titles: re-download the title.basics dataset and refresh the basics columns on every matching catalog title')]
-#[Signature('catalog:sync-titles {--batch=}')]
+#[Signature('catalog:sync-titles {--batch=} {--force}')]
 class SyncImdbTitles extends ImdbSyncCommand
 {
     /**
-     * Default flush size for the accumulated basics buffer; --batch overrides it.
-     *
-     * Bounds both the raw dataset rows held in memory and the ids each flush's
-     * catalog-membership probe binds into its `in (…)` — not the bulk CASE update,
-     * which only ever writes the catalog's share of a batch.
+     * Bound on both the pre-filter's id probe and the write buffer; --batch overrides it.
      */
     private const int BATCH_SIZE = 2000;
 
@@ -38,37 +34,14 @@ class SyncImdbTitles extends ImdbSyncCommand
         parent::__construct($datasets, $catalogIds);
     }
 
-    public function handle(): int
+    protected function dataset(): ImdbDataset
     {
-        $path = $this->datasets->download(ImdbDataset::TitleBasics);
+        return ImdbDataset::TitleBasics;
+    }
 
-        // Plain writeln progress, not a progress bar: bars render nothing
-        // under catalog:sync's nested Artisan::call, so a per-flush heartbeat
-        // is the only visible movement.
-        $this->output->writeln('Importing IMDb titles…');
-
-        $size = $this->batchSize();
-
-        try {
-            /** @var array<string, array<string, mixed>> $batch */
-            $batch = [];
-
-            foreach ($this->datasets->rows($path, ImdbDataset::TitleBasics) as $row) {
-                $batch[$row['tconst']] = $row;
-
-                if (count($batch) >= $size) {
-                    $this->flush($batch);
-                }
-            }
-
-            $this->flush($batch);
-        } finally {
-            @unlink($path);
-        }
-
-        $this->output->writeln("Skipped {$this->adultSkipped} adult ".Str::plural('title', $this->adultSkipped).'.');
-
-        return self::SUCCESS;
+    protected function feed(): string
+    {
+        return 'titles';
     }
 
     protected function defaultBatchSize(): int
@@ -76,15 +49,29 @@ class SyncImdbTitles extends ImdbSyncCommand
         return self::BATCH_SIZE;
     }
 
-    protected function heartbeatTag(): string
+    protected function stream(string $path): void
     {
-        return 'imdb titles';
+        $size = $this->batchSize();
+
+        /** @var array<string, array<string, mixed>> $batch */
+        $batch = [];
+
+        foreach ($this->matchedRows($path, $size) as $row) {
+            $batch[$row['tconst']] = $row;
+
+            if (count($batch) >= $size) {
+                $this->flush($batch);
+            }
+        }
+
+        $this->flush($batch);
     }
 
     /**
      * Drop the adult rows, adding them to the run's skip tally.
      *
-     * Runs after the catalog-membership probe, so the tally stays catalog-scoped.
+     * Runs on rows the pre-filter already matched, so the tally stays
+     * catalog-scoped.
      *
      * @param  array<string, array<string, mixed>>  $rows
      * @return array<string, array<string, mixed>>
@@ -99,6 +86,12 @@ class SyncImdbTitles extends ImdbSyncCommand
         $this->adultSkipped += count($rows) - count($writable);
 
         return $writable;
+    }
+
+    #[\Override]
+    protected function reportSummary(): void
+    {
+        $this->output->writeln("Skipped {$this->adultSkipped} adult ".Str::plural('title', $this->adultSkipped).'.');
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Actions;
 
+use App\Domains\Catalog\Data\TitleImportCounts;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\BulkCaseUpdate;
@@ -39,14 +40,13 @@ final readonly class ImportImdbAkas
 
     /**
      * @param  array<string, list<array<string, mixed>>>  $akas  keyed by titleId => that title's aka rows
-     * @return array{movies: int, shows: int}
      */
-    public function handle(array $akas): array
+    public function handle(array $akas): TitleImportCounts
     {
-        return [
-            'movies' => $this->updateTable(Movie::query(), $akas),
-            'shows' => $this->updateTable(Show::query(), $akas),
-        ];
+        return new TitleImportCounts(
+            movies: $this->updateTable(Movie::query(), $akas),
+            shows: $this->updateTable(Show::query(), $akas),
+        );
     }
 
     /**
@@ -64,12 +64,6 @@ final readonly class ImportImdbAkas
         );
 
         $matchedIds = $this->bulkCaseUpdate->handle($query, $valuesById, [self::COLUMN]);
-
-        if ($matchedIds === []) {
-            return 0;
-        }
-
-        (clone $query)->whereIn('_imdb_id', $matchedIds)->searchable();
 
         return count($matchedIds);
     }

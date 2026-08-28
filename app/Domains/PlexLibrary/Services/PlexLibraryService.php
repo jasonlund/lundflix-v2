@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\PlexLibrary\Services;
 
+use App\Domains\Common\Data\PlexServerConnection;
 use App\Domains\Common\Exceptions\PlexAuthenticationFailed;
 use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\Common\Services\PlexApiService;
@@ -22,26 +23,18 @@ final readonly class PlexLibraryService
 
     public function __construct(private PlexApiService $plexApi) {}
 
-    /**
-     * @return array{clientIdentifier: string, name: string, uri: string, accessToken: string}
-     */
-    public function serverConnection(): array
+    public function serverConnection(): PlexServerConnection
     {
         $id = (string) config('services.plex.server_identifier');
 
         $server = $this->plexApi->getOnlineServers((string) config('services.plex.token'))
-            ->first(fn (array $s): bool => $s['clientIdentifier'] === $id);
+            ->first(fn (PlexServerConnection $s): bool => $s->clientIdentifier === $id);
 
         if ($server === null) {
             throw ConfiguredPlexServerUnavailable::forIdentifier($id);
         }
 
-        return [
-            'clientIdentifier' => $server['clientIdentifier'],
-            'name' => $server['name'],
-            'uri' => $server['uri'],
-            'accessToken' => $server['accessToken'],
-        ];
+        return $server;
     }
 
     /**

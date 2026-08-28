@@ -49,179 +49,185 @@ use Illuminate\Support\Facades\Http;
 | is what the guest actually reads.
 */
 
-it('bounces a bare callback hit back to the login page', function (): void {
-    // Arrange
-    // a guest arriving with no stashed PIN — nothing to set up
+describe('auth.plex.callback PIN refusals', function (): void {
+    it('bounces a bare callback hit back to the login page', function (): void {
+        // Arrange
+        // a guest arriving with no stashed PIN — nothing to set up
 
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
 
-    // Assert
-    $response->assertRedirect(route('login'));
-    $response->assertSessionHasErrors([
-        'plex' => 'We could not authenticate your Plex account. Please try again.',
-    ]);
-    $response->assertSessionMissing('plex_registration');
+        // Assert
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHasErrors([
+            'plex' => 'We could not authenticate your Plex account. Please try again.',
+        ]);
+        $response->assertSessionMissing('plex_registration');
+    });
+
+    it('bounces the guest back to the login page when the PIN was never claimed', function (): void {
+        // Arrange
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_unclaimed.json')),
+        ]);
+        $this->withSession(['plex_pin_id' => 538114995]);
+
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
+
+        // Assert
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHasErrors([
+            'plex' => 'We could not authenticate your Plex account. Please try again.',
+        ]);
+        $response->assertSessionMissing('plex_registration');
+    });
+
+    it('bounces the guest back to the login page when the PIN exchange fails at Plex', function (): void {
+        // Arrange
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response('', 500),
+        ]);
+        $this->withSession(['plex_pin_id' => 538114995]);
+
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
+
+        // Assert
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHasErrors([
+            'plex' => 'We could not authenticate your Plex account. Please try again.',
+        ]);
+        $response->assertSessionMissing('plex_registration');
+    });
 });
 
-it('bounces the guest back to the login page when the PIN was never claimed', function (): void {
-    // Arrange
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_unclaimed.json')),
-    ]);
-    $this->withSession(['plex_pin_id' => 538114995]);
+describe('auth.plex.callback Plex API failures', function (): void {
+    it('bounces the guest back to the login page when the Plex user fetch fails', function (): void {
+        // Arrange
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
+            '*plex.tv/api/v2/user*' => Http::response('', 500),
+        ]);
+        $this->withSession(['plex_pin_id' => 538114995]);
 
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
 
-    // Assert
-    $response->assertRedirect(route('login'));
-    $response->assertSessionHasErrors([
-        'plex' => 'We could not authenticate your Plex account. Please try again.',
-    ]);
-    $response->assertSessionMissing('plex_registration');
+        // Assert
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHasErrors([
+            'plex' => 'We could not authenticate your Plex account. Please try again.',
+        ]);
+        $response->assertSessionMissing('plex_registration');
+    });
+
+    it('bounces the guest back to the login page when the claimed token is already revoked', function (): void {
+        // Arrange
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
+            '*plex.tv/api/v2/user*' => Http::response('', 401),
+        ]);
+        $this->withSession(['plex_pin_id' => 538114995]);
+
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
+
+        // Assert
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHasErrors([
+            'plex' => 'We could not authenticate your Plex account. Please try again.',
+        ]);
+        $response->assertSessionMissing('plex_registration');
+    });
+
+    it('bounces the guest back to the login page when the server access check fails', function (): void {
+        // Arrange
+        config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
+            '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
+            '*clients.plex.tv/api/v2/resources*' => Http::response('', 500),
+        ]);
+        $this->withSession(['plex_pin_id' => 538114995]);
+
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
+
+        // Assert
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHasErrors([
+            'plex' => 'We could not authenticate your Plex account. Please try again.',
+        ]);
+        $response->assertSessionMissing('plex_registration');
+    });
 });
 
-it('bounces the guest back to the login page when the PIN exchange fails at Plex', function (): void {
-    // Arrange
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response('', 500),
-    ]);
-    $this->withSession(['plex_pin_id' => 538114995]);
+describe('auth.plex.callback account refusals', function (): void {
+    it('bounces the guest back to the login page when the Plex account has no id', function (): void {
+        // Arrange
+        config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
+            '*plex.tv/api/v2/user*' => Http::response(['uuid' => '0000000000000001', 'username' => 'plexuser1', 'email' => 'user1@example.com']),
+            '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        ]);
+        User::factory()->create();
+        $this->withSession(['plex_pin_id' => 538114995]);
 
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
 
-    // Assert
-    $response->assertRedirect(route('login'));
-    $response->assertSessionHasErrors([
-        'plex' => 'We could not authenticate your Plex account. Please try again.',
-    ]);
-    $response->assertSessionMissing('plex_registration');
-});
+        // Assert
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHasErrors([
+            'plex' => 'We could not authenticate your Plex account. Please try again.',
+        ]);
+        $response->assertSessionMissing('plex_registration');
+        $this->assertDatabaseCount('users', 1);
+    });
 
-it('bounces the guest back to the login page when the Plex user fetch fails', function (): void {
-    // Arrange
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
-        '*plex.tv/api/v2/user*' => Http::response('', 500),
-    ]);
-    $this->withSession(['plex_pin_id' => 538114995]);
+    it('turns away a Plex account that cannot reach our server', function (): void {
+        // Arrange
+        config(['services.plex.server_identifier' => 'someoneelsesmachineidentifier00']);
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
+            '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
+            '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        ]);
+        $this->withSession(['plex_pin_id' => 538114995]);
 
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
 
-    // Assert
-    $response->assertRedirect(route('login'));
-    $response->assertSessionHasErrors([
-        'plex' => 'We could not authenticate your Plex account. Please try again.',
-    ]);
-    $response->assertSessionMissing('plex_registration');
-});
+        // Assert
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHasErrors([
+            'plex' => 'Your Plex account does not have access to lundflix.',
+        ]);
+        $response->assertSessionMissing('plex_registration');
+    });
 
-it('bounces the guest back to the login page when the claimed token is already revoked', function (): void {
-    // Arrange
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
-        '*plex.tv/api/v2/user*' => Http::response('', 401),
-    ]);
-    $this->withSession(['plex_pin_id' => 538114995]);
+    it('turns away a Plex account that is already registered', function (): void {
+        // Arrange
+        config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
+            '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
+            '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
+        ]);
+        User::factory()->create(['_plex_id' => 1001, '_plex_username' => 'plexuser1']);
+        $this->withSession(['plex_pin_id' => 538114995]);
 
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
+        // Act
+        $response = $this->get(route('auth.plex.callback'));
 
-    // Assert
-    $response->assertRedirect(route('login'));
-    $response->assertSessionHasErrors([
-        'plex' => 'We could not authenticate your Plex account. Please try again.',
-    ]);
-    $response->assertSessionMissing('plex_registration');
-});
-
-it('bounces the guest back to the login page when the server access check fails', function (): void {
-    // Arrange
-    config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
-        '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
-        '*clients.plex.tv/api/v2/resources*' => Http::response('', 500),
-    ]);
-    $this->withSession(['plex_pin_id' => 538114995]);
-
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
-
-    // Assert
-    $response->assertRedirect(route('login'));
-    $response->assertSessionHasErrors([
-        'plex' => 'We could not authenticate your Plex account. Please try again.',
-    ]);
-    $response->assertSessionMissing('plex_registration');
-});
-
-it('bounces the guest back to the login page when the Plex account has no id', function (): void {
-    // Arrange
-    config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
-        '*plex.tv/api/v2/user*' => Http::response(['uuid' => '0000000000000001', 'username' => 'plexuser1', 'email' => 'user1@example.com']),
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-    ]);
-    User::factory()->create();
-    $this->withSession(['plex_pin_id' => 538114995]);
-
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
-
-    // Assert
-    $response->assertRedirect(route('login'));
-    $response->assertSessionHasErrors([
-        'plex' => 'We could not authenticate your Plex account. Please try again.',
-    ]);
-    $response->assertSessionMissing('plex_registration');
-    $this->assertDatabaseCount('users', 1);
-});
-
-it('turns away a Plex account that cannot reach our server', function (): void {
-    // Arrange
-    config(['services.plex.server_identifier' => 'someoneelsesmachineidentifier00']);
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
-        '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-    ]);
-    $this->withSession(['plex_pin_id' => 538114995]);
-
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
-
-    // Assert
-    $response->assertRedirect(route('login'));
-    $response->assertSessionHasErrors([
-        'plex' => 'Your Plex account does not have access to lundflix.',
-    ]);
-    $response->assertSessionMissing('plex_registration');
-});
-
-it('turns away a Plex account that is already registered', function (): void {
-    // Arrange
-    config(['services.plex.server_identifier' => 'servermachineidentifier000000000']);
-    Http::fake([
-        '*clients.plex.tv/api/v2/pins/*' => Http::response(fixtureBytes('Common/plex/pin_claimed.json')),
-        '*plex.tv/api/v2/user*' => Http::response(fixtureBytes('Common/plex/user.json')),
-        '*clients.plex.tv/api/v2/resources*' => Http::response(fixtureBytes('Common/plex/resources.json')),
-    ]);
-    User::factory()->create(['_plex_id' => 1001, '_plex_username' => 'plexuser1']);
-    $this->withSession(['plex_pin_id' => 538114995]);
-
-    // Act
-    $response = $this->get(route('auth.plex.callback'));
-
-    // Assert
-    $response->assertRedirect(route('login'));
-    $response->assertSessionHasErrors([
-        'plex' => 'An account is already registered to this Plex account.',
-    ]);
-    $response->assertSessionMissing('plex_registration');
-    $this->assertGuest();
+        // Assert
+        $response->assertRedirect(route('login'));
+        $response->assertSessionHasErrors([
+            'plex' => 'An account is already registered to this Plex account.',
+        ]);
+        $response->assertSessionMissing('plex_registration');
+        $this->assertGuest();
+    });
 });

@@ -36,8 +36,11 @@ raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
 
 ## IMDb dataset ingest (`catalog:sync-ratings` / `-titles` / `-akas`)
 
-Three commands, one per title-level dataset, all keyed `tconst` → `_imdb_id` and
-all last in the `catalog:sync` order (TMDB/TVDB create the rows; IMDb enriches).
+Three commands, one per title-level dataset, all keyed `tconst` → `_imdb_id`. They
+run under the daily `catalog:sync-imdb` wrapper (`SyncImdbCatalog`), not inside
+`catalog:sync` — the datasets are far too large to pull on that twice-daily sync.
+Each is gated on its own `Last-Modified` header, so an unchanged dataset skips in
+seconds. TMDB/TVDB still create the rows; IMDb enriches them.
 
 - **Titles and akas write only rows already in the catalog, and decide that per
   batch** — every streamed row/group is buffered, and `flush()` resolves membership
@@ -72,8 +75,13 @@ all last in the `catalog:sync` order (TMDB/TVDB create the rows; IMDb enriches).
 ## Bulk CASE updates (`Support\BulkCaseUpdate`)
 
 All three IMDb ingest actions write via one bulk `CASE _imdb_id WHEN … END`
-update per table, returning the matched ids (the caller then `->searchable()`s
-them). CASE bindings live in the query's **join**-binding slot and are appended,
+update per table, returning the matched ids. The caller does **not** index them —
+search indexing is deferred to one watermark pass at the end of the whole
+`catalog:sync-imdb` run, which is why the update also stamps `updated_at` (a bare
+`toBase()->update()` would not, and the watermark would miss every row it wrote).
+A leg run standalone (`catalog:sync-ratings` and friends) therefore does not
+reindex; only the wrapper does. CASE bindings live in the query's
+**join**-binding slot and are appended,
 never replaced — see the in-code comment for the ordering mechanics before
 touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
 (`_imdb_genres`, `_imdb_akas`) must be json-encoded on the way in.
@@ -188,16 +196,17 @@ window.
 
 - `SyncMarker` (`Support/`) owns read + advance. `window(SyncFeed)` derives the
   fetch interval as a `SyncWindow` VO: `since` = marker − 6h overlap (24h fallback
-  when unset), floored at `now − 14d` (TMDB's max `/changes` span; TVDB matched for
-  parity). `advance(SyncFeed, $startedAt)` persists **run-start** via
-  `Cache::forever` — one key per `SyncFeed` case (`TvdbShows`/`TvdbEpisodes`/
-  `TmdbShows`/`TmdbMovies`), so the four feeds advance independently.
+  when unset or unreadable), floored at `now − 14d` (TMDB's max `/changes` span;
+  TVDB matched for parity). `advance(SyncFeed, $startedAt)` persists **run-start**
+  as an ISO-8601 string via `Cache::forever` (never the Carbon itself — see the
+  scalars-only cache rule in `.ai/guidelines/project.md`) — one key per `SyncFeed`
+  case (`TvdbShows`/`TvdbEpisodes`/`TmdbShows`/`TmdbMovies`), so the four feeds
+  advance independently.
 - **Zero-failure gate:** a run advances its marker only if it finished with **no**
   failed ids/chunks; `--fresh` still advances (clean baseline). A per-id hydrate
   failure counts, detected per the failure-signal rule above — a short
   `movies()`/`tvShows()` result count, or a non-empty `seriesMany()`
-  `PooledResult::failedIds` — and holds the marker. Any failure → marker
-  unchanged → the next run re-covers the
-  whole gap (idempotent upserts make that safe). A cache flush just drops to the
-  24h fallback, not data loss.
+  `PooledResult::failedIds` — and holds the marker. Any failure → marker unchanged
+  → the next run re-covers the whole gap (idempotent upserts make that safe). A
+  cache flush just drops to the 24h fallback, not data loss.
 
