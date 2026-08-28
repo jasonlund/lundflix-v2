@@ -38,6 +38,19 @@ function workspaceEnvLines(string $file): array
         ->all();
 }
 
+/**
+ * The value written for $key in an env file, without its `KEY=` prefix.
+ */
+function workspaceEnvValue(string $file, string $key): string
+{
+    $prefix = $key.'=';
+
+    $line = collect(workspaceEnvLines($file))
+        ->first(fn (string $line): bool => Str::startsWith($line, $prefix));
+
+    return is_string($line) ? Str::substr($line, Str::length($prefix)) : '';
+}
+
 afterEach(function (): void {
     File::delete(File::glob(storage_path('framework/testing/workspace-env-*.env')));
 });
@@ -92,10 +105,12 @@ describe('lf:workspace-env derivation', function (): void {
             ->toContain('DB_DATABASE=lf_lundflix_v2_tweaks');
     });
 
-    // The 40-character cut of this branch slug lands ON a separator
-    // ('…-worktrees-abc-'), so a bare trim would leave a trailing '-' in the
-    // site name and a trailing '_' in the database name.
-    it('trims a branch slug past 40 characters without leaving a trailing separator', function (): void {
+    // The branch slug here is 47 characters, and its 40-character cut lands ON a
+    // separator ('…-worktrees-abc-'). The name must stay inside the 40-character
+    // budget, still read as the branch it came from, carry no trailing separator,
+    // and — because a bare cut is what lets two branches collide — must not be
+    // the bare cut 'flix-294-laborforest-solo-worktrees-abc' itself.
+    it('trims a branch slug past 40 characters to a bounded, separator-free name that is not the bare cut', function (): void {
         // Arrange
         $file = workspaceEnvFile();
 
@@ -107,9 +122,38 @@ describe('lf:workspace-env derivation', function (): void {
         ])->assertSuccessful();
 
         // Assert
-        expect(workspaceEnvLines($file))
-            ->toContain('LF_SITE=lf-flix-294-laborforest-solo-worktrees-abc')
-            ->toContain('DB_DATABASE=lf_flix_294_laborforest_solo_worktrees_abc');
+        $branch = Str::after(workspaceEnvValue($file, 'LF_SITE'), 'lf-');
+        expect(Str::length($branch))->toBeLessThanOrEqual(40);
+        expect($branch)->toStartWith('flix-294-laborforest-solo');
+        expect($branch)->not->toEndWith('-');
+        expect($branch)->not->toBe('flix-294-laborforest-solo-worktrees-abc');
+    });
+
+    // Both slugs share the 40-character head 'flix-294-laborforest-solo-worktrees-abcd'
+    // and differ only past it, so a bare 40-character cut hands them the same Herd
+    // site and the same database — and 'up' then wipes the first workspace's data.
+    it('derives different names for two branch slugs sharing their first 40 characters', function (): void {
+        // Arrange
+        $alphaFile = workspaceEnvFile();
+        $betaFile = workspaceEnvFile();
+        $this->artisan('lf:workspace-env', [
+            'workspace' => 'lundflix-v2-flix-294-laborforest-solo-worktrees-abcd-alpha',
+            'project' => 'lundflix-v2',
+            '--file' => $alphaFile,
+        ])->assertSuccessful();
+
+        // Act
+        $this->artisan('lf:workspace-env', [
+            'workspace' => 'lundflix-v2-flix-294-laborforest-solo-worktrees-abcd-beta',
+            'project' => 'lundflix-v2',
+            '--file' => $betaFile,
+        ])->assertSuccessful();
+
+        // Assert
+        expect(workspaceEnvValue($betaFile, 'DB_DATABASE'))
+            ->not->toBe(workspaceEnvValue($alphaFile, 'DB_DATABASE'));
+        expect(workspaceEnvValue($betaFile, 'LF_SITE'))
+            ->not->toBe(workspaceEnvValue($alphaFile, 'LF_SITE'));
     });
 });
 
