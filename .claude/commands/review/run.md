@@ -1,6 +1,6 @@
 ---
 name: review:run
-description: Orchestrates the full PR review loop end-to-end with confirmation gates — optional cross-ticket refactor sweep, then create-pr → human → suite → process → delta review of the fixes. Each stage pauses for approval before the next.
+description: Orchestrates the full PR review loop end-to-end with confirmation gates — optional cross-slice refactor sweep, then create-pr → human → suite → process → delta review of the fixes. Each stage pauses for approval before the next.
 ---
 
 # Review Loop Orchestrator
@@ -9,7 +9,7 @@ Runs the review pipeline as one guided sequence. Drive each stage **in order**,
 pausing at the ⏸ gates for the user. Each stage's mechanics live in its own
 command — **defer to that file, do not reimplement it here.**
 
-Loop: `[cross-ticket sweep?]` → `/review:create-pr` → `/review:human` →
+Loop: `[cross-slice sweep?]` → `/review:create-pr` → `/review:human` →
 `/review:suite` → `/review:process` → `[delta review]`.
 
 ## Input
@@ -18,13 +18,35 @@ Loop: `[cross-ticket sweep?]` → `/review:create-pr` → `/review:human` →
 
 ## Sequence
 
-### Stage 0: Cross-ticket refactor sweep (conditional)
-Decide whether the branch spans **more than one ticket** — inspect
-`git diff origin/main...HEAD --stat`, the branch name, and the commit history.
+### Stage 0: Cross-slice refactor sweep (conditional)
+Decide whether the branch spans **more than one TDD slice**. Ticket count is
+irrelevant: `tdd-refactorer` is spawned per slice with only that slice's files
+(`.claude/skills/tdd/SKILL.md:106`), so one ticket of many slices has the same
+blind spot as many tickets. Expect this to fire **routinely, by design** — a
+slice is only 2–6 tests (`.claude/skills/tdd/SKILL.md`), so most non-trivial PRs
+span several; a high hit rate is the gate working, not a misfire.
 
-- **Multi-ticket** → invoke the `review-tdd-cross-ticket` skill (whole-PR REFACTOR
+1. **Authoritative source — the tickets' TDD Slice Backlogs.** Resolve **every**
+   `FLIX-\d+` id in the branch name, not just the first: read each body
+   (`plan-slices` appends the backlog, one `### Slice N —` block per slice) and
+   **sum** the slice counts across all of them. That sum decides. This is
+   deliberately broader than Ticket ID Auto-Extraction
+   (`.claude/skills/review-pipeline/SKILL.md`), whose first-match-only rule names
+   one ticket rather than counts work — don't lean on that contract here. A sum of
+   **0** (no backlog, or a "zero TDD slices" verdict) means the backlog can't
+   answer: fall through to step 2, then step 3 — never treat it as single-slice.
+2. **`git status --short` is the secondary signal — only it sees the working
+   tree.** At Stage 0 the branch is usually **not yet committed** (Stage 1 is what
+   commits it), so `git diff origin/main...HEAD --stat` reads committed history
+   only and is routinely empty; run it when Stage 0 is **re-entered** and commits
+   already exist. Neither maps slices to commits or files; use them only to
+   corroborate the backlog.
+3. **Still ambiguous → run the sweep.** A needless sweep costs one green-gated
+   refactor pass; a missed one ships the duplication this stage exists to catch.
+
+- **Multi-slice** → invoke the `review-tdd-cross-slice` skill (whole-PR REFACTOR
   sweep). It runs its **own** green-precondition + approval gate — let it.
-- **Single-ticket** → skip and say so (the slice's own REFACTOR already covered it).
+- **Single-slice** → skip and say so (that one slice's own REFACTOR saw everything).
 
 ### Stage 1: create-pr  ⏸
 If the branch has **no open PR**, follow `.claude/commands/review/create-pr.md`
