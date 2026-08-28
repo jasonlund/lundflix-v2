@@ -145,6 +145,30 @@ describe('primary-checkout guard', function () use ($workflow, $stepsOf, $primar
     });
 });
 
+describe('up.yaml step ordering', function () use ($workflow, $stepsOf): void {
+    // A fresh worktree has no vendor/, so `php artisan` cannot run until Composer
+    // has. This ordering was wrong on the first real `lf run up`: step 4 died with
+    // "Failed opening required .../vendor/autoload.php" and aborted the other ten.
+    // Nothing else can catch it — `lf validate` exits 0 regardless, and every other
+    // guard here matches steps by content precisely so that position never matters.
+    // Ordering is the one property that genuinely is positional.
+    it('installs Composer dependencies before the first step that runs artisan', function () use ($workflow, $stepsOf): void {
+        // Arrange
+        $runs = collect($stepsOf($workflow('up')))->map(fn (array $step): string => (string) ($step['run'] ?? ''))->values();
+
+        // Act
+        $position = [
+            'composer install' => $runs->search(fn (string $run): bool => Str::contains($run, 'composer install')),
+            'first artisan' => $runs->search(fn (string $run): bool => Str::contains($run, 'php artisan')),
+        ];
+
+        // Assert
+        expect($position['composer install'])->toBeInt()
+            ->and($position['first artisan'])->toBeInt()
+            ->and($position['composer install'])->toBeLessThan($position['first artisan']);
+    });
+});
+
 describe('up.yaml env derivation', function () use ($workflow, $stepsOf): void {
     it('derives the workspace env through the artisan command rather than an inline sed', function () use ($workflow, $stepsOf): void {
         // Arrange

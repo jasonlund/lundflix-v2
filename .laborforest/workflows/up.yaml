@@ -19,6 +19,13 @@ steps:
     type: shell
     if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
     run: 'cp "{{ PROJECT_PRIMARY_DIR }}/.env" .env'
+  # Must precede every `php artisan` step below: a fresh worktree has no vendor/,
+  # so artisan cannot boot until Composer has run. Guarded by the ordering test in
+  # LaborForestWorkflowTest — nothing else catches it, and getting this wrong
+  # aborts the whole workflow at the first artisan step.
+  - name: 'Install Composer dependencies'
+    type: shell
+    run: 'composer install --no-interaction --prefer-dist'
   # Neither this nor the refresh call is destructive, but both carry down's
   # primary-checkout guard: run there, `lf:workspace-env` would rewrite the
   # primary's own .env DB_DATABASE and APP_URL to a workspace's, and refresh
@@ -34,9 +41,6 @@ steps:
   - name: 'Create the MySQL database'
     type: shell
     run: 'mysql -h {{ ENV_DB_HOST }} -P {{ ENV_DB_PORT }} -u {{ ENV_DB_USERNAME }} $([[ -z "{{ ENV_DB_PASSWORD }}" ]] && echo "--skip-password" || echo "-p{{ ENV_DB_PASSWORD }}") -e "CREATE DATABASE IF NOT EXISTS {{ ENV_DB_DATABASE }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"'
-  - name: 'Install Composer dependencies'
-    type: shell
-    run: 'composer install --no-interaction --prefer-dist'
   # `npm ci`, not `install`, and --ignore-scripts: plain `npm install` rewrites
   # package-lock.json's "name" to the workspace dir and drops optional deps,
   # polluting the diff in every worktree. Observed for real during FLIX-294.
