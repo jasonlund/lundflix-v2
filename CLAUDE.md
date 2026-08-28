@@ -510,6 +510,28 @@ checkout/workspace has a usable dataset with no third-party API calls (FLIX-194)
   faked load invocation, not reloaded rows — the byte-apply is covered by the
   Conductor setup smoke, not a Pest test.
 
+## Cache: store scalars, never objects
+
+`config/cache.php` sets `'serializable_classes' => false` (Laravel's gadget-chain
+hardening default), so every store reads through
+`unserialize($value, ['allowed_classes' => false])` and **no object survives the
+round trip** — it returns as `__PHP_Incomplete_Class`. A `Cache::put`/`forever` of
+an object writes fine and can never be read back: the value is write-only.
+
+- **Cache strings, ints, bools, and arrays of those.** A timestamp goes in as
+  `->toIso8601String()` and is parsed on read (`SyncMarker`); a header goes in
+  verbatim (`ImdbDatasetMarker`).
+- **Type-check the read** whenever a stale key may predate the rule
+  (`is_string($marker)`) and degrade to the no-value path. An entry poisoned by an
+  older build then self-heals on the next write instead of throwing — no manual
+  `cache:forget` in the deploy.
+- **Never widen `serializable_classes` to rescue a call site** — it weakens a
+  security default app-wide for one value that should have been a scalar.
+- **The test `array` store is `'serialize' => true` on purpose**, against the
+  framework default, so the suite serializes exactly like production. Leaving it
+  false is what let a cached `CarbonImmutable` pass all 1217 tests and fail every
+  production run (FLIX-287). Never flip it back.
+
 ## Linting & formatting (finalize gates)
 
 Before finalizing **any** change, run every linter/formatter for the files you
@@ -717,31 +739,11 @@ The Laravel Boost guidelines are specifically curated by Laravel maintainers for
 
 ## Foundational Context
 
-This application is a Laravel application and its main Laravel ecosystems package & versions are below. You are an expert with them all. Ensure you abide by these specific packages & versions.
+This application is a Laravel application running on PHP 8.4. You are an expert with the Laravel ecosystem. Always use the APIs that match the installed major version of each package — do not assume a version.
 
-- php - 8.4
-- filament/filament (FILAMENT) - v5
-- inertiajs/inertia-laravel (INERTIA_LARAVEL) - v3
-- laravel/fortify (FORTIFY) - v1
-- laravel/framework (LARAVEL) - v13
-- laravel/horizon (HORIZON) - v5
-- laravel/nightwatch (NIGHTWATCH) - v1
-- laravel/pennant (PENNANT) - v1
-- laravel/prompts (PROMPTS) - v0
-- laravel/scout (SCOUT) - v11
-- livewire/livewire (LIVEWIRE) - v4
-- laravel/boost (BOOST) - v2
-- laravel/mcp (MCP) - v0
-- laravel/pail (PAIL) - v1
-- laravel/pint (PINT) - v1
-- pestphp/pest (PEST) - v4
-- phpunit/phpunit (PHPUNIT) - v12
-- rector/rector (RECTOR) - v2
-- @inertiajs/react (INERTIA_REACT) - v3
-- react (REACT) - v19
-- eslint (ESLINT) - v10
-- prettier (PRETTIER) - v3
-- tailwindcss (TAILWINDCSS) - v4
+Before relying on a package's API, confirm its installed version:
+- PHP packages: run `composer show --direct` to list direct dependencies with versions, or `composer show <vendor/package>` for a single package.
+- JS packages: check `package.json` for the installed versions.
 
 ## Conventions
 
@@ -774,6 +776,10 @@ This application is a Laravel application and its main Laravel ecosystems packag
 
 # Laravel Boost
 
+## Project Rules
+
+- This project contains committed, area-grouped rules in `.ai/rules` when that directory exists (settled decisions, non-obvious traps, standing constraints). Framework and package guidelines that only apply to specific paths (testing, frontend, components) also live there, under `.ai/rules/boost` — this is not just recorded decisions, it is load-bearing guidance you have not seen inline. Before you enter plan mode or create/edit any file, you MUST first: open @.ai/rules/index.md (it maps file globs to rule files), read every rule file whose globs cover the path(s) in scope, and run `grep -rin 'keyword' .ai/rules` to catch what a path match alone misses. Do not write code until you have read and are following every matching rule. If `.ai/rules` does not exist, continue without it.
+
 ## Artisan
 
 - Run Artisan commands directly via the command line (e.g., `php artisan route:list`). Use `php artisan list` to discover available commands and `php artisan [command] --help` to check parameters.
@@ -793,7 +799,7 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - Always use curly braces for control structures, even for single-line bodies.
 - Use PHP 8 constructor property promotion: `public function __construct(public GitHub $github) { }`. Do not leave empty zero-parameter `__construct()` methods unless the constructor is private.
 - Use explicit return type declarations and type hints for all method parameters: `function isAccessible(User $user, ?string $path = null): bool`
-- Use TitleCase for Enum keys: `FavoritePerson`, `BestLake`, `Monthly`.
+- Follow existing application Enum naming conventions.
 - Prefer PHPDoc blocks over inline comments. Only add inline comments for exceptionally complex logic.
 - Use array shape type definitions in PHPDoc blocks.
 

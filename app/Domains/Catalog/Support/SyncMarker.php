@@ -29,8 +29,11 @@ final class SyncMarker
         $now = CarbonImmutable::now();
         $marker = Cache::get($feed->cacheKey());
 
-        // Cache may round-trip the marker as a mutable Carbon; parse normalizes it.
-        $since = $marker !== null
+        // Only a string is readable. `cache.serializable_classes` is false, so a marker
+        // written as an object by an older build unserializes to __PHP_Incomplete_Class —
+        // anything that isn't a string counts as no marker, and this run's advance()
+        // overwrites it rather than needing a manual forget.
+        $since = is_string($marker)
             ? CarbonImmutable::parse($marker)->subHours(self::OVERLAP_HOURS)
             : $now->subHours(self::FALLBACK_HOURS);
 
@@ -48,9 +51,13 @@ final class SyncMarker
      * We store when the run began (captured before fetching), not when it ended, so
      * updates that land mid-run are re-covered by the next run's window. `forever`
      * because this is durable run-state, not a TTL'd cache value that may evaporate.
+     *
+     * Persisted as an ISO-8601 string, never the Carbon itself: no object survives the
+     * cache round trip under `cache.serializable_classes`, so storing one makes the
+     * marker write-only. The offset the format carries keeps parse() exact.
      */
     public function advance(SyncFeed $feed, CarbonImmutable $startedAt): void
     {
-        Cache::forever($feed->cacheKey(), $startedAt);
+        Cache::forever($feed->cacheKey(), $startedAt->toIso8601String());
     }
 }
