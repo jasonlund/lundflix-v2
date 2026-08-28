@@ -43,34 +43,36 @@ $scanSkills = function (): array {
     return $skills;
 };
 
-it('gives every skill directory a SKILL.md', function () use ($scanSkills): void {
-    // Arrange
-    $skills = $scanSkills();
+describe('skill front matter', function () use ($scanSkills): void {
+    it('gives every skill directory a SKILL.md', function () use ($scanSkills): void {
+        // Arrange
+        $skills = $scanSkills();
 
-    // Act
-    $missing = array_values(array_map(
-        fn (array $s): string => $s['skill'],
-        array_filter(
-            $skills,
-            fn (array $s): bool => ! is_file(dirname(__DIR__, 2)."/.claude/skills/{$s['skill']}/SKILL.md"),
-        ),
-    ));
+        // Act
+        $missing = array_values(array_map(
+            fn (array $s): string => $s['skill'],
+            array_filter(
+                $skills,
+                fn (array $s): bool => ! is_file(dirname(__DIR__, 2)."/.claude/skills/{$s['skill']}/SKILL.md"),
+            ),
+        ));
 
-    // Assert
-    expect($missing)->toBe([])
-        ->and($skills)->not->toBeEmpty();
-});
+        // Assert
+        expect($missing)->toBe([])
+            ->and($skills)->not->toBeEmpty();
+    });
 
-it('declares a front-matter name matching the skill directory', function () use ($scanSkills): void {
-    // Arrange
-    $skills = $scanSkills();
+    it('declares a front-matter name matching the skill directory', function () use ($scanSkills): void {
+        // Arrange
+        $skills = $scanSkills();
 
-    // Act
-    $mismatched = array_values(array_map(
-        fn (array $s): string => sprintf('%s declares "%s"', $s['skill'], $s['declared'] ?? '<none>'),
-        array_filter($skills, fn (array $s): bool => $s['declared'] !== $s['skill']),
-    ));
+        // Act
+        $mismatched = array_values(array_map(
+            fn (array $s): string => sprintf('%s declares "%s"', $s['skill'], $s['declared'] ?? '<none>'),
+            array_filter($skills, fn (array $s): bool => $s['declared'] !== $s['skill']),
+        ));
 
-    // Assert
-    expect($mismatched)->toBe([]);
+        // Assert
+        expect($mismatched)->toBe([]);
+    });
 });
