@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Common\Data\PlexPin;
 use App\Domains\Common\Exceptions\PlexAuthenticationFailed;
 use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\Common\Services\PlexApiService;
@@ -14,26 +15,51 @@ use Illuminate\Support\Str;
 | Plex PIN auth + request-header foundation — FLIX-130 slice 1
 |--------------------------------------------------------------------------
 | The PIN auth flow: createPin() POSTs to clients.plex.tv to mint a linking
-| PIN, carrying the X-Plex-* identity headers; getTokenFromPin() polls that
-| PIN and returns the authToken once a user claims it (null while unclaimed);
-| getAuthUrl() builds the app.plex.tv hand-off URL the user opens to claim it.
+| PIN and returns a PlexPin DTO (FLIX-243 slice 2, was an array), carrying the
+| X-Plex-* identity headers; getTokenFromPin() polls that PIN and returns the
+| authToken once a user claims it (null while unclaimed); getAuthUrl() builds
+| the app.plex.tv hand-off URL the user opens to claim it.
 |
 | Fixtures (byte-exact real captures, tokens redacted):
 |   tests/Fixtures/Common/plex/pin_create.json — fresh PIN (id 538114995,
 |     code m6mijjn177ut0qaz02b9iedof, authToken null)
 |   tests/Fixtures/Common/plex/pin_claimed.json — same PIN, authToken set
 |   tests/Fixtures/Common/plex/pin_unclaimed.json — same PIN, authToken null
+|
+| The one synthetic success body is the empty 2xx: a real mint always answers
+| with an id and a code, so only a hand-authored body can prove the DTO carries
+| the miss as nulls instead of blowing up.
 */
 
 describe('createPin() PIN minting', function (): void {
-    it('returns the id and code from POST /api/v2/pins', function (): void {
+    it('returns a PlexPin from POST /api/v2/pins', function (): void {
+        // Arrange
         Http::fake([
             '*clients.plex.tv/api/v2/pins*' => Http::response(fixtureBytes('Common/plex/pin_create.json')),
         ]);
 
+        // Act
         $pin = resolve(PlexApiService::class)->createPin();
 
-        expect($pin)->toBe(['id' => 538114995, 'code' => 'm6mijjn177ut0qaz02b9iedof']);
+        // Assert
+        expect($pin)->toBeInstanceOf(PlexPin::class)
+            ->and($pin->id)->toBe(538114995)
+            ->and($pin->code)->toBe('m6mijjn177ut0qaz02b9iedof');
+    });
+
+    it('returns a PlexPin with null id and code when the mint answers 2xx with no PIN', function (): void {
+        // Arrange
+        Http::fake([
+            '*clients.plex.tv/api/v2/pins*' => Http::response([]),
+        ]);
+
+        // Act
+        $pin = resolve(PlexApiService::class)->createPin();
+
+        // Assert
+        expect($pin)->toBeInstanceOf(PlexPin::class)
+            ->and($pin->id)->toBeNull()
+            ->and($pin->code)->toBeNull();
     });
 
     it('sends the X-Plex identity headers on the createPin request', function (): void {

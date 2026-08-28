@@ -65,6 +65,63 @@ Single-purpose actions live in `App\Domains\{Domain}\Actions`.
   auth/profile actions live in `App\Domains\Identity\Actions`, wired in
   `App\Providers\FortifyServiceProvider`.
 
+### DTOs — domain boundaries speak in types, not array shapes
+
+A public method on a domain's `Actions`/`Services` **never takes or returns a bare
+`array`** for an app-shaped struct. `array{id: int, …}` in a docblock is a type the
+language won't check; make it a class. Enforced by
+`tests/Feature/Architecture/DtoBoundaryTest.php`.
+
+- **Location: `App\Domains\{Domain}\Data`** — every data-carrying shape. `Support/`
+  holds **behavior helpers only** (`SourceId`, `RawSourceColumns`, `BulkCaseUpdate`).
+  A class whose job is to carry values belongs in `Data/` even when it exposes
+  accessors over them (`SyncWindow`).
+- **Base class by boundary:** plain `final readonly class` by default; extend spatie
+  `Data` **only** when the object crosses a serialization boundary — Inertia props,
+  `#[TypeScript]`, `::from()` hydration. A reflection-heavy base buys nothing on an
+  internal service→action struct.
+- **Plain carriers.** No `toArray()`, named constructors, or behavior. Marshalling
+  belongs to the seam that needs it, not the DTO (see `PlexSession`).
+- **Nullability states trust.** A DTO of verified data types its fields tightly
+  (`PlexServerConnection`); one carrying unvalidated request data is nullable so a
+  missing field reaches the validator instead of the constructor
+  (`PlexRegistrationInput`). Omitting a field entirely is a real guard —
+  `PlexRegistrationInput` has no `email`, so a spoofed one has nowhere to land.
+
+**Three exemptions, and only these** (the fence documents each entry with its reason):
+
+1. **Raw upstream payloads** — the wire shape is the source's, not ours. Two forms,
+   and which one you have decides how much of the signature is exempt:
+   - **Ingest sinks — the exempt `array` is a *parameter*.** `array $payloads`/`$rows`/
+     `$page`/`$sections` feeding the `_{source}_*` raw-parity columns
+     (`UpsertTmdbMovies::handle`, `ReconcilePlexLibraries::handle`,
+     `ImportImdbTitles::handle`). A DTO there is a transform at ingest and breaks the
+     `RAW_COLUMNS` list-driven mapping. The **return** still converts — these hand
+     back a count or a DTO (`TitleImportCounts`).
+   - **Wire-shape reads — the exempt `array` is the *return*.** A method whose
+     `array`/`?array` return *is* the decoded upstream response body
+     (`TmdbApiService::movie`, `TmdbApiService::configuration`,
+     `PlexLibraryService::fetchSections`, and their TVDB/Plex siblings). No
+     `RAW_COLUMNS` mapping to break and no DTO planned — modelling a third party's
+     response shape buys a class that changes whenever they change. The return
+     stays `array` indefinitely.
+2. **Framework-fixed signatures** — Fortify's `CreatesNewUsers::create(array $input)`,
+   Inertia's `share(): array`. Not ours to retype.
+3. **Scalar lists** — `list<int>`/`list<string>` returns. A list of ints is not a
+   struct.
+
+The fence **throws on an exemption entry that no longer resolves** to a real
+`Class::method`, so the list can't rot into silently exempting nothing. Adding an
+entry is a deliberate act — a new source integration must classify its ingest methods
+consciously.
+
+**Session gotcha:** `config('session.serialization')` is `json`, so a PHP object put
+in the session decodes back as an array. Stash a JSON-safe payload and hydrate on
+read (`PlexSession`). The Feature suite **cannot catch this** — the test client sends
+no session cookie between requests, so each gets a fresh id and an in-memory object
+survives. Round-trip the value through the serializer in the test, as
+`PlexRegistrationTest` does.
+
 ### Exceptions
 
 **One explicitly named class per distinct failure**, named for the condition,

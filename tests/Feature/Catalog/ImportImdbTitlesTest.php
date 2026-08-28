@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domains\Catalog\Actions\ImportImdbTitles;
+use App\Domains\Catalog\Data\TitleImportCounts;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Support\Facades\DB;
@@ -138,7 +139,9 @@ describe('handle() batch counts', function (): void {
             ->and(Show::query()->count())->toBe(0)
             ->and(Movie::query()->where('_imdb_id', 'tt0000001')->exists())->toBeFalse()
             ->and(Movie::query()->find($movie->id)->_imdb_primaryTitle)->toBe('Fight Club')
-            ->and($result)->toBe(['movies' => 1, 'shows' => 0]);
+            ->and($result)->toBeInstanceOf(TitleImportCounts::class)
+            ->and($result->movies)->toBe(1)
+            ->and($result->shows)->toBe(0);
     });
 
     it('returns the matched counts per table for a mixed batch', function (): void {
@@ -181,7 +184,33 @@ describe('handle() batch counts', function (): void {
         ]);
 
         // Assert
-        expect($result)->toBe(['movies' => 1, 'shows' => 1]);
+        expect($result)->toBeInstanceOf(TitleImportCounts::class)
+            ->and($result->movies)->toBe(1)
+            ->and($result->shows)->toBe(1);
+    });
+
+    it('returns zero counts for a batch that matches nothing', function (): void {
+        // Arrange
+        Movie::factory()->create();
+
+        // Act
+        $result = resolve(ImportImdbTitles::class)->handle([
+            'tt0000001' => [
+                'tconst' => 'tt0000001',
+                'titleType' => 'short',
+                'primaryTitle' => 'Carmencita',
+                'originalTitle' => 'Carmencita',
+                'startYear' => 1894,
+                'endYear' => null,
+                'runtimeMinutes' => 1,
+                'genres' => ['Documentary', 'Short'],
+            ],
+        ]);
+
+        // Assert
+        expect($result)->toBeInstanceOf(TitleImportCounts::class)
+            ->and($result->movies)->toBe(0)
+            ->and($result->shows)->toBe(0);
     });
 });
 
@@ -222,6 +251,8 @@ describe('handle() search indexing', function (): void {
         expect(reindexedIds($capturedChunks()))->toBe([])
             ->and(Movie::query()->find($movie->id)->_imdb_primaryTitle)->toBe('The Matrix')
             ->and(Show::query()->find($show->id)->_imdb_primaryTitle)->toBe('Breaking Bad')
-            ->and($result)->toBe(['movies' => 1, 'shows' => 1]);
+            ->and($result)->toBeInstanceOf(TitleImportCounts::class)
+            ->and($result->movies)->toBe(1)
+            ->and($result->shows)->toBe(1);
     });
 });

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Domains\Catalog\Support\SyncWindow;
+use App\Domains\Catalog\Data\SyncWindow;
 use Carbon\CarbonImmutable;
 
 describe('SyncWindow endpoint formatting', function (): void {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Support;
 
+use App\Domains\Catalog\Data\SyncWindow;
 use App\Domains\Catalog\Enums\SyncFeed;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
