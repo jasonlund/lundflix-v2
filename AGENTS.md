@@ -206,7 +206,9 @@ the intended appearance.
 
 **Test-first by default** via the `tdd` skill: RED → GREEN → REFACTOR, one
 behavior **slice** (~2–6 tests) per cycle, each phase in an isolated subagent so
-tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
+tests can't be retrofitted. RED slice approved in the harness's plan UI first
+(Conductor's, or plain terminal approval under LaborForest + Solo — the gate is the
+approval, not the UI that renders it).
 
 - **AAA, always.** Three blocks in order — arrange, **one** act, assert —
   separated by blank lines. One Act per test; need a second action → second test.
@@ -508,7 +510,8 @@ checkout/workspace has a usable dataset with no third-party API calls (FLIX-194)
 - **The test DB is sqlite `:memory:`; prod/dev is MySQL.** A MySQL-dialect dump
   can't load into sqlite, so `db:import` tests assert the real truncate + the
   faked load invocation, not reloaded rows — the byte-apply is covered by the
-  Conductor setup smoke, not a Pest test.
+  workspace setup smoke (Conductor's `setup.sh`, or LaborForest's `refresh`
+  workflow), not a Pest test.
 
 ## Cache: store scalars, never objects
 
@@ -546,6 +549,60 @@ touched — scoped to your changed work, never a repo-wide sweep (a bare
 - Then re-run the affected tests — linters reorder and retype code, so re-verify
   green before finalizing.
 
+## Local worktree tooling: LaborForest + Solo
+
+Two tools, version-controlled. **LaborForest** (`lf`) owns worktree lifecycle
+through `.laborforest/workflows/{up,down,refresh}.yaml`; **Solo** owns the
+long-running dev processes through a committed `solo.yml`. Conductor's `.conductor/`
+is still live for its in-flight workspaces — both toolchains work side by side, and
+LaborForest + Solo is the current path for new work.
+
+- **Never put computation in a workflow's bash string.** A `shell` step's `run:` is
+  a string inside YAML — nothing can test it, so any logic there is unverifiable by
+  construction. Route it through an artisan command and test that at `artisan()`:
+  `lf:workspace-env` derives a workspace's site/database/URL. A step should be one
+  line.
+- **The workflows never touch Solo.** Solo owns its own project registry; worktrees
+  are added and removed in its UI. `up` creates no Solo state, so `down` has none to
+  reverse, and the boundary stays where the two tools already draw it — LaborForest
+  orchestrates worktrees, Solo runs processes inside one. Reaching across it means
+  either Solo's CLI (gated behind a per-machine "local CLI access" setting nothing in
+  the repo can enforce — it *silently no-ops* when off, which is worse than failing)
+  or a JSON-RPC socket client. Neither belongs in a `shell` step.
+- **`solo.yml` is repo-controlled, with limits worth knowing.** Solo syncs it into
+  local state, but **only `command` processes are YAML-backed** — terminals and
+  agents are not stored there at all, so they stay per-machine. New or changed YAML
+  commands start **untrusted** and will not run or auto-start until trusted in
+  Solo's UI.
+- **Only servers that resolve on every checkout belong in the committed `.mcp.json`.**
+  `php artisan boost:mcp` is repo-relative and qualifies. Solo's MCP server lives in
+  a macOS app bundle — machine-local, so it goes in a user-scoped Claude config, not
+  a project-scoped file every checkout inherits.
+- **Every destructive step carries the primary guard** —
+  `if: test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"` — and so does
+  `up`'s nested `refresh` call. The primary's `lundflix` database holds far more
+  than the committed dumps can restore. `tests/Unit/Local/LaborForestWorkflowTest.php`
+  is what enforces this; add a destructive step and you must add its matcher there.
+- **Teardown is best-effort and always exits 0.** `down` is the only path
+  `ready → suspended`, and LaborForest hides its Remove action unless a workspace is
+  suspended — so a step that fails makes the worktree permanently undeletable. An
+  orphaned resource is the cheaper failure; say so in a heartbeat rather than
+  returning non-zero.
+- **Per-workspace names are computed, never templated.** `{{ WORKSPACE_SLUG_SNAKE }}`
+  verbatim overflows MySQL's 64-char database-name limit on real branch names.
+  `lf:workspace-env` strips the project prefix, trims the branch to 40 chars, and
+  prefixes `lf-` (Herd site) / `lf_` (database) — which also keeps LaborForest's
+  databases visibly distinct from Conductor's `lundflix_*`.
+- **`lf validate` proves nothing.** It exits 0 for a missing file and for a
+  schema-invalid one. The Pest guards are the only schema check; a real `up` → `down`
+  round trip is the only end-to-end proof.
+- Machine-local settings that cannot be version-controlled — `~/.laborforest/settings.yaml`
+  (`command_launch_terminal`) and trusting a worktree's `solo.yml` commands in Solo's
+  UI — are README operator steps. Keep that list short: **an operator step nothing
+  enforces is a liability**, so prefer a design that needs none over one that
+  documents another. Never install a tool by symlinking out of an app bundle; use
+  the app's own supported path, or don't depend on it.
+
 ## Configuration
 
 - **Third-party base URLs are service constants, not env/config.** A public,
@@ -564,9 +621,18 @@ touched — scoped to your changed work, never a repo-wide sweep (a bare
 - **Only *required* env vars belong in `.env.example`** — a secret/credential the
   app needs to run. Optional tunables that read `env()` with a `config/` default
   stay out; the default is the documentation.
-- **New required env var → also set the Conductor root `.env`.** Fresh workspaces
-  copy `.env` from `~/conductor/repos/<repo>/.env`, not from `.env.example` — set
-  it there too or new workspaces start without it.
+- **New required env var → also set the seed `.env` of whichever worktree tool you
+  use.** A fresh workspace copies `.env` from a seed checkout, never from
+  `.env.example`, so a var added only to `.env.example` leaves every new workspace
+  without it.
+  - **LaborForest + Solo (current)** — the seed is the primary checkout's own
+    `.env`, `~/Sites/<repo>/.env`, which `up.yaml` copies from
+    `{{ PROJECT_PRIMARY_DIR }}`.
+  - **Conductor (in-flight workspaces)** — the seed is
+    `~/conductor/repos/<repo>/.env`.
+
+  Both toolchains are live; set the var in the seed `.env` of each one you still
+  cut workspaces from.
 
 ## Documentation
 
@@ -677,8 +743,10 @@ The incident behind the rule and the timing forensics:
 
 Configuration the installed engineering skills read before they act —
 `mattpocock-skills:triage`, `:to-spec`, `:to-tickets`, `:wayfinder`,
-`:code-review`. They ship as the `mattpocock-skills` plugin, so **every one is
-invoked with that prefix**; the skill files' own cross-references to bare
+`:code-review`. They are **user-scoped**, not a plugin and not in this repo —
+they live under `~/.claude/skills/mattpocock-skills/`, so **every one is invoked
+with that prefix** and none of them are available in a checkout on a machine that
+has not installed them; the skill files' own cross-references to bare
 `/to-spec`-style names are upstream text and are stale here. Written by
 `mattpocock-skills:setup-matt-pocock-skills`; edit `docs/agents/*.md` directly to
 change the config.
@@ -713,8 +781,10 @@ cutover — offer `mattpocock-skills:wizard`. It generates an interactive bash s
 that opens each URL, captures each value, and writes it where it belongs, so the
 procedure stops being re-explained every time. Adding an API credential here is the
 standard case: the value must reach `.env.example`, the README key table, **and**
-the Conductor root `.env`. Do the work directly whenever you can; the wizard is for
-where a human is genuinely in the loop.
+the seed `.env` of every worktree tool in use — the primary checkout's `.env` under
+LaborForest + Solo, the Conductor root `.env` for in-flight Conductor workspaces.
+Do the work directly whenever you can; the wizard is for where a human is genuinely
+in the loop.
 
 ### Issue tracker
 
@@ -808,13 +878,6 @@ Before relying on a package's API, confirm its installed version:
 # Deployment
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
-
-=== herd rules ===
-
-# Laravel Herd
-
-- The application is served by Laravel Herd at `https?://[kebab-case-project-dir].test`. Use the `get-absolute-url` tool to generate valid URLs. Never run commands to serve the site. It is always available.
-- Use the `herd` CLI to manage services, PHP versions, and sites (e.g. `herd sites`, `herd services:start <service>`, `herd php:list`). Run `herd list` to discover all available commands.
 
 === tests rules ===
 

@@ -1,0 +1,64 @@
+resource_type: workflow
+require_status: suspended
+ending_status: ready
+sort_order: 0
+steps:
+  # LaborForest cuts a worktree from the *local* base branch and never fetches, so
+  # a stale primary silently produces stale branches. Fetching here rather than
+  # asking anyone to keep the primary current means its freshness stops mattering.
+  - name: 'Fetch from origin'
+    type: shell
+    run: 'git fetch origin --prune'
+  # Skipped once the branch carries its own commits: fast-forwarding is only ever
+  # correct while it is still level with main.
+  - name: 'Fast-forward onto origin/main'
+    type: shell
+    unless: 'test "$(git rev-list --count origin/main..HEAD)" -gt 0'
+    run: 'git merge --ff-only origin/main'
+  - name: 'Copy .env from the primary checkout'
+    type: shell
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
+    run: 'cp "{{ PROJECT_PRIMARY_DIR }}/.env" .env'
+  # Neither this nor the refresh call is destructive, but both carry down's
+  # primary-checkout guard: run there, `lf:workspace-env` would rewrite the
+  # primary's own .env DB_DATABASE and APP_URL to a workspace's, and refresh
+  # would then act on that database instead of `lundflix`.
+  - name: 'Derive workspace env values'
+    type: shell
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
+    run: 'php artisan lf:workspace-env {{ WORKSPACE_SLUG_KEBAB }} {{ PROJECT_SLUG_KEBAB }}'
+  - name: 'Generate the application key'
+    type: shell
+    unless: 'grep -q "^APP_KEY=base64:" .env'
+    run: 'php artisan key:generate --force'
+  - name: 'Create the MySQL database'
+    type: shell
+    run: 'mysql -h {{ ENV_DB_HOST }} -P {{ ENV_DB_PORT }} -u {{ ENV_DB_USERNAME }} $([[ -z "{{ ENV_DB_PASSWORD }}" ]] && echo "--skip-password" || echo "-p{{ ENV_DB_PASSWORD }}") -e "CREATE DATABASE IF NOT EXISTS {{ ENV_DB_DATABASE }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"'
+  - name: 'Install Composer dependencies'
+    type: shell
+    run: 'composer install --no-interaction --prefer-dist'
+  # `npm ci`, not `install`, and --ignore-scripts: plain `npm install` rewrites
+  # package-lock.json's "name" to the workspace dir and drops optional deps,
+  # polluting the diff in every worktree. Observed for real during FLIX-294.
+  - name: 'Install npm dependencies'
+    type: shell
+    run: 'npm ci --ignore-scripts'
+  - name: 'Build front-end assets'
+    type: shell
+    run: 'npm run build'
+  - name: 'Link the storage directory'
+    type: shell
+    run: 'php artisan storage:link'
+  - name: 'Link the Laravel Herd site'
+    type: shell
+    run: 'herd link --no-interaction --secure {{ ENV_LF_SITE }}'
+  - name: 'Run migrations'
+    type: shell
+    run: 'php artisan migrate --force'
+  - name: 'Refresh application data'
+    type: workflow
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
+    run: refresh
+  - name: 'Clear cached framework state'
+    type: shell
+    run: 'php artisan optimize:clear'
