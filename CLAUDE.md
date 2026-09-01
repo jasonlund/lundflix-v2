@@ -593,9 +593,30 @@ LaborForest + Solo is the current path for new work.
   `lf:workspace-env` strips the project prefix, trims the branch to 40 chars, and
   prefixes `lf-` (Herd site) / `lf_` (database) — which also keeps LaborForest's
   databases visibly distinct from Conductor's `lundflix_*`.
-- **`lf validate` proves nothing.** It exits 0 for a missing file and for a
-  schema-invalid one. The Pest guards are the only schema check; a real `up` → `down`
-  round trip is the only end-to-end proof.
+- **Drive LaborForest through its MCP, not the `lf` CLI.** When
+  `mcp__laborforest__*` tools are present, use `add-workspace` (project `path` +
+  `branch` + `base_branch`), `run-workflow` (workspace `path` + `workflow`), and
+  `override-workspace-status` to clear the `error` a failed run leaves behind. `lf`
+  exposes only `add-project`, `run`, `validate` — it cannot create a workspace or
+  clear a status at all. There is **no `remove-workspace` tool**; final removal is a
+  GUI action (`remove-project` deletes a whole project, not one workspace).
+- **`run-workflow` only dispatches.** It returns a run id and the workflow executes
+  asynchronously inside the app, so its return says nothing about success. Read
+  `.laborforest/ignored/logs/` — the newest file records every step's exit code,
+  output and `skip_reason`. Judging a run by the dispatch call is how a failure gets
+  reported as a success.
+- **Validate through the MCP; the CLI's `lf validate` is inert.** `lf validate` exits
+  0 for a missing file *and* for a schema-invalid one. The MCP's `validate-workflow`
+  is a real check — it returns `isError` with the reason ("The selected require
+  status is invalid. The sort order field is required.") on the same file the CLI
+  passes. So a schema check exists, but only through the MCP; the Pest guards remain
+  the only check that runs in CI, and a real `up` → `down` round trip is still the
+  only end-to-end proof.
+- **Fall back to the GUI when the MCP is absent.** No `laborforest` tools usually
+  means the session started before the server was registered — a new session fixes
+  it. "Nothing is listening" usually means the Settings toggles were never saved;
+  `~/.laborforest/settings.yaml` is the source of truth, and the server starts from
+  the saved file.
 - Machine-local settings that cannot be version-controlled — `~/.laborforest/settings.yaml`
   (`command_launch_terminal`) and trusting a worktree's `solo.yml` commands in Solo's
   UI — are README operator steps. Keep that list short: **an operator step nothing

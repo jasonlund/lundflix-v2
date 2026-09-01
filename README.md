@@ -129,10 +129,10 @@ Worktrees land beside the primary checkout as `~/Sites/lundflix-v2-<branch-slug>
   `Horizon`, `Queue`, and `Pint`.
 - **Reset** → `lf run refresh`: `migrate:fresh` → `db:seed` → `db:import` of the
   committed catalog dumps. Re-runnable against a working workspace.
-- **Remove** → `lf run down` reverses everything `up` created outside the worktree:
-  the Solo project registration, the database, the Herd site. LaborForest hides its
-  Remove action unless a workspace is suspended, and `down` is the only way to get
-  there — so teardown cannot be skipped.
+- **Remove** → `down` reverses everything `up` created outside the worktree: the
+  database and the Herd site. LaborForest hides its Remove action unless a workspace
+  is suspended, and `down` is the only way to get there — so teardown cannot be
+  skipped.
 
 **The primary checkout is `~/Sites/lundflix-v2`, and every workflow guards it.**
 The destructive steps and the nested `refresh` call are all skipped when the
@@ -143,6 +143,66 @@ your main database.
 (`~/Sites/lundflix-v2/.env`), *not* from `.env.example` — so a new required var must
 be added there too. The primary also needs one key no workflow writes for it:
 `LF_SITE=lundflix-v2`.
+
+#### Driving it from an agent (LaborForest MCP)
+
+LaborForest ships a local MCP server, so an agent can cut a worktree and provision
+it without you touching the GUI. Enable it once in **LaborForest → Settings → MCP**
+(Enable MCP on, Read only **off** — `add-workspace` is only exposed on a writable
+server), press **Save changes**, then run the `claude mcp add …` line it shows you.
+
+That command is `--scope user` on purpose: the server is a machine-local app on a
+localhost port with a bearer token, so it belongs in your user config. It is **not**
+in this repo's `.mcp.json`, which only carries servers whose command resolves on
+every checkout.
+
+The tools arrive prefixed `mcp__laborforest__`, and the four that matter are:
+
+| Tool | Arguments | Does |
+| --- | --- | --- |
+| `add-workspace` | `path` (project) or `uuid`, `branch`, `base_branch` | cuts the worktree |
+| `run-workflow` | `path` (workspace), `workflow` | runs `up` / `down` / `refresh`; returns a run id |
+| `override-workspace-status` | `path`, `status` (`ready`\|`suspended`) | clears the `error` a failed run leaves |
+| `validate-workflow` | `path`, `workflow` | parses a workflow — see the caveat below |
+
+So the whole provision is one instruction to an agent: *"cut a worktree for branch X
+off main and bring it up."* It calls `add-workspace`, then `run-workflow up`, then
+reads `.laborforest/ignored/logs/` for the per-step result — `run-workflow` only
+dispatches, so the log is where success or failure actually shows up.
+
+**Two limits.** There is **no `remove-workspace` tool** — `remove-project` removes a
+whole project, not one workspace — so final removal stays a GUI action after `down`.
+And enabling this grants more than worktrees: with Read only off and shell execution
+allowed, the bearer token authorises arbitrary shell commands and `update-settings`
+can re-widen the settings themselves. Regenerate the token if it is ever exposed.
+
+#### Fallback: when the MCP doesn't answer
+
+Everything below works with the MCP off, and is what to reach for when an agent
+reports no `laborforest` tools or a connection error.
+
+First, tell the two apart:
+
+- **No `laborforest` tools at all** — Claude Code binds MCP servers at session start.
+  If you registered the server after the session began, start a new session; nothing
+  needs redoing.
+- **"Nothing is listening" / connection refused** — check `~/.laborforest/settings.yaml`
+  actually says `mcp_enabled: true`. The Settings toggles do nothing until **Save
+  changes** is pressed, and the server starts from the saved file, so unsaved toggles
+  look correct while nothing is bound to the port.
+- **401** — the token was regenerated; re-run `claude mcp add` with the new one.
+
+Then do it by hand:
+
+| Instead of | Do |
+| --- | --- |
+| `add-workspace` | **Add workspace** in the LaborForest GUI |
+| `run-workflow` | the row's **Workflows** button, or `lf run <name>` from inside the worktree |
+| `override-workspace-status` | the row's **⋮** menu → status action → `suspended` |
+| reading the run id | `.laborforest/ignored/logs/` directly, newest file |
+
+`lf` itself only exposes `add-project`, `run` and `validate` — there is no CLI path
+to creating a workspace or clearing a status, which is why those two rows say GUI.
 
 #### Adding a worktree to Solo
 
@@ -169,8 +229,9 @@ LaborForest stops at the first failing step, skips the rest, and leaves the
 workspace unprovisioned rather than half-built — but it also moves it to **`error`**,
 and only `ready` and `suspended` can launch a workflow. So **fixing the problem is
 not enough to retry**: `lf run up` will print `Running workflow: up`, exit 0, and do
-nothing. Clear it with the status action in the workspace row's ⋮ menu (set it back
-to `suspended`); there is no CLI equivalent.
+nothing. Clear it with `override-workspace-status` (`status: suspended`), or the
+status action in the workspace row's ⋮ menu. There is no `lf` equivalent — this is
+one of the two things only the MCP or the GUI can do.
 
 Read the run logs at `.laborforest/ignored/logs/` — each records every step's exit
 code, output, and `skip_reason`, which is the fastest way to see where a run stopped.
