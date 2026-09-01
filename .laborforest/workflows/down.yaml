@@ -14,6 +14,13 @@ steps:
   # what makes the {{ ENV_* }} in the steps below the workspace's own. Alone in
   # this file it is not best-effort: if it fails the run must abort rather than
   # tear down whatever the stale .env happens to name.
+  #
+  # The cost of that choice: this needs vendor/, so on a workspace whose vendor/
+  # was deleted the run aborts here and neither step below is attempted — the
+  # database and site are both orphaned and the workspace is stuck in `error`,
+  # which only `override-workspace-status` clears. That is the cheaper failure.
+  # Tolerating it instead would let the drop below run against a stale .env
+  # naming `lundflix`, and those 1.17M rows are not restorable from the dumps.
   - name: 'Derive workspace env values'
     type: shell
     if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
