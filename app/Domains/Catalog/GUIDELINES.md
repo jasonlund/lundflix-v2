@@ -187,6 +187,44 @@ don't restate them:
   `catalog:sync`'s nested `Artisan::call`, which swallows the per-batch line. (The
   line-by-line output rule itself is in `.ai/guidelines/project.md`.)
 
+## Scale-with-change (every sync/ingest leg)
+
+A leg is an **offender** if its per-run cost grows with a collection whose growth
+we do not control. Cost that grows with the *change* is correct; cost that grows
+with the *catalog* is a bug, not a tuning opportunity — optimizing its constant
+factor optimizes a loop that should not run (FLIX-286, which struck FLIX-270's
+"the export scan stays in every run" on exactly that ground).
+
+Applying it needs two questions, not one:
+
+- **Does the leg re-read a whole upstream dataset to find a small delta an
+  incremental endpoint already reports?** Prefer the incremental endpoint. But
+  verify the endpoint is complete before trusting it, and check what the full
+  dataset was *filtering* — TMDB's `movie_ids` export carries no adult rows at
+  all, so `TmdbExportService::isExcluded()` had never fired in production; the
+  changes feed is unfiltered, and ~10% of its ids are absent from the export,
+  mostly adult.
+- **Does a record the leg refuses to persist come back every run?** A refused
+  title (see `CONTEXT.md`) that is dropped pre-upsert never gets its
+  `*_synced_at` stamp, so the membership probe reports it missing forever. Store
+  the row and filter at read — `ADR-0004`. This residue is invisible in the
+  heartbeats: the scan beat counts rows read, so a leg re-fetching tens of
+  thousands of unpersistable ids looks identical to one making progress.
+
+Audited 2026-08-27. Clean: `catalog:sync-shows-tvdb` (`/updates` since marker —
+**the reference pattern**), `catalog:seed-shows-tvdb` (full crawl, but manual
+bootstrap, never scheduled), the three IMDb legs (a `Http::head()`
+`Last-Modified` probe short-circuits before `download()`; a full parse on a real
+change is inherent, since IMDb publishes only full dumps), `download:sync-index`
+(stops at the first fully-seen page) and `download:sync-rss` (constant).
+
+Offenders, each with its own ticket: `catalog:sync-movies`' export scan, whose
+~66k hydrations per run are 94% unpersistable records; `catalog:sync-shows-tmdb`,
+where a `/find` miss or `_tmdb_id` collision is re-walked every run — 95,340 rows
+on production, ~55% of the show universe; and `catalog:sync-episodes-tvdb`, which
+reads only `seriesId` off an updates record that also carries the episode's own
+`recordId`, then re-crawls the show's entire episode list.
+
 ## Incremental sync markers (`SyncMarker` / `SyncFeed`)
 
 All four catalog syncs (`catalog:sync-movies`, `catalog:sync-shows-tmdb`,
