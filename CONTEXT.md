@@ -44,6 +44,13 @@ availability: a listing can be in high demand and poorly available.
 A movie or a show — the thing a user is looking for, independent of which source
 described it or which file realizes it.
 
+**Refused title**:
+A title the app deliberately never surfaces — adult, softcore, or promo (a
+trailer/extra rather than a film). Refusal is a property of the title, not of one
+source's feed: several sources report them, and each ingest path must record a
+refused title *as refused* rather than skip it, or the title is rediscovered and
+re-fetched on every later run. See [ADR-0004](docs/adr/0004-refused-titles-are-stored-not-dropped.md).
+
 **Crosswalk id**:
 A third-party identifier for a title that SQL must key on (`_imdb_id`,
 `_tmdb_id`, `_tvdb_id`). Unlike other source-owned columns it is normalized at
