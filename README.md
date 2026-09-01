@@ -127,17 +127,20 @@ Worktrees land beside the primary checkout as `~/Sites/lundflix-v2-<branch-slug>
   another's schema.
 - **Run** → open the worktree in Solo; `solo.yml` declares `npm:dev` (auto-starts),
   `Horizon`, `Queue`, and `Pint`.
-- **Reset** → `lf run refresh`: `migrate:fresh` → `db:seed` → `db:import` of the
-  committed catalog dumps. Re-runnable against a working workspace.
+- **Reset** → `lf run refresh`: `migrate:fresh` → `db:seed` → `db:import`, which
+  restores the committed catalog dumps when `database/dumps/` holds any. Re-runnable
+  against a working workspace. **That directory is currently empty**, and `db:import`
+  skips missing files and still reports success — so a fresh workspace comes up with a
+  working app and an empty catalog.
 - **Remove** → `down` reverses everything `up` created outside the worktree: the
   database and the Herd site. LaborForest hides its Remove action unless a workspace
   is suspended, and `down` is the only way to get there — so teardown cannot be
   skipped.
 
-**The primary checkout is `~/Sites/lundflix-v2`, and every workflow guards it.**
-The destructive steps and the nested `refresh` call are all skipped when the
-workspace directory *is* the primary, so a mistyped `lf run` cannot drop or reseed
-your main database.
+**The primary checkout is `~/Sites/lundflix-v2`, and `up`, `refresh` and `down` all
+guard it.** Each destructive step — and `up`'s nested `refresh` call — compares the
+workspace directory against the project's primary directory and skips when they are
+the same, so running any of them from the primary drops or reseeds nothing.
 
 **Env vars:** new workspaces copy `.env` from the **primary checkout**
 (`~/Sites/lundflix-v2/.env`), *not* from `.env.example` — so a new required var must

@@ -581,12 +581,13 @@ LaborForest + Solo is the current path for new work.
   prefixes `lf-` (Herd site) / `lf_` (database) — which also keeps LaborForest's
   databases visibly distinct from Conductor's `lundflix_*`.
 - **Drive LaborForest through its MCP, not the `lf` CLI.** When
-  `mcp__laborforest__*` tools are present, use `add-workspace` (project `path` +
-  `branch` + `base_branch`), `run-workflow` (workspace `path` + `workflow`), and
-  `override-workspace-status` to clear the `error` a failed run leaves behind. `lf`
-  exposes only `add-project`, `run`, `validate` — it cannot create a workspace or
-  clear a status at all. There is **no `remove-workspace` tool**; final removal is a
-  GUI action (`remove-project` deletes a whole project, not one workspace).
+  `mcp__laborforest__*` tools are present, use `add-workspace` to cut the worktree,
+  `run-workflow` to run `up`/`down`/`refresh`, and `override-workspace-status` to
+  clear the `error` a failed run leaves behind — README's *"Driving it from an agent
+  (LaborForest MCP)"* carries each tool's arguments. `lf` exposes only `add-project`,
+  `run`, `validate` — it cannot create a workspace or clear a status at all. There
+  is **no `remove-workspace` tool**; final removal is a GUI action (`remove-project`
+  deletes a whole project, not one workspace).
 - **`run-workflow` only dispatches.** It returns a run id and the workflow executes
   asynchronously inside the app, so its return says nothing about success. Read
   `.laborforest/ignored/logs/` — the newest file records every step's exit code,

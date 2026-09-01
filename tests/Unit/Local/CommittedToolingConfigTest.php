@@ -56,6 +56,17 @@ $soloProcesses = function () use ($repoRoot): array {
         ->all();
 };
 
+/**
+ * `.mcp.json`'s server map, keyed by server name.
+ *
+ * @return array<string, mixed>
+ */
+$mcpServers = function () use ($repoRoot): array {
+    $config = (array) json_decode((string) file_get_contents($repoRoot().'/.mcp.json'), true);
+
+    return (array) ($config['mcpServers'] ?? []);
+};
+
 describe('solo.yml processes', function () use ($soloProcesses): void {
     it('declares exactly the four development processes', function () use ($soloProcesses): void {
         // Solo rewrites this file whenever a process is added or removed in its
@@ -93,17 +104,17 @@ describe('solo.yml processes', function () use ($soloProcesses): void {
     });
 });
 
-describe('.mcp.json servers', function () use ($repoRoot): void {
+describe('.mcp.json servers', function () use ($mcpServers): void {
     // Only servers whose command is true on every checkout belong in a committed,
     // project-scoped file. `php artisan boost:mcp` is repo-relative and qualifies.
     // Solo's server is a macOS app bundle path — machine-local, so it belongs in a
     // user-scoped Claude config, not here.
-    it('registers only servers that resolve on any checkout', function () use ($repoRoot): void {
+    it('registers only servers that resolve on any checkout', function () use ($mcpServers): void {
         // Arrange
-        $config = (array) json_decode((string) file_get_contents($repoRoot().'/.mcp.json'), true);
+        // the committed file is the whole input; reading it is the act
 
         // Act
-        $registered = collect((array) ($config['mcpServers'] ?? []))->keys()->sort()->values()->all();
+        $registered = collect($mcpServers())->keys()->sort()->values()->all();
 
         // Assert
         expect($registered)->toBe(['laravel-boost']);

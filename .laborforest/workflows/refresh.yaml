@@ -3,18 +3,23 @@ require_status: ready
 ending_status: ready
 sort_order: 1
 steps:
-  # Destructive by design — this is the reseed, and it is why `up` calls it only
-  # for a worktree. Run against the primary it would drop `lundflix`, whose
-  # 1.17M-row catalog goes far beyond the best-first prefix the committed dumps
-  # carry, so the rows past that prefix would not come back.
+  # Destructive by design — this is the reseed. `require_status: ready` and the
+  # primary checkout is ready, so `lf run refresh` can be invoked there directly:
+  # up's guard on its nested call does not travel with this file, and every step
+  # below therefore carries its own. Run against the primary it would drop
+  # `lundflix`, whose 1.17M-row catalog goes far beyond the best-first prefix the
+  # committed dumps carry, so the rows past that prefix would not come back.
   - name: 'Rebuild the schema'
     type: shell
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
     run: 'php artisan migrate:fresh --force'
   - name: 'Seed the application data'
     type: shell
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
     run: 'php artisan db:seed --force'
   # The version-controlled catalog dumps (FLIX-194) — this is what makes a fresh
   # worktree usable without a single third-party API call.
   - name: 'Import the committed catalog dumps'
     type: shell
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
     run: 'php artisan db:import --force'

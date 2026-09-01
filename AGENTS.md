@@ -594,12 +594,13 @@ LaborForest + Solo is the current path for new work.
   prefixes `lf-` (Herd site) / `lf_` (database) — which also keeps LaborForest's
   databases visibly distinct from Conductor's `lundflix_*`.
 - **Drive LaborForest through its MCP, not the `lf` CLI.** When
-  `mcp__laborforest__*` tools are present, use `add-workspace` (project `path` +
-  `branch` + `base_branch`), `run-workflow` (workspace `path` + `workflow`), and
-  `override-workspace-status` to clear the `error` a failed run leaves behind. `lf`
-  exposes only `add-project`, `run`, `validate` — it cannot create a workspace or
-  clear a status at all. There is **no `remove-workspace` tool**; final removal is a
-  GUI action (`remove-project` deletes a whole project, not one workspace).
+  `mcp__laborforest__*` tools are present, use `add-workspace` to cut the worktree,
+  `run-workflow` to run `up`/`down`/`refresh`, and `override-workspace-status` to
+  clear the `error` a failed run leaves behind — README's *"Driving it from an agent
+  (LaborForest MCP)"* carries each tool's arguments. `lf` exposes only `add-project`,
+  `run`, `validate` — it cannot create a workspace or clear a status at all. There
+  is **no `remove-workspace` tool**; final removal is a GUI action (`remove-project`
+  deletes a whole project, not one workspace).
 - **`run-workflow` only dispatches.** It returns a run id and the workflow executes
   asynchronously inside the app, so its return says nothing about success. Read
   `.laborforest/ignored/logs/` — the newest file records every step's exit code,
@@ -899,6 +900,13 @@ Before relying on a package's API, confirm its installed version:
 # Deployment
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
+
+=== herd rules ===
+
+# Laravel Herd
+
+- The application is served by Laravel Herd at `https?://[kebab-case-project-dir].test`. Use the `get-absolute-url` tool to generate valid URLs. Never run commands to serve the site. It is always available.
+- Use the `herd` CLI to manage services, PHP versions, and sites (e.g. `herd sites`, `herd services:start <service>`, `herd php:list`). Run `herd list` to discover all available commands.
 
 === tests rules ===
 

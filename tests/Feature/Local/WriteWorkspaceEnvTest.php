@@ -22,6 +22,26 @@ function workspaceEnvFile(string $contents = ''): string
 }
 
 /**
+ * A throwaway base path seeded with $contents at its own `.env`, with the
+ * application rebound onto it. Returns that `.env` path.
+ *
+ * Omitting --file makes the command resolve base_path('.env'), so rebinding the
+ * base path is the only way to exercise that arm without the command writing the
+ * repo's real .env; afterEach sweeps the whole family up again.
+ */
+function workspaceEnvBase(string $contents): string
+{
+    $base = sys_get_temp_dir().'/lundflix-workspace-base-'.uniqid('', true);
+
+    File::ensureDirectoryExists($base);
+    File::put($base.'/.env', $contents);
+
+    app()->setBasePath($base);
+
+    return base_path('.env');
+}
+
+/**
  * The non-blank lines of a written env file.
  *
  * Lines, not the raw string: a rewrite that appended a duplicate key still
@@ -52,6 +72,10 @@ function workspaceEnvValue(string $file, string $key): string
 }
 
 afterEach(function (): void {
+    foreach (File::glob(sys_get_temp_dir().'/lundflix-workspace-base-*') ?: [] as $base) {
+        File::deleteDirectory($base);
+    }
+
     File::delete(File::glob(storage_path('framework/testing/workspace-env-*.env')));
 });
 
@@ -174,6 +198,28 @@ describe('lf:workspace-env file writing', function (): void {
         expect($lines)->toContain('DB_DATABASE=lf_flix_294_laborforest_solo_worktrees');
         expect(collect($lines)->filter(fn (string $line): bool => Str::startsWith($line, 'DB_DATABASE='))->all())
             ->toHaveCount(1);
+    });
+
+    // up.yaml runs the command with no --file, so base_path('.env') is the only arm
+    // production ever takes. Resolve it wrong and the workspace keeps the primary's
+    // DB_DATABASE — which refresh's migrate:fresh then wipes.
+    it('writes the workspace env into the base path when no file option is given', function (): void {
+        // Arrange
+        $file = workspaceEnvBase("APP_NAME=Lundflix\nDB_DATABASE=lundflix\n");
+
+        // Act
+        $this->artisan('lf:workspace-env', [
+            'workspace' => 'lundflix-v2-flix-294-laborforest-solo-worktrees',
+            'project' => 'lundflix-v2',
+        ])->assertSuccessful();
+
+        // Assert
+        expect($file)->toBe(base_path('.env'));
+        expect(workspaceEnvLines($file))
+            ->toContain('DB_DATABASE=lf_flix_294_laborforest_solo_worktrees')
+            ->toContain('LF_SITE=lf-flix-294-laborforest-solo-worktrees')
+            ->toContain('APP_URL=https://lf-flix-294-laborforest-solo-worktrees.test')
+            ->toContain('APP_NAME=Lundflix');
     });
 
     it('appends a key absent from the file and keeps the existing lines', function (): void {

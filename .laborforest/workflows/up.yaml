@@ -30,17 +30,29 @@ steps:
   # primary-checkout guard: run there, `lf:workspace-env` would rewrite the
   # primary's own .env DB_DATABASE and APP_URL to a workspace's, and refresh
   # would then act on that database instead of `lundflix`.
+  #
+  # Must also precede the database and Herd steps below: until it runs, .env is
+  # still the primary's copy, so `herd link --secure` would re-point the
+  # primary's site at this worktree. Pinned by LaborForestWorkflowTest.
   - name: 'Derive workspace env values'
     type: shell
     if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
     run: 'php artisan lf:workspace-env {{ WORKSPACE_SLUG_KEBAB }} {{ PROJECT_SLUG_KEBAB }}'
+  # The seed .env copied above already carries a key, so this only fires for a
+  # seed that lacks one. Every worktree therefore shares the primary's APP_KEY —
+  # deliberate, and unlike Conductor, whose seed shipped empty so each workspace
+  # generated its own. Nothing encrypted is seeded (db:dump excludes `settings`),
+  # so there is nothing a shared key lets one worktree read from another.
   - name: 'Generate the application key'
     type: shell
     unless: 'grep -q "^APP_KEY=base64:" .env'
     run: 'php artisan key:generate --force'
+  # MYSQL_PWD, never `-p`: a flag would put the password in the process table.
+  # Empty behaves as no password, which is why no --skip-password branch is
+  # needed. Matches App\Domains\Local\Database\MysqlConnection.
   - name: 'Create the MySQL database'
     type: shell
-    run: 'mysql -h {{ ENV_DB_HOST }} -P {{ ENV_DB_PORT }} -u {{ ENV_DB_USERNAME }} $([[ -z "{{ ENV_DB_PASSWORD }}" ]] && echo "--skip-password" || echo "-p{{ ENV_DB_PASSWORD }}") -e "CREATE DATABASE IF NOT EXISTS {{ ENV_DB_DATABASE }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"'
+    run: "MYSQL_PWD='{{ ENV_DB_PASSWORD }}' mysql -h {{ ENV_DB_HOST }} -P {{ ENV_DB_PORT }} -u {{ ENV_DB_USERNAME }} -e 'CREATE DATABASE IF NOT EXISTS {{ ENV_DB_DATABASE }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'"
   # `npm ci`, not `install`, and --ignore-scripts: plain `npm install` rewrites
   # package-lock.json's "name" to the workspace dir and drops optional deps,
   # polluting the diff in every worktree. Observed for real during FLIX-294.
