@@ -68,8 +68,9 @@ machine work.
 ```bash
 PRE_FIX_SHA=$(git rev-parse HEAD)
 ```
-Then follow `.claude/commands/review/process.md` — triage the posted feedback,
-per-item approve/consider/skip, dispatch fixers. Already interactive.
+Then follow `.claude/commands/review/process.md` — triage the posted feedback, present
+one numbered list carrying your recommendations, take the user's overrides, dispatch
+fixers. Already interactive.
 
 ### Stage 5: delta review  ⏸
 **The fixes Stage 4 just landed have never been reviewed by anything.** The engines

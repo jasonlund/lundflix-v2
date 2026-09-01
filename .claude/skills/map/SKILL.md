@@ -83,7 +83,7 @@ Situations that generate work and then merge onto the flow.
 
 ## Subagents (`.claude/agents/`)
 
-Thirteen, and you never invoke one directly — the commands and skills above dispatch
+Fourteen, and you never invoke one directly — the commands and skills above dispatch
 them, each into its own context window.
 
 - **Phase 3 reviewers** (`/review:claude`, in parallel): `requirements-reviewer`,
@@ -94,6 +94,8 @@ them, each into its own context window.
   fresh eyes.
 - **`coderabbit-reviewer`** — `/review:suite`'s second engine; runs the CodeRabbit
   CLI and normalizes its output into the pipeline's finding format.
+- **`review-feedback-collector`** — `/review:process` Phase 0; fetches every
+  un-resolved PR item, keys it, and scope-checks it against the diff. Mechanical only.
 - **`review-fixer`** — `/review:process` runs these in parallel, one per approved
   item or file-cluster, test-first. Each owns its files and never commits.
 - **TDD trio** (`tdd`, one phase each so tests can't be retrofitted):
