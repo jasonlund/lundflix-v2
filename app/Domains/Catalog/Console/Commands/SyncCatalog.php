@@ -16,20 +16,35 @@ class SyncCatalog extends Command
 {
     public function handle(): int
     {
-        $failed = false;
+        $failedNames = [];
 
         foreach ($this->commands() as $command => $arguments) {
+            $name = resolve($command)->getName();
+
+            $this->output->writeln("Running {$name}…");
+
             try {
                 if (Artisan::call($command, $arguments, $this->output) !== self::SUCCESS) {
-                    $failed = true;
+                    $failedNames[] = $name;
                 }
             } catch (Throwable $e) {
                 report($e);
-                $failed = true;
+                $failedNames[] = $name;
             }
         }
 
-        return $failed ? self::FAILURE : self::SUCCESS;
+        // Names the guilty children rather than counting them, so this cannot go
+        // through EmitsHeartbeat::failureSummary(): that renders a count, which
+        // here would say "1 command failed" of a run whose whole point is that it
+        // kept going — leaving the operator to find which one in the interleaved
+        // wall of child output.
+        if ($failedNames !== []) {
+            $this->output->writeln('Failed commands: '.implode(', ', $failedNames));
+        }
+
+        $this->output->writeln('Done.');
+
+        return $failedNames === [] ? self::SUCCESS : self::FAILURE;
     }
 
     /**

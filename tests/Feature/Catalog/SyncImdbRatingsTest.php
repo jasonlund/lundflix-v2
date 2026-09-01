@@ -307,3 +307,25 @@ describe('catalog:sync-ratings --batch ceiling', function (): void {
         expect($output)->toContain('[imdb ratings 2]');
     });
 });
+
+describe('catalog:sync-ratings run-closing output', function (): void {
+    it('ends a completed run with a Done. line', function (): void {
+        // Arrange
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.ratings.tsv.gz'))]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-ratings')->expectsOutputToContain('Done.');
+    });
+
+    // Synthetic header-only body: a dataset carrying no data rows is a structural
+    // input a byte-exact real capture can't provide — the live title.ratings feed
+    // always ships rows. It is also the only run in which the closing total is
+    // observable, since the scanned-rows heartbeat fires only once a line buffers.
+    it('reports a zero count for a dataset with no data rows', function (): void {
+        // Arrange
+        Http::fake(['*datasets.imdbws.com*' => Http::response(gzencode("tconst\taverageRating\tnumVotes\n"))]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-ratings')->expectsOutputToContain('  [imdb ratings 0]');
+    });
+});

@@ -9,6 +9,7 @@ use App\Domains\Catalog\Console\Commands\Concerns\SkipsUnchangedDataset;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use App\Domains\Catalog\Services\ImdbDatasetService;
 use App\Domains\Catalog\Support\CatalogImdbIds;
+use App\Domains\Common\Console\Concerns\EmitsHeartbeat;
 use Illuminate\Console\Command;
 use Illuminate\Support\LazyCollection;
 
@@ -27,6 +28,7 @@ use Illuminate\Support\LazyCollection;
  */
 abstract class ImdbSyncCommand extends Command
 {
+    use EmitsHeartbeat;
     use MeasuresElapsedTime;
     use SkipsUnchangedDataset;
 
@@ -40,6 +42,9 @@ abstract class ImdbSyncCommand extends Command
      * fewer columns has room to raise it by overriding {@see maxBatchSize()}.
      */
     private const int MAX_BATCH_SIZE = 4000;
+
+    /** The latest cumulative total the heartbeat reported, kept so the close-out can flush it. */
+    private int $scannedRows = 0;
 
     public function __construct(
         protected readonly ImdbDatasetService $datasets,
@@ -67,12 +72,21 @@ abstract class ImdbSyncCommand extends Command
         }
 
         $this->reportSummary();
+
+        // Silent on a normal run: the stream's tail probe batch already marked
+        // this exact total, so the dedupe swallows it. It earns its place for the
+        // dataset that yields no data rows at all — the only path where nothing
+        // has beaten yet, and a leg that printed no count would read as a hang.
+        $this->flushTotal($this->heartbeatTag(), $this->scannedRows);
+
         $this->reportElapsed($startedAt);
 
         // Deliberately past the try/finally, not inside it: a download or import
         // that throws must leave the old marker standing so the next run retries
         // this dataset instead of treating it as already applied.
         $this->advanceDatasetMarker($this->dataset());
+
+        $this->output->writeln('Done.');
 
         return self::SUCCESS;
     }
@@ -199,10 +213,29 @@ abstract class ImdbSyncCommand extends Command
      * Report scanned dataset rows, not applied ones: the datasets cover far more
      * titles than the catalog does, so a stretch that matches nothing still has
      * to show movement.
+     *
+     * mark(), not beat(): the count arrives once per probe batch at whatever
+     * ragged figure the batch ended on, and the batch size is already the
+     * operator's cadence knob — gating those on a fixed interval would drop
+     * nearly every line.
      */
     private function heartbeat(int $scannedRows): void
     {
-        $this->output->writeln("  [imdb {$this->feed()} {$scannedRows}]");
+        $this->scannedRows = $scannedRows;
+
+        $this->mark($this->heartbeatTag(), $scannedRows);
+    }
+
+    /**
+     * Heartbeat tag, source-prefixed (`imdb ratings`) so a line names which leg
+     * emitted it. Derived from the feed rather than a per-command constant, and
+     * shared by both callsites deliberately: the beat and the closing flushTotal
+     * must name the identical tag or the dedupe misses and the leg closes on a
+     * duplicate line.
+     */
+    private function heartbeatTag(): string
+    {
+        return "imdb {$this->feed()}";
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Models\Movie;
+use Illuminate\Console\Command;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -438,7 +439,7 @@ describe('catalog:sync-movies synced-id probing and batching', function (): void
 });
 
 describe('catalog:sync-movies heartbeat and batch failures', function (): void {
-    it('prints a phase-labeled heartbeat every 1000th hydrated title', function (): void {
+    it('prints a source-prefixed heartbeat every 1000th hydrated title', function (): void {
         // Arrange
         // 1000 hydratable ids so the running count reaches the every-1000th boundary.
         // A minimal per-id payload (no images) keeps this volume test fast — the
@@ -455,8 +456,15 @@ describe('catalog:sync-movies heartbeat and batch failures', function (): void {
             },
         ]);
 
+        // The guard has to be `[movies ` — bracket AND trailing space — because the
+        // prefixed line `[tmdb movies 1000]` itself contains the substring `movies 1000]`,
+        // so a naked `movies` guard would reject the very line it exists to allow. Only
+        // the opening bracket immediately followed by the bare tag identifies the old,
+        // unprefixed shape.
         // Act & Assert
-        $this->artisan('catalog:sync-movies')->expectsOutputToContain('[movies 1000]');
+        $this->artisan('catalog:sync-movies')
+            ->expectsOutputToContain('[tmdb movies 1000]')
+            ->doesntExpectOutputToContain('[movies ');
     });
 
     it('continues to the next batch when one batch throws', function (): void {
@@ -495,6 +503,39 @@ describe('catalog:sync-movies heartbeat and batch failures', function (): void {
         // Assert
         expect(Movie::where('_tmdb_id', 1001)->exists())->toBeTrue();
         Exceptions::assertReported(TmdbRequestFailed::class);
+    });
+});
+
+describe('catalog:sync-movies run-closing output', function (): void {
+    it('reports its exact final count on a run that never reaches the beat interval', function (): void {
+        // Arrange
+        // The standard happy-path fake: only id 603 hydrates, every other exported id
+        // 404s, so exactly one payload is upserted — far short of the 1000-title beat
+        // interval, which is the whole point. The count is pinned to the observed run
+        // (one movie row lands), not to the interval arithmetic.
+        fakeTmdbSync();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-movies')->expectsOutputToContain('  [tmdb movies 1]');
+    });
+
+    it('ends the run with a Done. line', function (): void {
+        // Arrange
+        fakeTmdbSync();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-movies')->expectsOutputToContain('Done.');
+    });
+
+    it('reports a zero final count on a run that processed nothing', function (): void {
+        // Arrange
+        // An empty export means the insert phase hydrates nothing, and the helper's
+        // empty /movie/changes page runs the update phase through its success path —
+        // so the run legitimately upserts zero titles and must still say so.
+        fakeTmdbIdsExport([]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-movies')->expectsOutputToContain('  [tmdb movies 0]');
     });
 });
 
@@ -756,7 +797,7 @@ describe('catalog:sync-movies video-flagged details', function (): void {
 });
 
 describe('catalog:sync-movies changes-feed failure reporting', function (): void {
-    it('reports a persistent changes-feed failure and still exits SUCCESS', function (): void {
+    it('reports a persistent changes-feed failure and exits FAILURE', function (): void {
         // Arrange
         Exceptions::fake();
         // Empty export → the insert phase is a no-op; the changes feed 404s on every
@@ -769,20 +810,20 @@ describe('catalog:sync-movies changes-feed failure reporting', function (): void
         ]);
 
         // Act
-        $this->artisan('catalog:sync-movies')->assertExitCode(0);
+        $this->artisan('catalog:sync-movies')->assertExitCode(Command::FAILURE);
 
         // Assert
         Exceptions::assertReported(TmdbRequestFailed::class);
     });
 
-    it('reports a mid-stream changes-feed failure and still exits SUCCESS', function (): void {
+    it('reports a mid-stream changes-feed failure and exits FAILURE', function (): void {
         // Arrange
         Cache::flush();
         Exceptions::fake();
         fakeTmdbMidStreamChangesFailure();
 
         // Act
-        $this->artisan('catalog:sync-movies')->assertExitCode(0);
+        $this->artisan('catalog:sync-movies')->assertExitCode(Command::FAILURE);
 
         // Assert
         Exceptions::assertReported(TmdbRequestFailed::class);
@@ -924,7 +965,7 @@ describe('catalog:sync-movies end-of-leg reindex', function (): void {
         $capturedChunks = spyOnScoutEngine();
 
         // Act
-        $this->artisan('catalog:sync-movies')->assertExitCode(0);
+        $this->artisan('catalog:sync-movies')->assertExitCode(Command::FAILURE);
 
         // Assert
         $matrix = Movie::where('_tmdb_id', 603)->firstOrFail();

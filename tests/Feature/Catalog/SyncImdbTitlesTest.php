@@ -263,3 +263,14 @@ describe('catalog:sync-titles marker gating', function (): void {
         expect(resolve(ImdbDatasetMarker::class)->current(ImdbDataset::TitleBasics))->toBe($header);
     });
 });
+
+describe('catalog:sync-titles run-closing output', function (): void {
+    it('ends a completed run with a Done. line', function (): void {
+        // Arrange
+        Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.basics.tsv.gz'))]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-titles')->expectsOutputToContain('Done.');
+    });
+});

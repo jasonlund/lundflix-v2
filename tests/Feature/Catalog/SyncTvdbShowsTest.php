@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Show;
 use Carbon\CarbonImmutable;
+use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -191,6 +192,54 @@ describe('catalog:sync-shows-tvdb feed scope and run output', function (): void 
 
         // Act & Assert
         $this->artisan('catalog:sync-shows-tvdb')->expectsOutputToContain('Syncing shows…');
+    });
+});
+
+describe('catalog:sync-shows-tvdb run-closing output', function (): void {
+    it('reports its exact final count on a run that never reaches the beat interval', function (): void {
+        // Arrange
+        // The happy-path fake hydrates exactly one id (434847 → the extended payload) and
+        // 404s every other update, so the run upserts one payload — far short of the
+        // 1000-payload beat interval, which is why nothing is printed today. The count is
+        // pinned to the observed run, not to the interval arithmetic.
+        fakeTvdbUpdates();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tvdb')->expectsOutputToContain('  [tvdb shows 1]');
+    });
+
+    it('ends the run with a Done. line', function (): void {
+        // Arrange
+        fakeTvdbUpdates();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tvdb')->expectsOutputToContain('Done.');
+    });
+
+    it('closes the run with the failed show count and the marker consequence, exiting FAILURE', function (): void {
+        // Arrange
+        // The marker-hold fake: /series/434847/extended 500s persistently, so the pool
+        // aggregates exactly one failed id and drops it from its results; every other
+        // update 404s, which stays present-as-null and never counts as a failure.
+        Date::setTestNow('2026-07-16 12:00:00');
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/series/*/extended*' => fn (Request $request) => Str::contains($request->url(), '/series/434847/extended')
+                ? Http::response('', 500)
+                : Http::response('', 404),
+            '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+                ? Http::response(fixtureBytes('Catalog/tvdb/updates_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
+        ]);
+
+        // The summary is deliberately unindented: the two-space indent belongs to the
+        // `  [tag value]` heartbeat vocabulary, and a run-level consequence is not one
+        // more running count.
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tvdb')
+            ->expectsOutputToContain('1 shows failed; marker not advanced.')
+            ->doesntExpectOutputToContain('  1 shows failed')
+            ->assertExitCode(Command::FAILURE);
     });
 });
 

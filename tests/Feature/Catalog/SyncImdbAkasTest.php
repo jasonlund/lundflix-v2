@@ -304,3 +304,17 @@ describe('catalog:sync-akas marker gating', function (): void {
         expect($matrix->refresh()->_imdb_akas)->toHaveCount(67);
     });
 });
+
+describe('catalog:sync-akas run-closing output', function (): void {
+    it('ends a completed run with a Done. line', function (): void {
+        // Arrange
+        Movie::factory()->create(['_imdb_id' => 'tt0133093']);
+        Http::fake(['*datasets.imdbws.com*' => Http::response(fixtureBytes('Catalog/imdb/title.akas.tsv.gz'))]);
+
+        // Act
+        Artisan::call('catalog:sync-akas');
+
+        // Assert
+        expect(Artisan::output())->toContain('Done.');
+    });
+});
