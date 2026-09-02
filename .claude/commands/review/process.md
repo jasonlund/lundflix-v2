@@ -1,6 +1,6 @@
 ---
 name: review:process
-description: Third stage after /review:claude → /review:add. Collects un-resolved PR feedback (GitHub inline threads, review-body findings, general comments, Conductor diff-comments), triages it against the Linear ticket, presents one numbered list where every item carries your recommendation, takes a single reply of overrides, dispatches a foreground fixer per approval (parallel file-disjoint waves, test-first, no commit), then replies to and resolves everything it considered and prompts to commit/push.
+description: Third stage after /review:claude → /review:add. Collects un-resolved PR feedback (GitHub inline threads, review-body findings, general comments, Conductor diff-comments), triages it against the Linear ticket and the PR head, presents one numbered list where every item carries your recommendation and its reasoning, takes a reply of overrides and holds for every item marked DISCUSS, dispatches a foreground fixer per approval (parallel file-disjoint waves, test-first, no commit), then replies to and resolves everything it considered and prompts to commit/push.
 ---
 
 # Process Review Feedback
@@ -76,15 +76,23 @@ go straight to Phase 5.
    settled. Where the ticket **contradicts** the code — the code drifted from a
    documented decision — recommend **Approve** even at low severity. Name the ticket
    whenever it drove the call.
-3. **Route by scope.** The collector marked each item `in` or `out`. An `out` item at
+3. **Check each item against the PR head.** `/review:add` posts a finding against the
+   commit that was head at the time, and the work often lands before this command runs,
+   so treat every finding as a claim about the past until you confirm it against the
+   present. Read the flagged code at the PR's head commit —
+   `gh api repos/{owner}/{repo}/contents/{path}?ref={headRefOid}` — because the PR's
+   branch may not be the branch you are standing on. Where the head already resolves the
+   finding, mark the item **already fixed** and name the commit that did it. Trust the
+   file over the ticket: a ticket that claims a fix is a claim about the past too.
+4. **Route by scope.** The collector marked each item `in` or `out`. An `out` item at
    SHOULD_FIX / CONSIDER / NIT is **recorded as a skip** with the rationale "out of scope
    — PR did not create or modify this code" and resolved in Phase 5. An `out` item at
    BLOCKING joins the Phase 2 list under its own header.
-4. **Group** duplicates and relatives by `(file, line ±10, category)` per the contract's
+5. **Group** duplicates and relatives by `(file, line ±10, category)` per the contract's
    dedup rule. A group is presented and fixed as one unit.
-5. **Sort** BLOCKING → SHOULD_FIX → CONSIDER → NIT, by the `/review:add` badge
+6. **Sort** BLOCKING → SHOULD_FIX → CONSIDER → NIT, by the `/review:add` badge
    (🔴/🟠/🟡) where present, otherwise by the contract taxonomy.
-6. **Settle the dismissals silently.** An item you judge a false positive — or one that
+7. **Settle the dismissals silently.** An item you judge a false positive — or one that
    arrives already labeled dismissed (a ⚫ *Dismissed as false positive* badge from
    `/review:add` or CodeRabbit) — is **recorded as a dismissal** with its rationale and
    resolved in Phase 5. A settled dismissal needs no confirmation.
@@ -100,81 +108,149 @@ go straight to Phase 5.
    - **External reviewer config** — for a CodeRabbit or other CLI-engine flag, the
      path-scoped rule for its config (e.g. `.coderabbit.yaml`).
 
-Items marked `in`, every item with no file or line, and the out-of-scope BLOCKING holds
-go to Phase 2. Skips and dismissals go straight to Phase 5.
+Items marked `in`, every item with no file or line, the already-fixed items, and the
+out-of-scope BLOCKING holds go to Phase 2. Skips and dismissals go straight to Phase 5.
 
 ---
 
-## Phase 2: The Gate — one list, one reply
+## Phase 2: The Gate — one list, one reply, `DISCUSS` waits
 
-Present every item once, each carrying your recommendation, and take a single reply.
+Present every item once, each carrying your recommendation and the reasoning behind it.
+One reply settles the list, except the items you marked `DISCUSS` — those hold the run
+until the user rules on each.
 
 **Number the items globally `1..N`. A number is assigned once and stays with its item for
 the whole run**, including the Phase 6 summary.
 
 Group by your recommendation — `APPROVE` (clear fix, just do it), `DISCUSS` (a judgment
-call you want the user's eyes on), `SKIP` (you would drop it) — and sort by severity
-inside each group. `DISCUSS` names a recommendation, `CONSIDER` names a severity; keep
-the two apart. Print only the groups that have items, and put out-of-scope BLOCKING holds
-last under their own header.
+call you want the user's eyes on), `SKIP` (you would drop it) — then `ALREADY FIXED` (the
+head resolves it, so it needs a reply and no work) and the out-of-scope BLOCKING holds,
+each last under its own header. Sort by severity inside each group. `DISCUSS` names a
+recommendation, `CONSIDER` names a severity; keep the two apart. Print only the groups
+that have items.
 
 Fill this shape verbatim, one entry per item:
 
 ```
 APPROVE
 
-1. [BLOCKING] Add `_tmdb_id` to the upsert conflict key. Re-runs duplicate every row. (claude, coderabbit)
+1. [BLOCKING] Add `_tmdb_id` to the upsert conflict key. (claude, coderabbit)
    app/Domains/Catalog/Actions/UpsertTmdbMovies.php:88-94
+   Issue: `UpsertTmdbMovies` matches an existing row on `_imdb_id` alone. TMDB carries
+          movies that hold no IMDb id, so every sync run inserts those rows again.
+   Fix:   Add `_tmdb_id` to the conflict key in the `upsert()` call.
+   Why:   The table has no unique index, so nothing else stops the duplicates.
 
 DISCUSS
 
-6. [CONSIDER] Route the crosswalk parse through `SourceId`. The inline guard repeats it. (coderabbit)
+6. [CONSIDER] Route the crosswalk parse through `SourceId`. (coderabbit)
    app/Domains/Catalog/Actions/ImportImdbTitles.php:141
-   ↳ I lean skip. The guard predates `SourceId` and this PR leaves the file alone.
+   Issue: The action validates an IMDb id with an inline regex. `SourceId` is the shared
+          normalizer that every other crosswalk parse site calls.
+   Fix:   Replace the inline guard with `SourceId::imdb($raw)`.
+   Why:   The guard predates `SourceId` and this PR leaves the file alone. I lean skip.
+
+SKIP
+
+7. [NIT] Rename `$res` to `$response`. (coderabbit)
+   app/Domains/Catalog/Services/TmdbApiService.php:52
+   Issue: The variable holds a `Response`. Its siblings in the same class spell the
+          name out in full.
+   Why:   This PR leaves the line alone, so the rename is churn a reviewer must read.
+
+ALREADY FIXED
+
+8. [BLOCKING] Guard every step in `refresh.yaml` against the primary checkout. (claude, coderabbit)
+   .laborforest/workflows/refresh.yaml:1
+   Issue: `refresh` drops and reseeds the database it runs against. Run from the primary
+          checkout it takes `lundflix`, whose catalog the committed dumps do not carry.
+   Fixed: 39706da puts the primary-checkout `if:` on all three steps, and sweeps them
+          in `LaborForestWorkflowTest`.
 
 OUT OF SCOPE — BLOCKING (this PR did not touch this code)
 
-9. [BLOCKING] Scope the tenant query on L40. Every tenant's rows return today. (claude)
+9. [BLOCKING] Scope the tenant query on L40. (claude)
    app/Domains/Billing/Queries/TenantRows.php:40
-   ↳ I lean skip. Open a separate ticket; fixing it here widens the PR.
+   Issue: `TenantRows::all()` builds its query with no tenant clause. It returns every
+          tenant's rows to whichever tenant asks.
+   Fix:   Add `->where('tenant_id', $tenant->id)` to the builder.
+   Why:   A fix here widens a PR that never touched this file. I lean skip — open a ticket.
 ```
 
-**Two lines per item. Three for a `DISCUSS` item or an out-of-scope hold**, where the `↳`
-line carries your call and ends with **"I lean approve"** or **"I lean skip"** — silence
-follows that lean, so state it. Line 1 is the number, the `[SEVERITY]` tag, the fix as a command,
-its consequence, then who flagged it in parentheses (the finding's `Found by:` list, or
-the reviewer's name for external feedback). Line 2 is the location as a **bare
-repo-relative `path:line`** — no backticks, quotes, or `@`, since the terminal linkifies
-it only when bare. An item with no line stops after line 1.
+**Line 1** carries the number, the `[SEVERITY]` tag, the fix as a command, and who flagged
+it in parentheses (the finding's `Found by:` list, or the reviewer's name for external
+feedback). **Line 2** is the location, written as a **bare repo-relative `path:line`** —
+the terminal linkifies a bare path only, so leave backticks, quotes and `@` off it. An
+item with no line stops after line 1.
 
-Write every line in Simplified Technical English, so the user scans the whole list in one
-pass:
+The slots below line 2 carry the substance. Every item states its issue and its
+disposition; `Fix` joins them wherever a change is on the table:
 
+| Slot | Appears on | Holds |
+| --- | --- | --- |
+| `Issue:` | every item | Up to two sentences: what the code does, then what goes wrong. |
+| `Fix:` | `APPROVE`, `DISCUSS`, out-of-scope holds | One sentence naming the concrete change. |
+| `Why:` | `APPROVE`, `DISCUSS`, `SKIP`, out-of-scope holds | One sentence carrying the reason for your recommendation. |
+| `Fixed:` | `ALREADY FIXED` | The commit that resolved it, and what that commit changed. |
+
+A `DISCUSS` item and an out-of-scope hold close `Why` with the reasoning behind your lean
+and then state it — **"I lean approve"** or **"I lean skip"**. The lean is your argument,
+not the outcome: these are the items that wait for the user's word (below).
+
+**Those sentence counts are the whole verbosity budget.** Six lines is a long item.
+
+Write every slot in ASD-STE100 Simplified Technical English, using this codebase's own
+terms from `CONTEXT.md`, and **lead `Issue` with the context**: name the class, command,
+or file and say what it does, then say what goes wrong. The user decides on a dozen of
+these cold, so a finding that assumes they already hold the code in their head costs them
+a trip to the file.
+
+- **Context first, then the defect.** "`refresh` drops and reseeds the database it runs
+  against" earns the sentence that follows it.
 - **One topic per sentence**, ≤25 words, active voice, present tense.
 - **Recommendations are commands** — "Add a tenant scope to the query on L40."
 - **One word, one meaning.** Repeat the term exactly; elegant variation costs a re-read.
 - **Quoted code and quoted ticket lines stay verbatim** — they are evidence.
 
-Then prompt once, as plain text: your recommendations **stand by default**, so the user
-replies only with overrides, as `<approve|skip> <numbers>` lines. An empty reply ("looks
-good", "go") accepts every recommendation. Stop and wait.
+The full spec is *How Findings Are Written* in `.claude/skills/review-pipeline/SKILL.md`.
+
+Then prompt once, as plain text: your `APPROVE` and `SKIP` recommendations **stand by
+default**, so the user replies only with overrides, as `<approve|skip> <numbers>` lines.
+**A `DISCUSS` item is the exception — name its numbers to settle it.** Close the prompt by
+listing the numbers still owed, so what blocks the run is on screen:
+
+```
+Approve/skip stand as recommended — reply only with overrides.
+Waiting on: 6, 9.
+```
+
+Stop and wait.
 
 **Final buckets = your recommendations + the user's overrides.** Apply each override
-line, moving exactly the numbers it names; a later override for the same number wins.
-Unnamed numbers keep your recommendation. A bare number list (`1 4`) approves those.
+line, moving exactly the numbers it names; a later override for the same number wins. An
+unnamed `APPROVE`, `SKIP`, or `ALREADY FIXED` number keeps your recommendation. A bare
+number list (`1 4`) approves those.
 
 ```
-recommended:  approve 1 2 4 · skip 3 5 · discuss 6 (lean skip)
+recommended:  approve 1 2 4 · skip 3 5 · discuss 6 (lean skip) · already fixed 7
 user:         skip 2 · approve 6
-final:        approve 1 4 6 · skip 2 3 5
+final:        approve 1 4 6 · skip 2 3 5 · already fixed 7
 ```
 
-A `DISCUSS` item the user leaves alone lands in the bucket its `↳` lean names, so every
-item ends as **approve** or **skip**. **Approve** dispatches (Phase 3); **skip** records
-its reason for Phase 5.
+Every item ends as **approve**, **skip**, or **already fixed**. **Approve** dispatches
+(Phase 3); **skip** records its reason for Phase 5. **Already fixed** stands unless the
+user approves the number — read that override as "the head does not resolve this", so
+re-read the file before dispatching, and say what you find either way.
 
-Should the user ask about an item instead of overriding it, answer in the same shape,
-then re-prompt for the remaining numbers.
+**A `DISCUSS` item ends only when the user names it.** Silence leaves it open, so a reply
+that settles every other number still owes you these. Say which numbers remain and wait
+again. Where the user asks about an item rather than ruling on it, answer in the item's
+own slots — `Issue`, `Fix`, `Why` — so the answer reads like the entry it belongs to, and
+add the evidence the question asks for. Then re-prompt for the numbers still owed.
+
+The run holds here until every `DISCUSS` number is settled. That wait is the point of the
+bucket: put an item in `DISCUSS` when you want the user's judgment, and put it in `SKIP`
+with your reason when you are ready to decide it yourself.
 
 ---
 
@@ -222,6 +298,8 @@ out of scope. Resolving is what stops a future run reconsidering it, so out-of-s
 get their reply and resolve too, even though they were never presented.
 
 - **Fixed** → a one-line summary of the change.
+- **Already fixed** → the commit that resolved it and what that commit changed, so the
+  reply reads as evidence rather than a claim.
 - **Skipped / dismissed** → the rationale.
 - **Out of scope** → the out-of-scope rationale, and for a BLOCKING hold, how the user
   chose to handle it.
@@ -276,6 +354,8 @@ Summarize the run:
 ```
 ✅ Processed review feedback on PR #{number}
 - Addressed: {count}
+- Already fixed before this run (replied, no work): {count}
+- Discussed and settled with you: {count} ({addressed}/{skipped})
 - Skipped: {count}
 - Dismissed (false positive): {count}
 - Reinforcements applied (registry/config edits to stop re-flags): {list}

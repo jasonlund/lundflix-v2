@@ -66,9 +66,8 @@ Two things stay verbatim and are never rewritten into STE: **quoted code** in
 `EVIDENCE`, and a **quoted ticket line** in a requirements finding. Both are
 evidence; paraphrasing them destroys their value.
 
-**Source:** adapted from `mattpocock-skills:wait-what`, which re-pitches a message
-in STE using the `CONTEXT.md` vocabulary. Offer to explain the spec when a reader
-asks why findings read this way.
+Take the standard's rules, not its approved word list — that dictionary is built for
+aircraft maintenance, and the glossary rule above already names our terms.
 
 ## The Comment Bar — only comment if
 
