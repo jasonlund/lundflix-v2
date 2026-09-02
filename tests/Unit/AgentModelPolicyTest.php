@@ -149,10 +149,61 @@ describe('agent frontmatter model pinning', function () use ($declaredModel): vo
         expect($declared)->toBe(array_fill_keys($agents, 'inherit'));
     });
 
+    it('pins the review triage agents to the haiku alias', function () use ($declaredModel): void {
+        // Triage is mechanical — a skip/no-skip call and a diff summary — so it runs
+        // on the cheapest tier. The bare alias, never a dated id, so the tier tracks
+        // the current Haiku instead of a retired snapshot.
+        // Arrange
+        $agents = [
+            'review-skip-check',
+            'review-summarizer',
+        ];
+
+        // Act
+        $declared = array_combine($agents, array_map($declaredModel, $agents));
+
+        // Assert
+        expect($declared)->toBe(array_fill_keys($agents, 'haiku'));
+    });
+
+    it('pins the compliance agents to the sonnet alias', function () use ($declaredModel): void {
+        // Convention compliance is pattern matching against a written rule set —
+        // more than triage, but it never has to reason about the session's own work,
+        // so it does not follow the session model.
+        // Arrange
+        $agents = [
+            'review-compliance',
+            'review-compliance-validator',
+        ];
+
+        // Act
+        $declared = array_combine($agents, array_map($declaredModel, $agents));
+
+        // Assert
+        expect($declared)->toBe(array_fill_keys($agents, 'sonnet'));
+    });
+
+    it('runs the bug agents on the session model', function () use ($declaredModel): void {
+        // Finding a real defect is the hardest judgement in the pipeline, so these
+        // follow whatever model the session runs rather than capping themselves at a
+        // tier the session did not choose.
+        // Arrange
+        $agents = [
+            'review-bug-hunter',
+            'review-bug-validator',
+        ];
+
+        // Act
+        $declared = array_combine($agents, array_map($declaredModel, $agents));
+
+        // Assert
+        expect($declared)->toBe(array_fill_keys($agents, 'inherit'));
+    });
+
     it('declares a permitted model on every agent file, including ones added later', function () use ($declaredModel): void {
         // The tests above name today's agents, so a *newly added* agent file is
         // guarded by nothing. This sweeps the directory instead: rules 1–3 of Model
-        // Selection in `.claude/skills/review-pipeline/SKILL.md` admit these two
+        // Selection in `.claude/skills/review-pipeline/SKILL.md` admit these three
         // values and no others, and rule 2 bars a dated model id outright.
         // A missing `model:` key is an offender too, not an exemption — an unpinned
         // agent silently takes the harness default, which is the drift the policy
@@ -160,8 +211,11 @@ describe('agent frontmatter model pinning', function () use ($declaredModel): vo
         // deliberately.
         // The sweep is deliberately flat: it reads each agent by basename alone, so
         // recursing would report a nested file under a path that doesn't exist.
+        // The count floor keeps the sweep honest: a Finder that resolves nothing
+        // reports an empty offender list forever, which reads identically to a clean
+        // directory.
         // Arrange
-        $permitted = ['sonnet', 'inherit'];
+        $permitted = ['haiku', 'sonnet', 'inherit'];
         $agentFiles = (new Finder)
             ->files()
             ->in(dirname(__DIR__, 2).'/.claude/agents')
@@ -182,6 +236,36 @@ describe('agent frontmatter model pinning', function () use ($declaredModel): vo
             ->all();
 
         // Assert
-        expect($offenders)->toBe([]);
+        expect($offenders)->toBe([])
+            ->and($agentFiles->count())->toBeGreaterThan(5);
+    });
+
+    it('declares no dated model id on any agent file', function () use ($declaredModel): void {
+        // A dated snapshot (`claude-haiku-4-5-20251001`) pins a role to a build that
+        // is eventually retired, and the failure is silent — the harness just stops
+        // dispatching. Only the bare aliases are allowed to appear, so no `model:`
+        // value may carry a date suffix.
+        // The floor is two-part on purpose. `toBeGreaterThan(5)` catches a Finder
+        // that resolved nothing; matching the file count catches the subtler vacuity
+        // this particular scan invites — a file with no `model:` key contributes no
+        // value to match against, so it would pass the date check by having nothing
+        // to check.
+        // Arrange
+        $dated = '#-\d{8}$#';
+
+        // Act
+        $agents = collect((new Finder)
+            ->files()
+            ->in(dirname(__DIR__, 2).'/.claude/agents')
+            ->name('*.md')
+            ->depth(0)
+            ->sortByName())
+            ->map(fn (SplFileInfo $file): string => $file->getBasename('.md'));
+        $declared = $agents->mapWithKeys(fn (string $agent): array => [$agent => $declaredModel($agent)])->filter();
+
+        // Assert
+        expect($declared->filter(fn (string $model): bool => preg_match($dated, $model) === 1)->keys()->all())->toBe([])
+            ->and($declared->count())->toBeGreaterThan(5)
+            ->and($declared->count())->toBe($agents->count());
     });
 });
