@@ -1,4 +1,5 @@
 {
     "cloud": false,
+    "enforce_tests": true,
     "guidelines": true
 }
