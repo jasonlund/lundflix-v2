@@ -369,8 +369,9 @@ beat already printed.
 - **A caught-and-reported failure emits a plain closing line naming the count *and*
   the consequence** — `3 shows failed; marker not advanced.` Unindented on purpose:
   the two-space indent means "running count", and a run-level consequence is not
-  one. The consequence is the half that matters — a held-back marker means the
-  window gets re-covered next run.
+  one. The consequence is the half that matters, and it names whatever *this* leg
+  held back — `marker not advanced` in Catalog, `watermark not advanced` in Plex.
+  Either way it says the window gets re-covered next run.
 - **…and the command returns `FAILURE`.** This knowingly overrode three tests that
   named exit-SUCCESS-on-failure as intent: an invisible failure that silently skips
   a marker advance is worse than a cron alert on a transient miss. A 404 is still
