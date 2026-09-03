@@ -110,9 +110,142 @@ composer setup
 copies `.env`, generates the app key, runs migrations, and builds frontend
 assets.
 
-### Using Conductor (parallel agent workspaces)
+### Using LaborForest + Solo (parallel agent workspaces) — current
 
-Each Conductor workspace is its own git worktree; setup/teardown is automated by
+Two tools split the job. **LaborForest** (`lf`) owns worktree lifecycle;
+**Solo** owns the long-running dev processes inside each worktree. Both are
+configured in version control, so a fresh clone knows how to build a workspace and
+what to run in it.
+
+Worktrees land beside the primary checkout as `~/Sites/lundflix-v2-<branch-slug>`.
+
+- **Create** → `.laborforest/workflows/up.yaml`: fetch and fast-forward onto
+  `origin/main`, copy `.env` from the primary, derive this workspace's names, create
+  its **own** MySQL database (`lf_<branch>`), install deps, build assets, link a
+  secured Herd site (`https://lf-<branch>.test`), migrate, then reseed via
+  `refresh`. Each workspace is isolated, so one branch's migrations never touch
+  another's schema.
+- **Run** → open the worktree in Solo; `solo.yml` declares `npm:dev` (auto-starts),
+  `Horizon`, `Queue`, and `Pint`.
+- **Reset** → `lf run refresh`: `migrate:fresh` → `db:seed` → `db:import`, which
+  restores the committed catalog dumps when `database/dumps/` holds any. Re-runnable
+  against a working workspace. **That directory is currently empty**, and `db:import`
+  skips missing files and still reports success — so a fresh workspace comes up with a
+  working app and an empty catalog.
+- **Remove** → `down` reverses everything `up` created outside the worktree: the
+  database and the Herd site. LaborForest hides its Remove action unless a workspace
+  is suspended, and `down` is the only way to get there — so teardown cannot be
+  skipped.
+
+**The primary checkout is `~/Sites/lundflix-v2`, and `up`, `refresh` and `down` all
+guard it.** Each destructive step — and `up`'s nested `refresh` call — compares the
+workspace directory against the project's primary directory and skips when they are
+the same, so running any of them from the primary drops or reseeds nothing.
+
+**Env vars:** new workspaces copy `.env` from the **primary checkout**
+(`~/Sites/lundflix-v2/.env`), *not* from `.env.example` — so a new required var must
+be added there too. The primary also needs one key no workflow writes for it:
+`LF_SITE=lundflix-v2`.
+
+#### Driving it from an agent (LaborForest MCP)
+
+LaborForest ships a local MCP server, so an agent can cut a worktree and provision
+it without you touching the GUI. Enable it once in **LaborForest → Settings → MCP**
+(Enable MCP on, Read only **off** — `add-workspace` is only exposed on a writable
+server), press **Save changes**, then run the `claude mcp add …` line it shows you.
+
+That command is `--scope user` on purpose: the server is a machine-local app on a
+localhost port with a bearer token, so it belongs in your user config. It is **not**
+in this repo's `.mcp.json`, which only carries servers whose command resolves on
+every checkout.
+
+The tools arrive prefixed `mcp__laborforest__`, and the four that matter are:
+
+| Tool | Arguments | Does |
+| --- | --- | --- |
+| `add-workspace` | `path` (project) or `uuid`, `branch`, `base_branch` | cuts the worktree |
+| `run-workflow` | `path` (workspace), `workflow` | runs `up` / `down` / `refresh`; returns a run id |
+| `override-workspace-status` | `path`, `status` (`ready`\|`suspended`) | clears the `error` a failed run leaves |
+| `validate-workflow` | `path`, `workflow` | parses a workflow — see the caveat below |
+
+So the whole provision is one instruction to an agent: *"cut a worktree for branch X
+off main and bring it up."* It calls `add-workspace`, then `run-workflow up`, then
+reads `.laborforest/ignored/logs/` for the per-step result — `run-workflow` only
+dispatches, so the log is where success or failure actually shows up.
+
+**Two limits.** There is **no `remove-workspace` tool** — `remove-project` removes a
+whole project, not one workspace — so final removal stays a GUI action after `down`.
+And enabling this grants more than worktrees: with Read only off and shell execution
+allowed, the bearer token authorises arbitrary shell commands and `update-settings`
+can re-widen the settings themselves. Regenerate the token if it is ever exposed.
+
+#### Fallback: when the MCP doesn't answer
+
+Everything below works with the MCP off, and is what to reach for when an agent
+reports no `laborforest` tools or a connection error.
+
+First, tell the two apart:
+
+- **No `laborforest` tools at all** — Claude Code binds MCP servers at session start.
+  If you registered the server after the session began, start a new session; nothing
+  needs redoing.
+- **"Nothing is listening" / connection refused** — check `~/.laborforest/settings.yaml`
+  actually says `mcp_enabled: true`. The Settings toggles do nothing until **Save
+  changes** is pressed, and the server starts from the saved file, so unsaved toggles
+  look correct while nothing is bound to the port.
+- **401** — the token was regenerated; re-run `claude mcp add` with the new one.
+
+Then do it by hand:
+
+| Instead of | Do |
+| --- | --- |
+| `add-workspace` | **Add workspace** in the LaborForest GUI |
+| `run-workflow` | the row's **Workflows** button, or `lf run <name>` from inside the worktree |
+| `override-workspace-status` | the row's **⋮** menu → status action → `suspended` |
+| reading the run id | `.laborforest/ignored/logs/` directly, newest file |
+
+`lf` itself only exposes `add-project`, `run` and `validate` — there is no CLI path
+to creating a workspace or clearing a status, which is why those two rows say GUI.
+
+#### Adding a worktree to Solo
+
+**Solo's project list is managed in Solo, not by the workflows.** After `up`, add the
+worktree as a project in Solo's UI; remove it there when you're done with it.
+Nothing in `up`/`down` touches Solo's registry, so there is no Solo state for
+teardown to reverse.
+
+Two things to know once it's added:
+
+- Solo reads the worktree's committed `solo.yml` and syncs those processes in. Only
+  **command** processes are YAML-backed — terminals and agents are not stored in
+  `solo.yml`, so those stay per-machine.
+- **New or changed YAML commands start untrusted.** Trust them in the Solo UI or
+  they will not run, and `npm:dev` will not auto-start.
+
+Optionally point LaborForest's terminal launcher at Solo in
+`~/.laborforest/settings.yaml` (`command_launch_terminal`) — a machine-local setting,
+not version-controlled.
+
+#### When a workflow fails
+
+LaborForest stops at the first failing step, skips the rest, and leaves the
+workspace unprovisioned rather than half-built — but it also moves it to **`error`**,
+and only `ready` and `suspended` can launch a workflow. So **fixing the problem is
+not enough to retry**: `lf run up` will print `Running workflow: up`, exit 0, and do
+nothing. Clear it with `override-workspace-status` (`status: suspended`), or the
+status action in the workspace row's ⋮ menu. There is no `lf` equivalent — this is
+one of the two things only the MCP or the GUI can do.
+
+Read the run logs at `.laborforest/ignored/logs/` — each records every step's exit
+code, output, and `skip_reason`, which is the fastest way to see where a run stopped.
+
+Note `lf validate` is not a check — it exits 0 for a missing or schema-invalid
+workflow. The Pest guards in `tests/Unit/Local/` are what verify these files.
+
+### Using Conductor (parallel agent workspaces) — legacy
+
+Still live for the workspaces already cut under it; not used for new work. Each
+Conductor workspace is its own git worktree; setup/teardown is automated by
 `.conductor/`:
 
 - **Create** → `.conductor/setup.sh` installs deps, builds assets, links a
@@ -153,8 +286,14 @@ The repo commits a project-scoped `.mcp.json` registering the **Laravel Boost**
 MCP server (`php artisan boost:mcp`), which gives Claude Code the Boost tools
 (`search-docs`, `tinker`, `database-schema`, …) on top of the generated
 guidelines block. Because it is project-scoped, **the first Claude Code session in
-any new checkout or Conductor workspace prompts you to approve it** — approve it
-once and restart the session for the Boost tools to connect.
+any new checkout or workspace prompts you to approve it** — approve it once and
+restart the session for the Boost tools to connect.
+
+Only servers whose command resolves on *every* checkout belong in this file;
+`php artisan boost:mcp` is repo-relative and does. **Solo's MCP server is not
+registered here** — it lives inside the Solo app bundle, so committing its path
+would bake one machine's layout into shared config. Register it per-user instead if
+you want its tools (process output, bound-port waits, locks, todos, scratchpads).
 
 ### Running locally
 
@@ -165,8 +304,9 @@ composer dev
 Starts the PHP server, queue worker, log tailer (Pail), and Vite dev server
 together. Visit the app at the URL printed by `php artisan serve`.
 
-In a Conductor workspace, the app is served by Herd at `https://<workspace>.test`
-and `npm run dev` (the Run button) only starts Vite.
+In a worktree, Herd serves the PHP app and only Vite needs starting:
+`https://lf-<branch>.test` under LaborForest (Solo's `npm:dev` process auto-starts
+it), or `https://<workspace>.test` in a Conductor workspace (the Run button).
 
 ### Running tests
 

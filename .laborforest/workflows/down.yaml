@@ -1,0 +1,47 @@
+resource_type: workflow
+require_status: ready
+ending_status: suspended
+sort_order: 100
+steps:
+  # Solo is deliberately absent here. It owns its own project registry and the
+  # worktree is added and removed in its UI; nothing in this workflow touches it,
+  # so there is no Solo state for `down` to reverse.
+  #
+  # `up` copies the primary's .env verbatim and rewrites it four steps later, so
+  # an `up` that aborted in between leaves DB_DATABASE=lundflix and
+  # LF_SITE=lundflix-v2 in this worktree's .env — names the directory comparison
+  # below cannot see. LaborForest re-reads .env per step, so deriving here is
+  # what makes the {{ ENV_* }} in the steps below the workspace's own. Alone in
+  # this file it is not best-effort: if it fails the run must abort rather than
+  # tear down whatever the stale .env happens to name.
+  #
+  # The cost of that choice: this needs vendor/, so on a workspace whose vendor/
+  # was deleted the run aborts here and neither step below is attempted — the
+  # database and site are both orphaned and the workspace is stuck in `error`,
+  # which only `override-workspace-status` clears. That is the cheaper failure.
+  # Tolerating it instead would let the drop below run against a stale .env
+  # naming `lundflix`, and those 1.17M rows are not restorable from the dumps.
+  - name: 'Derive workspace env values'
+    type: shell
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
+    run: 'php artisan lf:workspace-env {{ WORKSPACE_SLUG_KEBAB }} {{ PROJECT_SLUG_KEBAB }}'
+  # Both destructive steps swallow their own failure. LaborForest aborts the run
+  # on a non-zero exit and forces the workspace to ERROR, and it offers Remove
+  # only on a suspended one — so an unreachable MySQL or an already-unlinked site
+  # would make the worktree permanently undeletable. The heartbeat names what was
+  # left behind; an orphaned resource is the cheaper failure.
+  #
+  # MYSQL_PWD, never `-p`: a flag would put the password in the process table.
+  # Empty behaves as no password, which is why no --skip-password branch is
+  # needed. Matches App\Domains\Local\Database\MysqlConnection.
+  - name: 'Drop MySQL database'
+    type: shell
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
+    run: "MYSQL_PWD='{{ ENV_DB_PASSWORD }}' mysql -h {{ ENV_DB_HOST }} -P {{ ENV_DB_PORT }} -u {{ ENV_DB_USERNAME }} -e 'DROP DATABASE IF EXISTS {{ ENV_DB_DATABASE }}' || echo '  [orphaned database {{ ENV_DB_DATABASE }}]'"
+  # LF_SITE is not a stock Laravel key: the derive step above writes it into the
+  # workspace .env, and the status ladder (up is the only path from suspended to
+  # ready, down the only one back) is what guarantees it is there by then.
+  - name: 'Remove Laravel Herd site'
+    type: shell
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
+    run: "herd unlink --no-interaction {{ ENV_LF_SITE }} || echo '  [orphaned site {{ ENV_LF_SITE }}]'"
