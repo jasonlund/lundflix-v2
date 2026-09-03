@@ -128,7 +128,7 @@ chokepoints, waves, DDD boundaries — are this repo's own.
     go stale fast and describe the edit rather than the outcome.
   - **Acceptance criteria** — a checkbox list of what "done" means, each
     independently checkable. This is what review checks the finished work against;
-    a prose scope paragraph gives `requirements-reviewer` nothing to verify.
+    a prose scope paragraph gives `/review:human`'s spec pass nothing to verify.
   - **Target** — the concrete files + the single domain it lives in. Paths live
     *here*, deliberately: this block is the input to chokepoint detection and wave
     assignment. Label it as such — it may go stale, and that's an accepted cost.

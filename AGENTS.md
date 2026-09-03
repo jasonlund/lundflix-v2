@@ -816,8 +816,7 @@ when you've forgotten what exists.
 Several native skills adapt practice from the AI Hero plugin rather than calling it,
 each borrowed section closing with a `**Source:**` line naming the upstream skill.
 Two reasons. **20 of the 35 upstream skills set `disable-model-invocation: true`**,
-so nothing here *can* call them — including the two inlined most directly:
-`wait-what` (Source of review-pipeline's Simplified Technical English section) and
+so nothing here *can* call them — including the one inlined most directly,
 `ask-matt` (Source of `/map`). The rest are callable — `code-review`'s smell
 baseline, `writing-for-agents` — and are inlined anyway, because the practice has to
 be in context *before* the work starts: one Skill call per reviewer costs more than

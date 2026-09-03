@@ -40,7 +40,7 @@ that still fires unreliably.
 - The generated `<laravel-boost-guidelines>` block in `CLAUDE.md`/`AGENTS.md` — edit
   `.ai/guidelines/project.md` and regenerate with `php artisan boost:install --guidelines`.
 - Prose an agent writes **to a human** — a review finding, a plan summary. That
-  surface follows Simplified Technical English; see `review-pipeline`.
+  surface follows ASD-STE100 Simplified Technical English; see `review-pipeline`.
 
 ## Shape
 
