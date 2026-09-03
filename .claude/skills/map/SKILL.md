@@ -24,7 +24,7 @@ rough ticket ─/plan:run──▶ plan-draft ─▶ plan-breakdown ─▶ plan-
                                                               │
                                         every ticket done and green
                                                               ▼
-                              review-tdd-cross-ticket (multi-ticket PRs only)
+                              review-tdd-cross-slice (multi-slice PRs only)
                                                               │
                                                               ▼
              /review:run ─▶ create-pr ─▶ human ─▶ suite ─▶ process ─▶ delta
@@ -66,9 +66,9 @@ Situations that generate work and then merge onto the flow.
 - **A bug that resists the first look** → `tdd-feedback`'s BUG branch hands off to
   **`mattpocock-skills:diagnosing-bugs`**, which refuses to theorise until it has a
   **tight** loop that goes **red** on this bug.
-- **All tickets in a multi-ticket PR are done** → **`review-tdd-cross-ticket`**.
+- **Every slice in a multi-slice PR is done** → **`review-tdd-cross-slice`**.
   Per-slice refactors never see the combined diff; this points the REFACTOR HAT at
-  the whole PR. Single-ticket PR → skip it.
+  the whole PR. Single-slice PR → skip it; one ticket of many slices still qualifies.
 
 ## Upkeep
 
