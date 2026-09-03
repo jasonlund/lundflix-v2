@@ -13,6 +13,12 @@ uses(RefreshDatabase::class);
 | The two feeds are faked with byte-exact captures of the real Movies (;72) and
 | Tv (;73) mother-category RSS. _provider_id 7563849 is a Movies-feed item and
 | 7563850 a Tv-feed item, so each id proves its own feed reached the mapper.
+| Each capture carries 100 items and every one of them maps, so a full run of
+| the pair reports 100 results per feed.
+|
+| The empty-channel body in the last test is hand-authored, not a capture: a
+| live feed always carries recent items, so a channel with none is a shape real
+| data cannot supply.
 */
 
 describe('download:sync-rss ingest', function (): void {
@@ -92,6 +98,58 @@ describe('download:sync-rss console output', function (): void {
         $this->artisan('download:sync-rss')
             ->expectsOutputToContain('Syncing download RSS…')
             ->expectsOutputToContain('Done.')
+            ->assertSuccessful();
+    });
+
+    it('reports how many results the movies feed returned', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake([
+            '*;72' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200),
+            '*;73' => Http::response(fixtureBytes('Download/downloads/rss_tv.xml'), 200),
+        ]);
+
+        // Act & Assert
+        $this->artisan('download:sync-rss')
+            ->expectsOutputToContain('  [download rss Movies 100]')
+            ->assertSuccessful();
+    });
+
+    it('reports each mother-category feed on its own line in one run', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake([
+            '*;72' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200),
+            '*;73' => Http::response(fixtureBytes('Download/downloads/rss_tv.xml'), 200),
+        ]);
+
+        // Act & Assert
+        $this->artisan('download:sync-rss')
+            ->expectsOutputToContain('  [download rss Movies 100]')
+            ->expectsOutputToContain('  [download rss Tv 100]')
+            ->assertSuccessful();
+    });
+
+    it('reports a zero count for a feed that returned no results', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->rss_key = 'rsskey123';
+        $settings->save();
+        Http::fake([
+            '*;72' => Http::response(fixtureBytes('Download/downloads/rss_movies.xml'), 200),
+            '*;73' => Http::response('<?xml version="1.0" encoding="utf-8" ?><rss version="2.0"><channel></channel></rss>', 200),
+        ]);
+
+        // Act & Assert
+        $this->artisan('download:sync-rss')
+            ->expectsOutputToContain('  [download rss Tv 0]')
             ->assertSuccessful();
     });
 });
