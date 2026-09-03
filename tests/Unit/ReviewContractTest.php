@@ -81,17 +81,27 @@ $survivingAgents = [
 ];
 
 /**
- * Every line of every committed toolkit or test file, paired with where it came
- * from.
+ * Every line of every committed toolkit, guideline or test file, paired with
+ * where it came from.
  *
  * Scanned by extension rather than wholesale: `tests/Fixtures/` holds byte-exact
  * third-party captures that are not ours to police, and a `.tsv.gz` carries no
  * prose to drift. This file excludes itself — see the banner.
  *
+ * `.ai/guidelines` is swept for a reason the other two roots don't share: it is
+ * the SOURCE `php artisan boost:install --guidelines` generates `CLAUDE.md` and
+ * `AGENTS.md` from. A retired name left in `project.md` is copied verbatim into
+ * both generated files on the next regeneration, so catching it at the generated
+ * copies would be catching it one step too late.
+ *
+ * Finder throws on a directory that isn't there, so a root renamed out from
+ * under this list fails loudly rather than quietly scanning less.
+ *
  * @return list<array{file: string, line: int, text: string}>
  */
 $scanCommittedLines = fn (): array => ToolkitFiles::scanLines(
     (new Finder)->files()->in(ToolkitFiles::path('.claude'))->name(['*.md', '*.json', '*.sh']),
+    (new Finder)->files()->in(ToolkitFiles::path('.ai/guidelines'))->name('*.md'),
     (new Finder)->files()->in(ToolkitFiles::path('tests'))->name('*.php')->exclude('Fixtures')
         ->filter(fn (SplFileInfo $file): bool => $file->getRealPath() !== __FILE__),
 );

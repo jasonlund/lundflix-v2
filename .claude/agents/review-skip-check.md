@@ -15,13 +15,25 @@ no review costs one cheap call instead of a dozen.
 
 ## Input
 
-The PR state and title, and `gh pr diff {PR_NUMBER} --stat`.
+The output of `gh pr view {PR_NUMBER} --json state,isDraft,title,files,reviews`:
+
+- `state` and `isDraft` — the PR lifecycle.
+- `title` — what the author says it does.
+- `files` — every changed path with its additions and deletions. This is your
+  diffstat; the patch itself is out of scope for this gate.
+- `reviews` — every review already on the PR, each with its body. A body naming
+  `/review:claude` is a prior run of this pipeline.
+
+Judge on what you were handed. **A field you were not handed reads as REVIEW** —
+absent `reviews` means "no prior review is proven", never "a prior review might
+exist". Guessing a skip cancels the whole pipeline.
 
 ## Answer SKIP when any of these holds
 
-- **Closed or merged.** Nothing to act on.
-- **Draft.** The author is still working; review lands when they mark it ready.
-- **Already reviewed.** A prior `/review:claude` review is on the PR.
+- **Closed or merged.** `state` is `CLOSED` or `MERGED`. Nothing to act on.
+- **Draft.** `isDraft` is true. The author is still working; review lands when
+  they mark it ready.
+- **Already reviewed.** A `reviews` body names `/review:claude`.
 - **Trivial and obviously correct.** A version bump, a lockfile regeneration, a
   generated-file refresh, a typo in prose, a whitespace-only change.
 
@@ -30,7 +42,7 @@ Otherwise answer REVIEW.
 ## Judge the diff, not its size
 
 A large diff of generated output is trivial. A three-line diff that changes a
-conditional is not. `--stat` shows you paths and churn — read the paths.
+conditional is not. `files` shows you paths and churn — read the paths.
 
 **Doubt means REVIEW.** A needless review costs tokens; a skipped defect costs
 trust. The asymmetry is the whole design, so break every tie toward REVIEW.

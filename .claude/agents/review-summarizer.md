@@ -34,10 +34,18 @@ The guideline files whose rules govern the changed paths — the ones a reviewer
 read to judge compliance. Look for:
 
 - the root `CLAUDE.md`
+- `.ai/guidelines/project.md` — the source `CLAUDE.md` is generated from — plus any
+  other file under `.ai/guidelines/` the diff touches
 - a domain `GUIDELINES.md` under `app/Domains/{Domain}/` for each domain touched
 - `CONTEXT.md` when the diff introduces or renames a domain term
 - the area-grouped rule files under `.ai/rules`, when that directory exists — its
   index maps globs to rule files, so list the ones whose globs cover a changed path
+- the skill that governs **how** the changed kind of file is written. A diff of
+  agent-consumed prose — `.claude/**/*.md`, `.ai/guidelines/*.md`, a domain
+  `GUIDELINES.md` — falls under `.claude/skills/agent-writing/SKILL.md`, this
+  repo's authority for that prose. A diff that is mostly prose, returned with
+  `CLAUDE.md` alone, sends every reviewer in without the rules on the writing
+  itself.
 
 List paths only, never contents. The reviewer opens what it needs; your job is to
 narrow the tree from everything to what applies.

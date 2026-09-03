@@ -262,6 +262,10 @@ describe('/review:claude report contract', function () use ($commandSource): voi
             '## Blocking Issues' => '~^## Blocking Issues~m',
             '## Should Fix' => '~^## Should Fix~m',
             '## Consider' => '~^## Consider~m',
+            // The section every gate NIT lands in — Pint violations and ESLint
+            // warnings. It is the one severity section produced entirely by
+            // machines, so nobody misses it by hand when it stops being posted.
+            '## Nits' => '~^## Nits~m',
             '**File:**' => '#\*\*File:\*\*#',
             '**Issue:**' => '#\*\*Issue:\*\*#',
             '**Violates:**' => '#\*\*Violates:\*\*#',

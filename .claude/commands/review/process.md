@@ -35,7 +35,10 @@ resolve.
 1. **PR number** — if not passed, follow **PR Number Auto-Extraction** in
    `.claude/skills/review-pipeline/SKILL.md`. With no PR found, HALT and tell the user
    to push the branch and open a PR, or to pass the number.
-2. **Repo** — `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`.
+2. **Repo and PR head** — `{owner}`/`{repo}` from
+   `gh repo view --json owner,name --jq '{owner: .owner.login, repo: .name}'`, and
+   `{headRefOid}` — the PR's head commit — from
+   `gh pr view {number} --json headRefOid -q .headRefOid`.
 3. **Dispatch `review-feedback-collector`** with the PR number, owner, and repo. It
    returns one normalized JSON array: every un-resolved GitHub item, keyed, with each
    item's `scope` already checked against the PR diff and `isBot` set. The fetch, parse,
@@ -80,10 +83,10 @@ go straight to Phase 5.
 3. **Check each item against the PR head.** `/review:add` posts a finding against the
    commit that was head at the time, and the work often lands before this command runs,
    so treat every finding as a claim about the past until you confirm it against the
-   present. Read the flagged code at the PR's head commit —
-   `gh api repos/{owner}/{repo}/contents/{path}?ref={headRefOid}` — because the PR's
-   branch may not be the branch you are standing on. Where the head already resolves the
-   finding, mark the item **already fixed** and name the commit that did it. Trust the
+   present. Read the flagged code at the head commit `{headRefOid}` Phase 0 step 2
+   fetched — `gh api repos/{owner}/{repo}/contents/{path}?ref={headRefOid}` — because the
+   PR's branch may not be the branch you are standing on. Where the head already resolves
+   the finding, mark the item **already fixed** and name the commit that did it. Trust the
    file over the ticket: a ticket that claims a fix is a claim about the past too.
 4. **Route by scope.** The collector marked each item `in` or `out`. An `out` item at
    SHOULD_FIX / CONSIDER / NIT is **recorded as a skip** with the rationale "out of scope
@@ -92,7 +95,7 @@ go straight to Phase 5.
 5. **Group** duplicates and relatives by `(file, line ±10, category)` — the key
    `/review:claude` Phase 3 merges on. A group is presented and fixed as one unit.
 6. **Sort** BLOCKING → SHOULD_FIX → CONSIDER → NIT, by the `/review:add` badge
-   (🔴/🟠/🟡) where present, otherwise by the contract taxonomy.
+   (🔴/🟠/🟡/⚪) where present, otherwise by the contract taxonomy.
 7. **Settle the dismissals silently.** An item you judge a false positive — or one that
    arrives already labeled dismissed (a ⚫ *Dismissed as false positive* badge from
    `/review:add` or CodeRabbit) — is **recorded as a dismissal** with its rationale and
@@ -326,19 +329,27 @@ Mechanics by source:
   _via /review:process · ref: review-body {ref}_'
   ```
   One `ref:` line per finding; batch several into one comment only when each keeps its own.
-- **gh-comment** — reply only; a general comment has no resolve.
+- **gh-comment** — reply only; a general comment has no resolve, so the reply's footer
+  carries the item's `{commentId}` from Phase 0. That token is what the collector matches
+  next run to skip it:
   ```bash
-  gh api repos/{owner}/{repo}/issues/{number}/comments -f body='…'
+  gh api repos/{owner}/{repo}/issues/{number}/comments -f body='<result>
+
+  _via /review:process · ref: comment {commentId}_'
   ```
 - **conductor** — reply on the same file and line with the `DiffComment` tool. Conductor
   comments have no programmatic resolve.
 
-Close every reply with the footer marker on its own line, so re-runs detect handled
-general comments and body findings:
+Close every reply with the footer marker on its own line:
 
 ```
 _via /review:process_
 ```
+
+**gh-review-body** and **gh-comment** extend that marker with the `ref:` token shown above
+— `review-body {ref}` and `comment {commentId}`. Neither source carries resolved state, so
+that token is the only handled-signal a re-run has. **gh-thread** resolves by mutation and
+**conductor** resolves by hand, so both close with the bare marker.
 
 ---
 

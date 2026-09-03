@@ -20,14 +20,21 @@ The PR number, plus `{owner}` and `{repo}` from
 
 ## Collect
 
+**Read every page.** A truncated list reads exactly like a complete one, so the
+orchestrator would triage a subset as if it were the whole PR. Each fetch below pages
+to exhaustion: `--paginate` follows `pageInfo.hasNextPage`/`pageInfo.endCursor` through
+`after:$endCursor` on the GraphQL query and walks the `Link` header on the REST calls,
+and the `--jq` filter flattens every page into one stream of items.
+
 **1. Inline review threads.** Keep the threads where `isResolved` is false.
 
 ```bash
-gh api graphql -F owner={owner} -F repo={repo} -F pr={number} -f query='
-query($owner:String!,$repo:String!,$pr:Int!){
+gh api graphql --paginate -F owner={owner} -F repo={repo} -F pr={number} -f query='
+query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
   repository(owner:$owner,name:$repo){
     pullRequest(number:$pr){
-      reviewThreads(first:100){
+      reviewThreads(first:100,after:$endCursor){
+        pageInfo{ hasNextPage endCursor }
         nodes{
           id isResolved isOutdated
           comments(first:50){ nodes{ id author{login} body path line originalLine } }
@@ -35,8 +42,11 @@ query($owner:String!,$repo:String!,$pr:Int!){
       }
     }
   }
-}'
+}' --jq '.data.repository.pullRequest.reviewThreads.nodes[]'
 ```
+
+`--paginate` needs both halves of that query — the `$endCursor: String` variable feeding
+`after:`, and the `pageInfo` selection — so a PR past 100 threads keeps all of them.
 
 Keep each surviving thread's `id` (the `threadId` that resolves it) and its first
 comment's `id`, `path`, `line`, `body`, and `author.login`.
@@ -46,7 +56,7 @@ threads above, and as entries inside a review body (the `## 🤖 Automated Revie
 block, each entry `### 🔴/🟠/🟡 … · File / Issue / Violates / Recommendation`).
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{number}/reviews
+gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews --jq '.[]'
 ```
 
 Parse every finding entry out of each review `body` into its own item. A review body
@@ -69,12 +79,21 @@ deterministic key match, so handled body findings stay handled.
 **3. General PR comments.**
 
 ```bash
-gh api repos/{owner}/{repo}/issues/{number}/comments
+gh api --paginate repos/{owner}/{repo}/issues/{number}/comments --jq '.[]'
 ```
 
-These carry no resolved state. Treat each as un-handled, and skip the ones a later
-comment marks with the `via /review:process` footer. Skip the resolution receipts
-themselves.
+A general comment carries no resolved state, so a prior run's receipt is the only
+durable handled-signal — and the receipt names the comment it resolved. Build
+`handledCommentIds` by scanning every comment for the footer token
+`via /review:process · ref: comment {commentId}`, and keep the comments whose own `id`
+is absent. The id is GitHub's own, so the match is exact on a globally unique value: a
+comment stays handled however its text is later edited, two comments never collide, and
+the `ref:` prefix holds this set apart from step 2's `review-body {ref}` keys.
+
+Skip the receipts themselves — any comment carrying a `via /review:process` footer. A
+comment no receipt names is un-handled, which is also what a receipt written before the
+`ref: comment` token existed produces: the comment it resolved returns for re-triage.
+Re-triage is the safe direction, so match on the id alone.
 
 ## Scope-check
 

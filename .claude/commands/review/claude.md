@@ -37,8 +37,16 @@ call is made by a subagent in isolated context.
 
 ## Phase 0.5: Skip Gate
 
-Dispatch **review-skip-check** with the PR state, title, and
-`gh pr diff {PR_NUMBER} --stat`. It answers SKIP or REVIEW.
+```bash
+gh pr view {PR_NUMBER} --json state,isDraft,title,files,reviews
+```
+
+Dispatch **review-skip-check** with that JSON. One call carries every signal the
+gate judges on: state and draft flag, title, the per-file additions/deletions
+that stand in for a diffstat, and `reviews` — each review body names the engine
+that posted it, so a prior `/review:claude` review is visible to the gate.
+
+It answers SKIP or REVIEW.
 
 - **SKIP** — print its one-line reason (closed, draft, trivial, already reviewed)
   and STOP. Every phase below stays unspent; that saving is the whole point of
@@ -116,16 +124,16 @@ Convention Override Rule in `.claude/skills/review-pipeline/SKILL.md`.
 
 ### The bar every reviewer applies
 
-Flag exactly three things:
+Every finding is a **demonstration**: quote the changed line, then either name the
+state where it fails (bug hunter) or quote the guideline rule it breaks
+(compliance). Which categories clear that bar differs by role, and each agent file
+is the single source for its own — `.claude/agents/review-bug-hunter.md`,
+`.claude/agents/review-compliance.md`.
 
-1. Code that will fail to compile or parse.
-2. Code that will produce wrong results regardless of inputs.
-3. A clear, unambiguous guideline violation whose exact rule you can quote.
-
-Stay silent on everything else — style and quality concerns, anything that depends
-on specific inputs or state, subjective suggestions, anything a Phase 1 gate
-already owns, pre-existing issues, and anything under a lint-ignore comment.
-Uncertain that an issue is real → stay silent.
+Stay silent on everything else — style and quality concerns, subjective
+preference, speculation, anything a Phase 1 gate already owns, a pre-existing
+issue in untouched code, and anything under a lint-ignore comment. Uncertain that
+an issue is real → stay silent.
 
 Each reviewer returns **at most 400 words**.
 
@@ -151,11 +159,17 @@ or DROPPED with a one-line reason.
 
 ## Phase 5: Fail-Closed
 
-A finding is validated on one condition: its own validator answered CONFIRMED.
-Keep those. **Drop every finding no validator confirmed** — including one whose
-validator errored, timed out, returned nothing, or answered ambiguously.
-Fail-closed means dropped, never downgraded: a finding nobody could confirm never
-reaches the author. Count the drops as `DROPPED` for the tally.
+**This phase judges the Phase 3 reviewer findings, and only those.**
+`DETERMINISTIC_FINDINGS` reach Phase 6 whole: a gate produced them, so they are
+already fact, and Phase 4 dispatches no validator for them by design. Fail-closed
+grades judgement, so a failing Pest run stays BLOCKING here.
+
+A reviewer finding is validated on one condition: its own validator answered
+CONFIRMED. Keep those. **Drop every reviewer finding no validator confirmed** —
+including one whose validator errored, timed out, returned nothing, or answered
+ambiguously. Fail-closed means dropped, never downgraded: a judgement nobody
+could confirm never reaches the author. Count those drops as `DROPPED` for the
+tally.
 
 ---
 
@@ -167,7 +181,7 @@ Write every line in Simplified Technical English (rules in
 ```markdown
 # PR Review: PR #{number}{ against {ticket_id} if present}
 
-**{X} blocking · {Y} should-fix · {Z} consider · {D} dropped in validation**
+**{X} blocking · {Y} should-fix · {Z} consider · {N} nits · {D} dropped in validation**
 
 ## Spec — does it do what the ticket asked?
 
@@ -190,6 +204,12 @@ line "No blocking issues."]
 ## Consider (valid concerns, author's judgment)
 
 [Same fields. When there are none: "No further concerns."]
+
+## Nits (trivial, take them or leave them)
+
+[Same fields. Holds every NIT — the Pint violations from gate 1a, the ESLint
+warnings from gate 1d, and any confirmed reviewer NIT. When there are none:
+"No nits."]
 ```
 
 To post the report to the PR as inline comments, run `/review:add` afterward.

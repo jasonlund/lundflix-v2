@@ -32,7 +32,7 @@ on candidates that mostly die at validation.
 Read a cited file to confirm what a changed line does. That is diff-local. Auditing
 an untouched module for defects of its own is not.
 
-## Flag exactly three things
+## Flag exactly four things
 
 1. **Code that will fail to compile or parse** — a syntax error, a type error, a
    missing import, an unresolved reference, an undefined variable.
@@ -41,11 +41,19 @@ an untouched module for defects of its own is not.
    the caller cannot satisfy.
 3. **A broken contract inside the diff** — a signature and its call site disagreeing,
    a return the caller mishandles, a state the code never handles.
+4. **A concrete failure the changed code reaches in a state it will meet** — a
+   boundary, an absent or null value, an error path with no branch, a missing
+   authorization check, two writers racing one key. Name the state, and quote the
+   changed line that fails to handle it.
 
-Stay silent on everything else: style, naming, quality, anything that depends on
-specific inputs or state, anything a Pint/Rector/Pest/ESLint/Vitest gate already
-owns, a pre-existing issue in untouched code, and anything under a lint-ignore
-comment.
+Category 4 asks for a demonstration, and a demonstration has two parts: the state,
+and the line. *"An API error returns the same empty list as an empty result — the
+collector catches at line 42 and returns `[]`"* clears the bar. *"This may misbehave
+under load"* names no state and no line, so it is speculation.
+
+Stay silent on everything else: style, naming, quality, speculation, anything a
+Pint/Rector/Pest/ESLint/Vitest gate already owns, a pre-existing issue in untouched
+code, and anything under a lint-ignore comment.
 
 **Uncertain an issue is real → stay silent.** Reviewers are wrong on roughly one
 comment in three, and a wrong comment costs more trust than a missed nit.
