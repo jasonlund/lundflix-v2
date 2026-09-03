@@ -111,8 +111,8 @@ Dispatch four agents **in parallel**, each in isolated context:
 - 2 × **review-bug-hunter** — bugs and logic errors.
 
 Pass each one `PR_SUMMARY`, `GUIDELINE_PATHS`, `PR_DIFF`, and the finding format,
-severity definitions, Simplified Technical English rules, and Convention Override
-Rule in `.claude/skills/review-pipeline/SKILL.md`.
+severity definitions, Simplified Technical English rules, Smell Baseline, and
+Convention Override Rule in `.claude/skills/review-pipeline/SKILL.md`.
 
 ### The bar every reviewer applies
 

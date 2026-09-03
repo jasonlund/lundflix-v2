@@ -62,6 +62,84 @@ $agentMentions = function (string $source): array {
     );
 };
 
+/**
+ * The sections `.claude/skills/review-pipeline/SKILL.md` publishes, each paired
+ * with the prose spellings a dispatcher or an agent uses to name it.
+ *
+ * Matched on prose rather than on the heading text, because neither side quotes
+ * a heading: the command writes "the finding format, severity definitions", the
+ * agent writes "Smell Baseline and **Convention Override Rule**". What the guard
+ * compares is which sections each side NAMES, so the patterns have to read the
+ * way people write them.
+ *
+ * @var array<string, string> section name => pattern that recognises a mention
+ */
+$contractSections = [
+    'Finding Format' => '~finding format~i',
+    'Severity Definitions' => '~severity definitions?~i',
+    'Simplified Technical English' => '~simplified technical english|ASD-STE100~i',
+    'Smell Baseline' => '~smell baseline~i',
+    'Convention Override Rule' => '~convention override rule~i',
+];
+
+/**
+ * Which contract sections a passage names, in contract order.
+ *
+ * @param  array<string, string>  $sections
+ * @return list<string>
+ */
+$sectionsNamedIn = fn (string $passage, array $sections): array => collect($sections)
+    ->filter(fn (string $pattern): bool => preg_match($pattern, $passage) === 1)
+    ->keys()
+    ->all();
+
+/**
+ * The `## Phase 3` block of the command, from its heading to the next `## ` one.
+ *
+ * Empty when the heading no longer matches — the floor in each test turns that
+ * into a loud failure rather than an empty-set comparison that passes.
+ */
+$phaseThreeBlock = (fn (string $source): string => preg_match('~^## Phase 3:.*?(?=^## |\z)~ms', $source, $matches) === 1 ? $matches[0] : '');
+
+/**
+ * The paragraph of Phase 3 that hands the reviewers their inputs — everything
+ * from `Pass each one` to the blank line that closes the paragraph.
+ */
+$passList = (fn (string $phase): string => preg_match('~^Pass each one\b.*?(?=\n[ \t]*\n|\z)~ms', $phase, $matches) === 1 ? $matches[0] : '');
+
+/**
+ * The dispatch bullets of Phase 3 — the per-agent briefs written above the
+ * pass-list, where the command states what each reviewer works from.
+ *
+ * A bullet carries its indented continuation lines, because the file wraps at
+ * ~80 columns and the rubric half of a brief usually lands on the second line.
+ * Taking the opener alone reads the bullets as saying less than they do.
+ */
+$dispatchBullets = function (string $phase): string {
+    $brief = Str::before($phase, 'Pass each one');
+    $inBullet = false;
+
+    return collect(ToolkitFiles::splitLines($brief))
+        ->filter(function (string $line) use (&$inBullet): bool {
+            if (preg_match('~^\s*[-*]\s~', $line) === 1) {
+                return $inBullet = true;
+            }
+
+            return $inBullet = $inBullet && preg_match('~^\s+\S~', $line) === 1;
+        })
+        ->implode("\n");
+};
+
+/**
+ * The `## Input` section of an agent file — the agent's own statement of what it
+ * must be handed.
+ */
+$agentInputSection = function (string $agent): string {
+    $source = ToolkitFiles::read('.claude/agents/'.$agent.'.md');
+
+    return preg_match('~^## Input\s*$.*?(?=^## |\z)~ms', $source, $matches) === 1 ? $matches[0] : '';
+};
+
 describe('/review:claude deterministic gates', function () use ($commandSource): void {
     it('names every deterministic gate the pipeline runs', function () use ($commandSource): void {
         // The five gates produce facts rather than judgement, so a dropped one is
@@ -197,5 +275,66 @@ describe('/review:claude report contract', function () use ($commandSource): voi
         // Assert
         expect($missing)->toBe([])
             ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(50);
+    });
+});
+
+describe('/review:claude Phase 3 dispatch contract', function () use ($commandSource, $contractSections, $sectionsNamedIn, $phaseThreeBlock, $passList, $dispatchBullets, $agentInputSection): void {
+    it('hands every reviewer the contract sections its own Input section expects', function () use ($commandSource, $contractSections, $sectionsNamedIn, $phaseThreeBlock, $passList, $agentInputSection): void {
+        // A reviewer runs in isolated context: it can only read a contract section
+        // the dispatcher named for it. So a section an agent's Input declares and
+        // Phase 3 never passes is a rubric the agent is told to apply and never
+        // receives — silent on both sides, because neither file reads the other.
+        // The direction is one-way on purpose: agent-expects ⊆ command-passes.
+        // Passing an agent more than it asks for is harmless surplus, so
+        // review-bug-hunter omitting the Convention Override Rule that Phase 3
+        // hands it is not an offence here; asking for what is never passed is.
+        // Arrange
+        $phase = $phaseThreeBlock($commandSource());
+        $reviewers = ['review-compliance', 'review-bug-hunter'];
+
+        // Act
+        $passed = $sectionsNamedIn($passList($phase), $contractSections);
+
+        // Assert
+        expect(collect($reviewers)
+            ->flatMap(fn (string $agent): array => collect($sectionsNamedIn($agentInputSection($agent), $contractSections))
+                ->diff($passed)
+                ->map(fn (string $section): string => sprintf(
+                    '%s expects "%s", claude.md Phase 3 does not pass it',
+                    $agent,
+                    $section,
+                ))
+                ->all())
+            ->values()
+            ->all())->toBe([])
+            ->and($phase)->not->toBeEmpty()
+            ->and($passList($phase))->not->toBeEmpty();
+    });
+
+    it('names a rubric it also passes', function () use ($commandSource, $contractSections, $sectionsNamedIn, $phaseThreeBlock, $passList, $dispatchBullets): void {
+        // The general form of the same defect, read off one file alone: Phase 3's
+        // dispatch bullets tell each reviewer what it works from, and the pass-list
+        // below them is the only thing the reviewer actually gets. A section the
+        // bullets name as a rubric and the pass-list omits is the command promising
+        // a basis it does not deliver — and it contradicts itself two lines apart,
+        // so nothing outside this file has to change for it to be wrong.
+        // Arrange
+        $phase = $phaseThreeBlock($commandSource());
+        $bullets = $dispatchBullets($phase);
+
+        // Act
+        $promised = $sectionsNamedIn($bullets, $contractSections);
+
+        // Assert
+        expect(collect($promised)
+            ->diff($sectionsNamedIn($passList($phase), $contractSections))
+            ->map(fn (string $section): string => sprintf(
+                'Phase 3 names "%s" as a reviewer rubric, the pass-list omits it',
+                $section,
+            ))
+            ->values()
+            ->all())->toBe([])
+            ->and($bullets)->not->toBeEmpty()
+            ->and($passList($phase))->not->toBeEmpty();
     });
 });
