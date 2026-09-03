@@ -7,7 +7,6 @@ use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Support\SyncMarker;
 use Illuminate\Console\Command;
-use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
@@ -27,52 +26,40 @@ uses(RefreshDatabase::class);
 |--------------------------------------------------------------------------
 | Fixtures (byte-exact real TMDB slices)
 |--------------------------------------------------------------------------
-| tests/Fixtures/Catalog/tmdb/movie_ids.json.gz — gz JSONL daily export; the
-|   kept (non-adult/non-softcore) rows include id 603 (The Matrix), appended for
-|   this ingestor slice, alongside the other real export ids.
 | tests/Fixtures/Catalog/tmdb/movie.json — the /movie/603 detail response
 |   (The Matrix, imdb_id tt0133093) with appended images.{posters,backdrops,logos}.
+| tests/Fixtures/Catalog/tmdb/movie_changes_page{1,2}.json — hand-authored
+|   representative pages approximating the /movie/changes wire format, not verbatim
+|   live captures; page 1 declares total_pages:2 so the client pages through.
 |
-| The export host and the TMDB API host are distinct, and stray requests are
-| globally prevented, so both hosts are faked. The API closure serves The Matrix
-| only for id 603 and 404s every other exported id, exercising the pooled-miss path.
+| This leg reads the changes feed and nothing else, so the ids export is stubbed
+| in every fake with an EMPTY body: the stub exists only so a leg that still
+| downloads the export fails on its behavioural assertion rather than dying as a
+| stray request (stray requests are globally prevented). Nothing can reach the
+| catalog through it.
 |
 | Hand-authored (synthetic) bodies, for inputs no real capture can supply:
-| — the arbitrary-ids export built by fakeTmdbIdsExport() — `{"id":N}` JSONL rows,
-|   sized to straddle the probe buffer and the hydrate batch (whose sizes differ),
-|   which no committed capture provides — plus a minimal
+| — the arbitrary-ids `/movie/changes` page built by fakeTmdbChangedIds() —
+|   `{"id":N}` results sized to straddle the probe buffer and the hydrate batch
+|   (whose sizes differ), which no committed capture provides — plus a minimal
 |   `{"id":N,"title":"Movie N"}` detail body per requested id, images omitted so
 |   the volume runs stay fast.
-| — the empty `/movie/changes` results page, which drives the update phase through
-|   its success path so it issues no `tmdb_synced_at` query of its own.
-| — a single-page `/movie/changes` body listing 251 arbitrary ids — one over the
-|   hydrate batch, so the changes phase's own batching is observable — which no
-|   committed capture provides; its ids are re-hydrated through the same minimal
-|   `{"id":N,"title":"Movie N"}` detail body.
-| — a single-page `/movie/changes` body listing 1001 arbitrary ids we hold none
-|   of — one over the probe buffer, so a trailing partial slice is observable —
-|   which no committed capture provides. Nothing hydrates off it, so no detail
-|   body pairs with it.
+| — the empty `/movie/changes` results page, for the runs that must legitimately
+|   ingest nothing.
 */
 
 /**
- * $exportSink, when passed, captures the temp path the export download sinks to,
- * so a caller can assert on that exact file instead of globbing the shared
- * system temp dir (where sibling suites' files come and go mid-assertion).
+ * The happy-path fake: the changes feed reports exactly id 603 and the detail
+ * host serves The Matrix for it, 404ing every other id.
+ *
+ * The changes feed lives on the TMDB API host too, so its stub is listed BEFORE
+ * the generic detail stub.
  */
-function fakeTmdbSync(?string &$exportSink = null): void
+function fakeTmdbSync(): void
 {
     Http::fake([
-        '*movie_ids*' => function (Request $request, array $options) use (&$exportSink) {
-            $exportSink = $options['sink'];
-
-            return Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz'));
-        },
-        // A default run always hits the changes feed after the insert phase; an
-        // empty-results page drives the update phase through its success path
-        // (no swallowed exception, no stray stack trace). Listed before the
-        // generic detail stub since it lives on the same host.
-        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*movie_ids*' => Http::response(gzencode('')),
+        '*/movie/changes*' => Http::response('{"results":[{"id":603}],"page":1,"total_pages":1,"total_results":1}'),
         '*api.themoviedb.org*' => fn (Request $request) => Str::contains($request->url(), '/movie/603')
             ? Http::response(fixtureBytes('Catalog/tmdb/movie.json'))
             : Http::response('', 404),
@@ -80,17 +67,11 @@ function fakeTmdbSync(?string &$exportSink = null): void
 }
 
 /*
-| Fakes the three hosts the update-changed phase touches. The export is empty so
-| the insert-new phase is a no-op and can't interfere with the update phase.
-| movie_changes_page1.json declares total_pages:2, so the client pages through to
-| page 2 (movie_changes_page2.json) — both are hand-authored representative
-| fixtures approximating the /movie/changes wire format, not verbatim live
-| captures. The
-| changes feed lives on the TMDB API host too, so its stub is listed BEFORE the
-| generic detail stub. The Matrix detail body is re-keyed onto id 345 (the only
-| synthetic touch, an accepted pattern here) so the detail-upsert — which keys on
-| the payload's id — lands on the existing _tmdb_id 345 row; every other detail id
-| 404s.
+| The multi-page variant: movie_changes_page1.json declares total_pages:2, so the
+| client pages through to page 2 (movie_changes_page2.json). The Matrix detail body
+| is re-keyed onto id 345 (the only synthetic touch, an accepted pattern here) so
+| the detail-upsert — which keys on the payload's id — lands on the existing
+| _tmdb_id 345 row; every other detail id 404s.
 */
 function fakeTmdbUpdateSync(): void
 {
@@ -114,22 +95,22 @@ function fakeTmdbUpdateSync(): void
 }
 
 /**
- * Fakes an export of exactly the given ids, each resolving to a minimal detail
- * body. $onDetail observes every detail request, for the interleaving timeline.
- *
- * The empty /movie/changes page is stubbed explicitly (before the generic detail
- * stub, same host): the update phase queries tmdb_synced_at too, and a 404 there
- * would both throw and pollute the probe assertions.
+ * Fakes a single-page changes feed carrying exactly the given ids, each resolving
+ * to a minimal detail body. $onDetail observes every detail request, for the
+ * interleaving timeline.
  *
  * @param  list<int>  $ids
  */
-function fakeTmdbIdsExport(array $ids, ?Closure $onDetail = null): void
+function fakeTmdbChangedIds(array $ids, ?Closure $onDetail = null): void
 {
-    $lines = array_map(fn (int $id): string => json_encode(['id' => $id]), $ids);
-
     Http::fake([
-        '*movie_ids*' => Http::response(gzencode(implode("\n", $lines))),
-        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*movie_ids*' => Http::response(gzencode('')),
+        '*/movie/changes*' => Http::response(json_encode([
+            'results' => array_map(static fn (int $id): array => ['id' => $id], $ids),
+            'page' => 1,
+            'total_pages' => 1,
+            'total_results' => count($ids),
+        ])),
         '*api.themoviedb.org*' => function (Request $request) use ($onDetail) {
             preg_match('#/movie/(\d+)#', (string) $request->url(), $matches);
             $id = (int) ($matches[1] ?? 0);
@@ -148,13 +129,16 @@ function fakeTmdbIdsExport(array $ids, ?Closure $onDetail = null): void
 | served verbatim (movie_changes_page1.json, which declares total_pages:2), then
 | page TWO 404s — so the fatal TmdbRequestFailed lands only AFTER the feed has
 | already yielded page 1's ids, the failure ordering a lazily-paged feed
-| introduces and a page-ONE-404 fake can never produce. The export is empty, so
-| the insert phase is a no-op and every observed effect can only come from the
-| update phase. Every detail 404s: this fake exists to observe what the update
-| phase does with a half-read feed, not to hydrate.
+| introduces and a page-ONE-404 fake can never produce. Page 1's id 345 hydrates
+| off the re-keyed Matrix body, so a row is genuinely written before the throw;
+| every other detail 404s.
 */
 function fakeTmdbMidStreamChangesFailure(): void
 {
+    $decoded = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
+    $decoded['id'] = 345;
+    $detailBody = json_encode($decoded);
+
     Http::fake([
         '*movie_ids*' => Http::response(gzencode('')),
         '*/movie/changes*' => function (Request $request) {
@@ -164,18 +148,10 @@ function fakeTmdbMidStreamChangesFailure(): void
                 ? Http::response('', 404)
                 : Http::response(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'));
         },
-        '*api.themoviedb.org*' => Http::response('', 404),
+        '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/345')
+            ? Http::response($detailBody)
+            : Http::response('', 404),
     ]);
-}
-
-/**
- * The probe statements captured in the query log.
- *
- * @return Collection<int, array{query: string, bindings: array<int, mixed>}>
- */
-function loggedSyncedProbes(): Collection
-{
-    return loggedStatements(isSyncedProbe(...));
 }
 
 /**
@@ -206,7 +182,21 @@ function assertRequestedChangesWindow(string $start, string $end): void
     });
 }
 
-describe('catalog:sync-movies insert-phase ingest', function (): void {
+describe('catalog:sync-movies feed-driven ingest', function (): void {
+    it('requests no ids export on a default run', function (): void {
+        // Arrange
+        fakeTmdbSync();
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        // Both halves in one test: the absence alone would pass on a run that made no
+        // request at all, so the changes-feed read is asserted alongside it.
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'movie_ids'));
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
+    });
+
     it('persists hydrated movies with _tmdb_ columns', function (): void {
         // Arrange
         fakeTmdbSync();
@@ -228,26 +218,9 @@ describe('catalog:sync-movies insert-phase ingest', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        $matrix = Movie::where('_tmdb_id', 603)->firstOrFail();
+        $matrix = Movie::where('_tmdb_id', 603)->first();
+        expect($matrix)->not->toBeNull();
         expect($matrix->media()->where('is_active', true)->count())->toBeGreaterThan(0);
-    });
-
-    it('exits SUCCESS and deletes the export temp file', function (): void {
-        // Capturing the sink path pins the assertion to THIS run's temp file; globbing
-        // the shared system temp dir would also see files other processes create and
-        // remove mid-run, reddening the test for reasons unrelated to a leak. The
-        // toBeString() guard proves the export really downloaded, so "no leftover file"
-        // can't pass vacuously on a run that never sank one.
-        // Arrange
-        $sinkPath = null;
-        fakeTmdbSync($sinkPath);
-
-        // Act
-        $this->artisan('catalog:sync-movies')->assertExitCode(0);
-
-        // Assert
-        expect($sinkPath)->toBeString();
-        expect(file_exists($sinkPath))->toBeFalse();
     });
 
     it('writes _imdb_id from the payload on the upserted _tmdb_id row', function (): void {
@@ -261,152 +234,6 @@ describe('catalog:sync-movies insert-phase ingest', function (): void {
         $matrix = Movie::where('_tmdb_id', 603)->first();
         expect($matrix)->not->toBeNull();
         expect($matrix->_imdb_id)->toBe('tt0133093');
-    });
-
-    it('rejects the removed --limit option', function (): void {
-        // Arrange
-        // no state to arrange — option binding fails before the command boots
-
-        // Act & Assert
-        // `run()` must be called INSIDE the closure: PendingCommand otherwise defers
-        // execution to its destructor and the throw escapes expect() entirely.
-        expect(fn () => $this->artisan('catalog:sync-movies', ['--limit' => 1])->run())
-            ->toThrow(InvalidOptionException::class);
-    });
-});
-
-describe('catalog:sync-movies synced-id probing and batching', function (): void {
-    it('skips an already-synced movie on a default run', function (): void {
-        // Arrange
-        Movie::factory()->create(['_tmdb_id' => 603, 'tmdb_synced_at' => now()]);
-        fakeTmdbSync();
-
-        // Act
-        $this->artisan('catalog:sync-movies');
-
-        // Assert
-        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
-    });
-
-    it('reprocesses an already-synced movie with --fresh', function (): void {
-        // Arrange
-        Movie::factory()->create(['_tmdb_id' => 603, 'tmdb_synced_at' => now()]);
-        fakeTmdbSync();
-
-        // Act
-        $this->artisan('catalog:sync-movies', ['--fresh' => true]);
-
-        // Assert
-        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
-    });
-
-    it('probes synced ids per buffer, never the whole catalog', function (): void {
-        // Arrange
-        // 1001 exported ids straddle the 1000-id probe buffer, so a bounded
-        // implementation probes twice — once per buffer, each probe carrying its
-        // buffer's ids as bindings. Reading the whole synced catalog up front is a
-        // single, binding-less statement instead.
-        fakeTmdbIdsExport(range(1, 1001));
-        DB::enableQueryLog();
-
-        // Act
-        $this->artisan('catalog:sync-movies');
-
-        // Assert
-        $bindingCounts = loggedSyncedProbes()->map(fn (array $entry): int => count($entry['bindings']));
-        expect($bindingCounts->count())->toBeGreaterThanOrEqual(2);
-        expect($bindingCounts->min())->toBeGreaterThanOrEqual(1);
-        expect($bindingCounts->max())->toBeLessThanOrEqual(1000);
-    });
-
-    it('probes lazily — the second buffer is probed only after the first batch hydrated', function (): void {
-        // Arrange
-        // One shared timeline records both sides of the interleave, so their ORDER is
-        // observable: a materialize-then-filter pass emits every probe before the
-        // first hydrate, while a streaming buffer probes the second buffer only after
-        // the first one's ids have been hydrated.
-        $timeline = [];
-        DB::listen(function (QueryExecuted $query) use (&$timeline): void {
-            if (isSyncedProbe($query->sql)) {
-                $timeline[] = 'probe';
-            }
-        });
-        fakeTmdbIdsExport(range(1, 1001), function (int $id) use (&$timeline): void {
-            $timeline[] = 'hydrate';
-        });
-
-        // Act
-        $this->artisan('catalog:sync-movies');
-
-        // Assert
-        $probes = array_keys($timeline, 'probe', true);
-        $hydrates = array_keys($timeline, 'hydrate', true);
-        expect($probes)->not->toBeEmpty();
-        expect($hydrates)->not->toBeEmpty();
-        // The last probe (the second buffer's) must land after the first hydrate.
-        // Reading the whole synced catalog up front puts every probe before every
-        // hydrate, so the two sequences never interleave.
-        expect(max($probes))->toBeGreaterThan(min($hydrates));
-    });
-
-    it('yields only the unsynced rows inside a mixed buffer', function (): void {
-        // Arrange
-        Movie::factory()->create(['_tmdb_id' => 8001, 'tmdb_synced_at' => now()]);
-        fakeTmdbIdsExport([8001, 8002, 8003]);
-
-        // Act
-        $this->artisan('catalog:sync-movies');
-
-        // Assert
-        Http::assertNotSent(fn (Request $request): bool => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/8001'));
-        expect(Movie::where('_tmdb_id', 8002)->exists())->toBeTrue();
-        expect(Movie::where('_tmdb_id', 8003)->exists())->toBeTrue();
-    });
-
-    it('hydrates the trailing partial buffer', function (): void {
-        // Arrange
-        // Id 1001 is alone in the second buffer: a buffered probe that only flushes
-        // on a full buffer would drop it.
-        fakeTmdbIdsExport(range(1, 1001));
-
-        // Act
-        $this->artisan('catalog:sync-movies');
-
-        // Assert
-        expect(Movie::where('_tmdb_id', 1001)->exists())->toBeTrue();
-    });
-
-    it('upserts the insert phase in HYDRATE_SIZE batches', function (): void {
-        // Arrange
-        // 501 hydratable ids all fit inside ONE probe buffer, so the number of upserts
-        // can only be decided by the hydrate batch size: 250 + 250 + 1 = three writes.
-        // A hydrate batch as wide as the buffer collapses them into a single upsert
-        // holding all 501 decoded payloads at once.
-        fakeTmdbIdsExport(range(1, 501));
-        DB::enableQueryLog();
-
-        // Act
-        $this->artisan('catalog:sync-movies');
-
-        // Assert
-        expect(loggedInsertsInto('movies')->count())->toBe(3);
-        expect(Movie::count())->toBe(501);
-    });
-
-    it('sizes the probe and the hydrate independently', function (): void {
-        // Arrange
-        // 1001 ids straddle both boundaries at once: two probe buffers (1000 + 1) and
-        // five hydrate batches (4 × 250 + 1). No single shared constant can produce
-        // both counts, so this pins the two sizes as genuinely separate knobs.
-        fakeTmdbIdsExport(range(1, 1001));
-        DB::enableQueryLog();
-
-        // Act
-        $this->artisan('catalog:sync-movies');
-
-        // Assert
-        expect(loggedSyncedProbes()->count())->toBe(2);
-        expect(loggedInsertsInto('movies')->count())->toBe(5);
     });
 
     it('selects only id and _tmdb_id when resolving upserted movies for images', function (): void {
@@ -423,39 +250,97 @@ describe('catalog:sync-movies synced-id probing and batching', function (): void
         expect(narrowMovieSelects()->count())->toBeGreaterThanOrEqual(1);
     });
 
-    it('issues no probe query with --fresh', function (): void {
+    it('rejects the removed --limit option', function (): void {
         // Arrange
+        // no state to arrange — option binding fails before the command boots
+
+        // Act & Assert
+        // `run()` must be called INSIDE the closure: PendingCommand otherwise defers
+        // execution to its destructor and the throw escapes expect() entirely.
+        expect(fn () => $this->artisan('catalog:sync-movies', ['--limit' => 1])->run())
+            ->toThrow(InvalidOptionException::class);
+    });
+
+    it('rejects the removed --fresh option', function (): void {
+        // Arrange
+        // Option binding must fail before the command boots, so these fakes are never
+        // reached; they exist only so a build that still ACCEPTS the option fails on
+        // the missing throw rather than dying as a stray request.
         fakeTmdbSync();
-        DB::enableQueryLog();
+
+        // Act & Assert
+        // The window comes from the marker, so there is nothing left for the leg to be
+        // fresh about. `run()` inside the closure, for the same PendingCommand reason.
+        expect(fn () => $this->artisan('catalog:sync-movies', ['--fresh' => true])->run())
+            ->toThrow(InvalidOptionException::class);
+    });
+});
+
+describe('catalog:sync-movies collapsed insert and refresh', function (): void {
+    it('inserts a changed id the catalog does not hold', function (): void {
+        // Arrange
+        fakeTmdbChangedIds([9100]);
 
         // Act
-        $this->artisan('catalog:sync-movies', ['--fresh' => true]);
+        $this->artisan('catalog:sync-movies');
 
         // Assert
-        // This absence is only clean because --fresh ALSO skips the changes phase,
-        // whose whereNotNull('tmdb_synced_at') intersection probes the same column.
-        // Move that gate and this stops meaning "the kept-rows stream never probed".
-        expect(loggedSyncedProbes()->pluck('query')->all())->toBe([]);
+        $inserted = Movie::where('_tmdb_id', 9100)->first();
+        expect($inserted)->not->toBeNull();
+        expect($inserted->_tmdb_title)->toBe('Movie 9100');
+    });
+
+    it('refreshes a changed id the catalog already holds', function (): void {
+        // A row the catalog holds but has never hydrated from TMDB — the export was
+        // the only thing that could reach it, so once the export is gone the feed has
+        // to, or it stays stale forever.
+        // Arrange
+        Movie::factory()->create(['_tmdb_id' => 9101, 'tmdb_synced_at' => null, '_tmdb_title' => 'Stale']);
+        fakeTmdbChangedIds([9101]);
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        expect(Movie::where('_tmdb_id', 9101)->first()->_tmdb_title)->toBe('Movie 9101');
+    });
+
+    it('tells inserted titles from refreshed ones in the heartbeat', function (): void {
+        // One run over both sides of the collapse: 9102 is held and previously synced
+        // (a refresh), 9103 is unheld (an insert). Both counts are below the
+        // every-1000th beat, so the run's closing totals are the lines that carry them.
+        // Arrange
+        Movie::factory()->create(['_tmdb_id' => 9102, 'tmdb_synced_at' => now(), '_tmdb_title' => 'Stale']);
+        fakeTmdbChangedIds([9102, 9103]);
+
+        // Act
+        // Read back as one string rather than chaining expectsOutputToContain(): the
+        // mocked writer hands each write to the first matching substring expectation,
+        // and `[new tmdb movies 1]` would shadow against a bare tag expectation.
+        Artisan::call('catalog:sync-movies');
+
+        // Assert
+        expect(Artisan::output())
+            ->toContain('  [new tmdb movies 1]')
+            ->toContain('  [tmdb movies 1]');
     });
 });
 
 describe('catalog:sync-movies heartbeat and batch failures', function (): void {
     it('prints a source-prefixed heartbeat every 1000th hydrated title', function (): void {
         // Arrange
-        // 1000 hydratable ids so the running count reaches the every-1000th boundary.
-        // A minimal per-id payload (no images) keeps this volume test fast — the
-        // heartbeat only needs a title; ingest correctness is covered by other tests.
-        $lines = array_map(fn (int $id): string => json_encode(['id' => $id]), range(1, 1000));
-        $export = gzencode(implode("\n", $lines));
-        Http::fake([
-            '*movie_ids*' => Http::response($export),
-            '*api.themoviedb.org*' => function (Request $request) {
-                preg_match('#/movie/(\d+)#', (string) $request->url(), $m);
-                $id = (int) ($m[1] ?? 0);
-
-                return Http::response(json_encode(['id' => $id, 'title' => "Movie {$id}"]));
-            },
-        ]);
+        // 1000 changed ids the catalog already holds, so the refresh counter reaches
+        // the every-1000th boundary under the plain tag. Bulk inserts, not factories:
+        // 1000 factory saves each round-trip the Searchable trait.
+        $ids = range(1, 1000);
+        $syncedAt = now()->toDateTimeString();
+        foreach (array_chunk($ids, 500) as $chunk) {
+            Movie::insert(array_map(
+                static fn (int $id): array => ['_tmdb_id' => $id, 'tmdb_synced_at' => $syncedAt],
+                $chunk,
+            ));
+        }
+        fakeTmdbChangedIds($ids);
 
         // The guard has to be `[movies ` — bracket AND trailing space — because the
         // prefixed line `[tmdb movies 1000]` itself contains the substring `movies 1000]`,
@@ -471,23 +356,26 @@ describe('catalog:sync-movies heartbeat and batch failures', function (): void {
     it('continues to the next batch when one batch throws', function (): void {
         // Arrange
         Exceptions::fake();
-        // Synthetic export body: a >1000-row export is a structural input a committed
+        // Synthetic changes page: a >1000-id feed page is a structural input a committed
         // real fixture can't practically provide — ids 1..1001 span five 250-id hydrate
         // batches, so the id that throws (1, in batch 1) and the id that must still land
-        // (1001, alone in batch 5) sit in different batches.
-        $lines = array_map(fn (int $id): string => json_encode(['id' => $id]), range(1, 1001));
-        $export = gzencode(implode("\n", $lines));
-        $matrix = fixtureBytes('Catalog/tmdb/movie.json');
-        $decoded = json_decode($matrix, true);
+        // (1001, alone in its own batch) sit in different batches.
+        $decoded = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
         $decoded['id'] = 1001;
-        $batchTwoBody = json_encode($decoded);
+        $lastBatchBody = json_encode($decoded);
         Http::fake([
-            '*movie_ids*' => Http::response($export),
-            '*api.themoviedb.org*' => function (Request $request) use ($batchTwoBody) {
+            '*movie_ids*' => Http::response(gzencode('')),
+            '*/movie/changes*' => Http::response(json_encode([
+                'results' => array_map(static fn (int $id): array => ['id' => $id], range(1, 1001)),
+                'page' => 1,
+                'total_pages' => 1,
+                'total_results' => 1001,
+            ])),
+            '*api.themoviedb.org*' => function (Request $request) use ($lastBatchBody) {
                 $path = (string) parse_url($request->url(), PHP_URL_PATH);
 
                 return match (true) {
-                    Str::endsWith($path, '/movie/1001') => Http::response($batchTwoBody),
+                    Str::endsWith($path, '/movie/1001') => Http::response($lastBatchBody),
                     // One batch-1 id 500s persistently; TMDB aggregates a persistent
                     // non-404 failure into a thrown TmdbRequestFailed, so batch 1 throws.
                     Str::endsWith($path, '/movie/1') => Http::response('', 500),
@@ -498,7 +386,7 @@ describe('catalog:sync-movies heartbeat and batch failures', function (): void {
 
         // Act
         // The command reports a failing batch's TmdbRequestFailed rather than
-        // throwing, so it runs to completion and processes batch 2 regardless.
+        // throwing, so it runs to completion and processes the later batches regardless.
         $this->artisan('catalog:sync-movies');
 
         // Assert
@@ -510,10 +398,11 @@ describe('catalog:sync-movies heartbeat and batch failures', function (): void {
 describe('catalog:sync-movies run-closing output', function (): void {
     it('reports its exact final count on a run that never reaches the beat interval', function (): void {
         // Arrange
-        // The standard happy-path fake: only id 603 hydrates, every other exported id
-        // 404s, so exactly one payload is upserted — far short of the 1000-title beat
-        // interval, which is the whole point. The count is pinned to the observed run
-        // (one movie row lands), not to the interval arithmetic.
+        // The standard happy-path fake: the feed reports only id 603, which the catalog
+        // already holds, so exactly one payload is refreshed — far short of the
+        // 1000-title beat interval, which is the whole point. The count is pinned to the
+        // observed run (one movie row refreshed), not to the interval arithmetic.
+        Movie::factory()->create(['_tmdb_id' => 603, 'tmdb_synced_at' => now(), '_tmdb_title' => 'Stale']);
         fakeTmdbSync();
 
         // Act & Assert
@@ -530,10 +419,10 @@ describe('catalog:sync-movies run-closing output', function (): void {
 
     it('reports a zero final count on a run that processed nothing', function (): void {
         // Arrange
-        // An empty export means the insert phase hydrates nothing, and the helper's
-        // empty /movie/changes page runs the update phase through its success path —
-        // so the run legitimately upserts zero titles and must still say so.
-        fakeTmdbIdsExport([]);
+        // An empty changes feed — the leg's only source — runs the pass through its
+        // success path, so the run legitimately upserts zero titles and must still
+        // say so.
+        fakeTmdbChangedIds([]);
 
         // Act & Assert
         $this->artisan('catalog:sync-movies')->expectsOutputToContain('  [tmdb movies 0]');
@@ -541,42 +430,11 @@ describe('catalog:sync-movies run-closing output', function (): void {
 });
 
 describe('catalog:sync-movies heartbeat and elapsed phase lines', function (): void {
-    it('beats every 10000th export row scanned on a run that upserts nothing', function (): void {
-        // Arrange
-        // The seeded-production case: every exported id is already synced, so the
-        // insert phase hydrates and upserts NOTHING and the upsert heartbeat can never
-        // fire — a scan-unit beat is the only thing that can prove the run is alive.
-        // Bulk inserts, not factories: 20k factory saves each round-trip the Searchable
-        // trait. They also leave `updated_at` NULL on purpose — the leg ends with a
-        // deferred reindex over `updated_at >= <run start>`, and rows saved inside the
-        // run's own start second would otherwise be swept 20k deep through the engine.
-        $ids = range(1, 20_000);
-        $syncedAt = now()->toDateTimeString();
-        foreach (array_chunk($ids, 5_000) as $chunk) {
-            Movie::insert(array_map(
-                static fn (int $id): array => ['_tmdb_id' => $id, 'tmdb_synced_at' => $syncedAt],
-                $chunk,
-            ));
-        }
-        fakeTmdbIdsExport($ids);
-
-        // Act
-        Artisan::call('catalog:sync-movies');
-
-        // Assert
-        // The row count pins the scenario itself: it can only still read 20000 if the
-        // run hydrated nothing, so these beats can't be passing off upsert work as scan.
-        $output = Artisan::output();
-        expect($output)->toContain('  [scan 10000]');
-        expect($output)->toContain('  [scan 20000]');
-        expect(Movie::count())->toBe(20_000);
-    });
-
     it('beats every 1000th changes-feed id probed', function (): void {
         // Arrange
-        // 1001 changed ids we hold none of: the export is empty so the insert phase is
-        // a no-op, and no id resolves locally so nothing hydrates — today the whole run
-        // is silent. 1001 straddles the 1000-id probe buffer, so the trailing partial
+        // 1001 changed ids whose details all 404, so nothing is ever upserted and the
+        // title beat can never fire — a probe beat is the only thing that can prove the
+        // run is alive. 1001 straddles the 1000-id probe buffer, so the trailing partial
         // slice must NOT beat a second time.
         $ids = range(4_000_000, 4_001_000);
         Http::fake([
@@ -631,21 +489,21 @@ describe('catalog:sync-movies heartbeat and elapsed phase lines', function (): v
 
     it('closes every phase line with its elapsed seconds', function (): void {
         // The clock is frozen so `0s` is deterministic: on the real clock a phase that
-        // happened to straddle a second boundary would print `1s` and flake.
+        // happened to straddle a second boundary would print `1s` and flake. The one
+        // ingest phase left both inserts and refreshes, so it can no longer call itself
+        // "Updating".
         // Arrange
         Date::setTestNow('2026-07-16 12:00:00');
         fakeTmdbSync();
 
         // Act & Assert
         $this->artisan('catalog:sync-movies')
-            ->expectsOutputToContain('Downloading movie-ids export… done in 0s')
-            ->expectsOutputToContain('Syncing movies… done in 0s')
-            ->expectsOutputToContain('Updating changed movies… done in 0s')
+            ->expectsOutputToContain('Syncing changed movies… done in 0s')
             ->expectsOutputToContain('Reindexing movies… done in 0s');
     });
 });
 
-describe('catalog:sync-movies changes-feed update phase', function (): void {
+describe('catalog:sync-movies changes-feed window and batching', function (): void {
     it('refreshes an existing synced movie present in the changes feed', function (): void {
         // Arrange
         Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now(), '_tmdb_title' => 'Stale']);
@@ -658,46 +516,18 @@ describe('catalog:sync-movies changes-feed update phase', function (): void {
         expect(Movie::where('_tmdb_id', 345)->first()->_tmdb_title)->toBe('The Matrix');
     });
 
-    it('ignores a changed id not in the local catalog', function (): void {
-        // Arrange
-        Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
-        fakeTmdbUpdateSync();
-
-        // Act
-        $this->artisan('catalog:sync-movies');
-
-        // Assert
-        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/1648226'));
-    });
-
-    it('bounds a changes-phase hydrate batch to HYDRATE_SIZE', function (): void {
+    it('bounds a hydrate batch to HYDRATE_SIZE', function (): void {
         // Arrange
         // 251 changed ids we already hold, one over the 250-id hydrate batch, so a
-        // bounded changes phase writes 250 + 1 = two upserts. Sizing its hydrate loop
-        // at the wider 1000 collapses them into one write holding 251 decoded payloads
-        // at once. The export is empty, so the insert phase contributes no upsert of
-        // its own and the count can only come from the changes phase. Distinct
-        // `_tmdb_id`s per row: the column is uniquely indexed.
+        // bounded pass writes 250 + 1 = two upserts. Sizing its hydrate loop at the
+        // wider 1000 collapses them into one write holding 251 decoded payloads at
+        // once. Distinct `_tmdb_id`s per row: the column is uniquely indexed.
         $ids = range(9000, 9250);
         Movie::factory()
             ->count(count($ids))
             ->sequence(...array_map(fn (int $id): array => ['_tmdb_id' => $id], $ids))
             ->create(['tmdb_synced_at' => now()]);
-        Http::fake([
-            '*movie_ids*' => Http::response(gzencode('')),
-            '*/movie/changes*' => Http::response(json_encode([
-                'results' => array_map(fn (int $id): array => ['id' => $id], $ids),
-                'page' => 1,
-                'total_pages' => 1,
-                'total_results' => count($ids),
-            ])),
-            '*api.themoviedb.org*' => function (Request $request) {
-                preg_match('#/movie/(\d+)#', (string) $request->url(), $matches);
-                $id = (int) ($matches[1] ?? 0);
-
-                return Http::response(json_encode(['id' => $id, 'title' => "Movie {$id}"]));
-            },
-        ]);
+        fakeTmdbChangedIds($ids);
         // Enabled LAST, after the factory rows: each of the 251 creates emits its own
         // `insert into movies`, which would swamp the two upserts under test.
         DB::enableQueryLog();
@@ -741,49 +571,48 @@ describe('catalog:sync-movies changes-feed update phase', function (): void {
         // Assert
         assertRequestedChangesWindow('2026-07-15', '2026-07-16');
     });
-
-    it('skips the update phase with --fresh', function (): void {
-        // Arrange
-        Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
-        fakeTmdbUpdateSync();
-
-        // Act
-        $this->artisan('catalog:sync-movies', ['--fresh' => true]);
-
-        // Assert
-        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
-    });
 });
 
 describe('catalog:sync-movies video-flagged details', function (): void {
     it('does not persist a movie whose detail is flagged video true', function (): void {
         // Arrange
-        $detail = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
-        $detail['id'] = 700;
-        $detail['video'] = true;
+        $promo = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
+        $promo['id'] = 700;
+        $promo['video'] = true;
+        $film = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
+        $film['id'] = 701;
         Http::fake([
-            '*movie_ids*' => Http::response(gzencode(json_encode(['id' => 700]))),
-            '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
-            '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/700')
-                ? Http::response(json_encode($detail))
-                : Http::response('', 404),
+            '*movie_ids*' => Http::response(gzencode('')),
+            '*/movie/changes*' => Http::response('{"results":[{"id":700},{"id":701}],"page":1,"total_pages":1,"total_results":2}'),
+            '*api.themoviedb.org*' => function (Request $request) use ($promo, $film) {
+                $path = (string) parse_url($request->url(), PHP_URL_PATH);
+
+                return match (true) {
+                    Str::endsWith($path, '/movie/700') => Http::response(json_encode($promo)),
+                    Str::endsWith($path, '/movie/701') => Http::response(json_encode($film)),
+                    default => Http::response('', 404),
+                };
+            },
         ]);
 
         // Act
         $this->artisan('catalog:sync-movies');
 
         // Assert
+        // Both halves in one test: the absence alone would pass on a run that ingested
+        // nothing at all, so its non-promo sibling is asserted alongside it.
         expect(Movie::where('_tmdb_id', 700)->exists())->toBeFalse();
+        expect(Movie::where('_tmdb_id', 701)->exists())->toBeTrue();
     });
 
     it('persists a movie whose detail is not flagged video', function (): void {
         // Arrange
         $detail = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
-        $detail['id'] = 701;
+        $detail['id'] = 702;
         Http::fake([
-            '*movie_ids*' => Http::response(gzencode(json_encode(['id' => 701]))),
-            '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
-            '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/701')
+            '*movie_ids*' => Http::response(gzencode('')),
+            '*/movie/changes*' => Http::response('{"results":[{"id":702}],"page":1,"total_pages":1,"total_results":1}'),
+            '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/702')
                 ? Http::response(json_encode($detail))
                 : Http::response('', 404),
         ]);
@@ -792,8 +621,9 @@ describe('catalog:sync-movies video-flagged details', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        expect(Movie::where('_tmdb_id', 701)->exists())->toBeTrue();
-        expect(Movie::where('_tmdb_id', 701)->first()->_tmdb_title)->toBe('The Matrix');
+        $film = Movie::where('_tmdb_id', 702)->first();
+        expect($film)->not->toBeNull();
+        expect($film->_tmdb_title)->toBe('The Matrix');
     });
 });
 
@@ -801,9 +631,8 @@ describe('catalog:sync-movies changes-feed failure reporting', function (): void
     it('reports a persistent changes-feed failure and exits FAILURE', function (): void {
         // Arrange
         Exceptions::fake();
-        // Empty export → the insert phase is a no-op; the changes feed 404s on every
-        // page, which TMDB raises as a fatal TmdbRequestFailed the update phase must
-        // report rather than propagate.
+        // The changes feed 404s on every page, which TMDB raises as a fatal
+        // TmdbRequestFailed the leg must report rather than propagate.
         Http::fake([
             '*movie_ids*' => Http::response(gzencode('')),
             '*/movie/changes*' => Http::response('', 404),
@@ -846,28 +675,16 @@ describe('catalog:sync-movies marker advancement', function (): void {
         expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
     });
 
-    it('advances the movies marker on a --fresh run', function (): void {
-        // Arrange
-        Cache::flush();
-        Date::setTestNow('2026-07-16 12:00:00');
-        fakeTmdbSync();
-
-        // Act
-        $this->artisan('catalog:sync-movies', ['--fresh' => true]);
-
-        // Assert
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
-    });
-
-    it('does not advance the movies marker when an insert-phase batch fails', function (): void {
+    it('does not advance the movies marker when an inserted title fails to hydrate', function (): void {
         // Arrange
         Cache::flush();
         Exceptions::fake();
-        // The lone exported id 500s persistently; the pool aggregates it as a per-id
-        // failure and drops the key from its result, so the insert phase reports failure.
+        // The lone changed id is one we do not hold, so it is an insert; its detail 500s
+        // persistently, and the pool aggregates that as a per-id failure and drops the
+        // key from its result, so the pass reports failure.
         Http::fake([
-            '*movie_ids*' => Http::response(gzencode(json_encode(['id' => 500]))),
-            '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+            '*movie_ids*' => Http::response(gzencode('')),
+            '*/movie/changes*' => Http::response('{"results":[{"id":500}],"page":1,"total_pages":1,"total_results":1}'),
             '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/500')
                 ? Http::response('', 500)
                 : Http::response('', 404),
@@ -880,13 +697,13 @@ describe('catalog:sync-movies marker advancement', function (): void {
         expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
     });
 
-    it('does not advance the movies marker when a changes-phase re-hydrate fails', function (): void {
+    it('does not advance the movies marker when a refreshed title fails to hydrate', function (): void {
         // Arrange
         Cache::flush();
         Exceptions::fake();
-        // Empty export → a clean insert phase; a locally-held changed id (345, present
-        // in the changes feed) whose detail 500s persistently makes the CHANGES phase
-        // report failure on its own — a distinct failure site from the insert phase.
+        // A locally-held changed id (345, present in the changes feed) whose detail 500s
+        // persistently — a failure on the refresh side of the pass, distinct from the
+        // insert side above.
         Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
         Http::fake([
             '*movie_ids*' => Http::response(gzencode('')),
@@ -923,16 +740,17 @@ describe('catalog:sync-movies end-of-leg reindex', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        $matrix = Movie::where('_tmdb_id', 603)->firstOrFail();
-        expect(reindexedIds($capturedChunks()))->toBe([$matrix->id]);
+        $matrix = Movie::where('_tmdb_id', 603)->first();
+        expect($matrix)->not->toBeNull();
+        expect(reindexedIds($capturedChunks()))->toBe([$matrix?->id]);
     });
 
     it('does not reindex a movie the leg never touched', function (): void {
         // Arrange
-        // _tmdb_id 9000001 appears in neither the export nor the changes feed, so the
-        // leg never writes this row. Its updated_at is stamped stale EXPLICITLY: the
-        // watermark comparison is `>=` over second-precision timestamps, so a row saved
-        // inside the leg's own start second would otherwise sweep in as "touched".
+        // _tmdb_id 9000001 never appears in the changes feed, so the leg never writes
+        // this row. Its updated_at is stamped stale EXPLICITLY: the watermark comparison
+        // is `>=` over second-precision timestamps, so a row saved inside the leg's own
+        // start second would otherwise sweep in as "touched".
         $untouched = Movie::factory()->create(['_tmdb_id' => 9_000_001, 'tmdb_synced_at' => now()]);
         Movie::query()->whereKey($untouched->id)->update(['updated_at' => now()->subDay()]);
         fakeTmdbSync();
@@ -944,8 +762,9 @@ describe('catalog:sync-movies end-of-leg reindex', function (): void {
         // Assert
         // Both halves in one test: asserting the absence alone would pass on a run that
         // indexed nothing at all.
-        $matrix = Movie::where('_tmdb_id', 603)->firstOrFail();
-        expect(reindexedIds($capturedChunks()))->toContain($matrix->id);
+        $matrix = Movie::where('_tmdb_id', 603)->first();
+        expect($matrix)->not->toBeNull();
+        expect(reindexedIds($capturedChunks()))->toContain($matrix?->id);
         expect(reindexedIds($capturedChunks()))->not->toContain($untouched->id);
     });
 
@@ -953,24 +772,108 @@ describe('catalog:sync-movies end-of-leg reindex', function (): void {
         // Arrange
         Cache::flush();
         Exceptions::fake();
-        // The real export still inserts 603, so the leg genuinely touches a row, while
-        // every /movie/changes page 404s — TMDB raises that as a fatal TmdbRequestFailed
-        // the update phase reports rather than propagates, holding the marker back.
-        Http::fake([
-            '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
-            '*/movie/changes*' => Http::response('', 404),
-            '*api.themoviedb.org*' => fn (Request $request) => Str::contains($request->url(), '/movie/603')
-                ? Http::response(fixtureBytes('Catalog/tmdb/movie.json'))
-                : Http::response('', 404),
-        ]);
+        // Page 1 of the feed lands and refreshes the held title 345, so the leg
+        // genuinely touches a row, before page TWO 404s — TMDB raises that as a fatal
+        // TmdbRequestFailed the leg reports rather than propagates, holding the marker
+        // back while the row it already wrote stays on disk.
+        $held = Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now(), '_tmdb_title' => 'Stale']);
+        fakeTmdbMidStreamChangesFailure();
         $capturedChunks = spyOnScoutEngine();
 
         // Act
         $this->artisan('catalog:sync-movies')->assertExitCode(Command::FAILURE);
 
         // Assert
-        $matrix = Movie::where('_tmdb_id', 603)->firstOrFail();
         expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
-        expect(reindexedIds($capturedChunks()))->toContain($matrix->id);
+        expect(reindexedIds($capturedChunks()))->toContain($held->id);
+    });
+});
+
+describe('catalog:sync-movies capped changes window', function (): void {
+    it('reports the span the 14-day cap left uncovered', function (): void {
+        // Arrange
+        // A marker 30 days stale: SyncMarker floors `since` at now − 14d, so the
+        // span between the marker and that floor is never fetched and never
+        // retried. The leg has to say so — silently covering only the last 14
+        // days is how a stalled marker stayed invisible on production for months.
+        Cache::flush();
+        Date::setTestNow('2026-07-16 12:00:00');
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
+        fakeTmdbChangedIds([]);
+
+        // Act
+        // Read back as one string rather than chaining expectsOutputToContain():
+        // both halves live on the SAME line, and the mocked writer hands each write
+        // to the first matching substring expectation, so the pair would shadow.
+        Artisan::call('catalog:sync-movies');
+
+        // Assert
+        // The span is named, not just the fact of a gap: 2026-06-16 is the marker
+        // less its 6h overlap, 2026-07-02 the floor — the fortnight in between is
+        // what no run will ever fetch.
+        expect(Artisan::output())
+            ->toContain('1 changes-feed window failed;')
+            ->toContain('2026-06-16 to 2026-07-02 uncovered')
+            ->toContain('marker not advanced');
+    });
+
+    it('exits FAILURE on a capped window', function (): void {
+        // Arrange
+        Cache::flush();
+        Date::setTestNow('2026-07-16 12:00:00');
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
+        fakeTmdbChangedIds([]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-movies')->assertExitCode(Command::FAILURE);
+    });
+
+    it('leaves the marker unadvanced so the alarm persists until an operator seeds', function (): void {
+        // Arrange
+        Cache::flush();
+        Date::setTestNow('2026-07-16 12:00:00');
+        $stale = now()->subDays(30)->toImmutable();
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, $stale);
+        fakeTmdbChangedIds([]);
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        // Unchanged, not merely un-advanced-to-now: a capped run that quietly moved
+        // the marker forward would erase the evidence of its own gap.
+        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe($stale->toIso8601String());
+    });
+
+    it('still covers the 14 days it can reach on a capped run', function (): void {
+        // Arrange
+        // The guard reports the gap; it does not skip the work. The floored window
+        // is still requested, and a title inside it still lands.
+        Cache::flush();
+        Date::setTestNow('2026-07-16 12:00:00');
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
+        fakeTmdbChangedIds([9500]);
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        assertRequestedChangesWindow('2026-07-02', '2026-07-16');
+        expect(Movie::where('_tmdb_id', 9500)->exists())->toBeTrue();
+    });
+
+    it('reports no uncovered span when the marker sits inside the cap', function (): void {
+        // Arrange
+        Cache::flush();
+        Date::setTestNow('2026-07-16 12:00:00');
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(2)->toImmutable());
+        fakeTmdbChangedIds([]);
+
+        // Act & Assert
+        // Both halves in one test: the absence alone would pass on a run that
+        // failed for some unrelated reason and never reached the closing summary.
+        $this->artisan('catalog:sync-movies')
+            ->doesntExpectOutputToContain('changes-feed window failed')
+            ->assertExitCode(Command::SUCCESS);
     });
 });

@@ -677,6 +677,75 @@ describe('changedMovieIds() paged change feed', function (): void {
             ->and($result)->toHaveCount(5);
     });
 
+    it('yields a result flagged neither adult nor softcore', function (): void {
+        config(['services.tmdb.token' => 'test-token']);
+        // Synthetic single-page bodies, not the committed page fixtures: every
+        // captured row is adult:false/softcore:false, and a single page keeps
+        // pagination out of the filter under test.
+        Http::fake(['*api.themoviedb.org*' => Http::response(json_encode([
+            'results' => [['id' => 345, 'adult' => false, 'softcore' => false]],
+            'page' => 1,
+            'total_pages' => 1,
+            'total_results' => 1,
+        ]))]);
+
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+
+        expect($result)->toBe([345]);
+    });
+
+    it('keeps a result carrying neither flag', function (): void {
+        config(['services.tmdb.token' => 'test-token']);
+        Http::fake(['*api.themoviedb.org*' => Http::response(json_encode([
+            'results' => [['id' => 345], ['id' => 1648226]],
+            'page' => 1,
+            'total_pages' => 1,
+            'total_results' => 2,
+        ]))]);
+
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+
+        // An absent flag is not a set one: a feed row that omits the keys is
+        // ordinary, so nothing may be dropped for lacking them.
+        expect($result)->toBe([345, 1648226]);
+    });
+
+    it('drops a result flagged adult', function (): void {
+        config(['services.tmdb.token' => 'test-token']);
+        Http::fake(['*api.themoviedb.org*' => Http::response(json_encode([
+            'results' => [
+                ['id' => 345, 'adult' => false, 'softcore' => false],
+                ['id' => 999999, 'adult' => true, 'softcore' => false],
+            ],
+            'page' => 1,
+            'total_pages' => 1,
+            'total_results' => 2,
+        ]))]);
+
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+
+        expect($result)->not->toContain(999999)
+            ->and($result)->toBe([345]);
+    });
+
+    it('drops a result flagged softcore', function (): void {
+        config(['services.tmdb.token' => 'test-token']);
+        Http::fake(['*api.themoviedb.org*' => Http::response(json_encode([
+            'results' => [
+                ['id' => 345, 'adult' => false, 'softcore' => false],
+                ['id' => 999998, 'adult' => false, 'softcore' => true],
+            ],
+            'page' => 1,
+            'total_pages' => 1,
+            'total_results' => 2,
+        ]))]);
+
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+
+        expect($result)->not->toContain(999998)
+            ->and($result)->toBe([345]);
+    });
+
     it('surfaces a 404 page as TmdbRequestFailed on first iteration', function (): void {
         config(['services.tmdb.token' => 'test-token']);
         Http::fake(['*api.themoviedb.org*' => Http::response('', 404)]);
@@ -748,5 +817,25 @@ describe('changedTvIds() paged change feed', function (): void {
             ->and($result)->each->toBeInt()
             ->and(array_keys($result, 325296, true))->toHaveCount(1)
             ->and($result)->toHaveCount(4);
+    });
+
+    it('drops an adult result from the tv feed too', function (): void {
+        config(['services.tmdb.token' => 'test-token']);
+        // Both public methods return the same private generator, so the filter
+        // has to live there rather than on the movie path alone.
+        Http::fake(['*api.themoviedb.org*' => Http::response(json_encode([
+            'results' => [
+                ['id' => 23310, 'adult' => false, 'softcore' => false],
+                ['id' => 999997, 'adult' => true, 'softcore' => false],
+            ],
+            'page' => 1,
+            'total_pages' => 1,
+            'total_results' => 2,
+        ]))]);
+
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14'), false);
+
+        expect($result)->not->toContain(999997)
+            ->and($result)->toBe([23310]);
     });
 });

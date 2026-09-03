@@ -23,6 +23,9 @@ final class SyncMarker
      * The 6h overlap re-fetches behind the marker so an update straddling two runs
      * isn't missed. With no marker (first run) we reach back 24h. The 14-day cap
      * both floors a stale marker and keeps requests within TMDB's ≤14-day span.
+     *
+     * The span the cap discards is carried forward on the window: it is never fetched
+     * and never retried, so the only way a leg can report the gap is to be handed it.
      */
     public function window(SyncFeed $feed): SyncWindow
     {
@@ -38,11 +41,13 @@ final class SyncMarker
             : $now->subHours(self::FALLBACK_HOURS);
 
         $floor = $now->subDays(self::CAP_DAYS);
+        $uncoveredSince = null;
         if ($since->lessThan($floor)) {
+            $uncoveredSince = $since;
             $since = $floor;
         }
 
-        return new SyncWindow($since, $now);
+        return new SyncWindow($since, $now, $uncoveredSince);
     }
 
     /**

@@ -99,6 +99,50 @@ touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
   `TmdbRequestFailed`, so single-request and batch callers see the same typed
   failure.
 
+## TMDB movies sync/seed split (`catalog:sync-movies` / `catalog:seed-movies`)
+
+Mirrors the TVDB split below, for the same reason: an incremental leg on the
+schedule, a full-dataset leg only an operator runs.
+
+- `catalog:sync-movies` — the scheduled leg, wired into `catalog:sync`. **One pass
+  over the `/movie/changes` window and nothing else** — it never downloads the ids
+  export, and takes no `--fresh` (the window comes from the marker, so there is
+  nothing to be fresh about).
+  - **Insert and refresh are one pass.** Each feed slice is probed once via
+    `syncedIdsAmong()`; held ids refresh, unheld ids insert. The two were only ever
+    separate phases because they had separate *sources* — they ask the same question
+    from opposite sides of that probe.
+  - **Two heartbeat tags inside the one pass**, because an operator reads insert
+    volume and refresh volume as different facts: `[tmdb movies n]` for a refresh,
+    `[new tmdb movies n]` for an insert.
+- `catalog:seed-movies` — the full ids-export scan (~1.23M rows), **operator-invoked
+  and on no schedule** (`CatalogScheduleTest` guards the omission). It is the remedy
+  for a marker stale past the cap, and what `catalog:sync --fresh` dispatches in the
+  incremental leg's place. `--fresh` here skips the already-synced probe and
+  re-hydrates every exported row.
+- **Why the export left the schedule (FLIX-289).** That phase alone exceeded an hour
+  per production run and did not shrink as the catalog converged. FLIX-286 measured
+  the feed against the live API: `/movie/changes` reported 465/465 of the ids added
+  between two daily export snapshots and 112/112 of those removed, so the export
+  contributed **no unique discovery**. Of the ~66k ids it re-hydrated every run, ~94%
+  were `video:true` promo records that `payloads()` drops pre-upsert — never stamped
+  `tmdb_synced_at`, so the probe reports them missing forever.
+- **A blind reconciliation sweep is deliberately NOT scheduled.** Re-paying ~62k
+  unpersistable hydrations weekly to cover a condition that should not occur would
+  also mask the marker-stall bug that caused FLIX-289. The capped-window guard below
+  is the alarm instead.
+
+### Feed-driven insert is opt-in (`insertHeartbeatTag()`)
+
+`TmdbSyncCommand::insertHeartbeatTag()` returns `null` by default, meaning **refresh
+only**: an unheld changed id is left to whatever other phase owns discovery. A
+non-null tag opts the leg into inserting from the feed *and* names the second tag
+`closeRun()` flushes — one seam, both uses, so there is no companion boolean.
+
+Only `catalog:sync-movies` opts in. **`catalog:sync-shows-tmdb` must not**: TVDB is
+the sole creator of `shows` rows (see below), so an unheld `/tv/changes` id would
+create a show with no TVDB identity. That leg's own residue is FLIX-291.
+
 ## Sync ordering (`catalog:sync-shows-tmdb`)
 
 - **TVDB is the sole creator of `shows` rows** — `catalog:sync-shows-tmdb` never
@@ -115,7 +159,11 @@ touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
   empty `/find` result.
 - Update-changed phase (default full run only, skipped under `--fresh`)
   — re-hydrates the intersection of the marker-derived changes window (see
-  **Incremental sync markers** below) and rows we've already synced.
+  **Incremental sync markers** below) and rows we've already synced. It stays an
+  *intersection*: this leg leaves `insertHeartbeatTag()` at its `null` default, so a
+  changed tv id we don't hold is ignored rather than inserted. That is what keeps
+  "TVDB is the sole creator of `shows` rows" true now that the movies leg inserts
+  from its feed.
 
 ## TVDB sync split (`catalog:seed-shows-tvdb` / `catalog:sync-shows-tvdb`)
 
@@ -218,12 +266,18 @@ bootstrap, never scheduled), the three IMDb legs (a `Http::head()`
 change is inherent, since IMDb publishes only full dumps), `download:sync-index`
 (stops at the first fully-seen page) and `download:sync-rss` (constant).
 
-Offenders, each with its own ticket: `catalog:sync-movies`' export scan, whose
-~66k hydrations per run are 94% unpersistable records; `catalog:sync-shows-tmdb`,
-where a `/find` miss or `_tmdb_id` collision is re-walked every run — 95,340 rows
-on production, ~55% of the show universe; and `catalog:sync-episodes-tvdb`, which
-reads only `seriesId` off an updates record that also carries the episode's own
-`recordId`, then re-crawls the show's entire episode list.
+**Fixed (FLIX-289):** `catalog:sync-movies` was the first offender — its export scan
+re-hydrated ~66k ids per run, 94% of them unpersistable. It now reads only the
+changes feed, and the export lives in the unscheduled `catalog:seed-movies` (see
+**TMDB movies sync/seed split**). The `video:true` residue underneath it survives but
+is bounded by change volume now that the export is off the schedule; persisting
+refused titles instead of dropping them is FLIX-290.
+
+Offenders still open, each with its own ticket: `catalog:sync-shows-tmdb`, where a
+`/find` miss or `_tmdb_id` collision is re-walked every run — 95,340 rows on
+production, ~55% of the show universe (FLIX-291); and `catalog:sync-episodes-tvdb`,
+which reads only `seriesId` off an updates record that also carries the episode's own
+`recordId`, then re-crawls the show's entire episode list (FLIX-292).
 
 ## Incremental sync markers (`SyncMarker` / `SyncFeed`)
 
@@ -247,4 +301,23 @@ window.
   `PooledResult::failedIds` — and holds the marker. Any failure → marker unchanged
   → the next run re-covers the whole gap (idempotent upserts make that safe). A
   cache flush just drops to the 24h fallback, not data loss.
+- **The 14-day cap is loud, not silent (FLIX-289).** When the floor moves `since`,
+  the span between the marker and the floor is never fetched and never retried —
+  permanent loss, not a deferral. `SyncWindow` therefore carries the discarded start
+  (`uncoveredSince` → `isCapped()` / `uncoveredStartDate()`), and
+  `TmdbSyncCommand::recordCappedWindow()` counts it on `$failedChangesWindows` — the
+  counter for a window-level fault with no entity to count — so `closeRun()` prints
+  `1 changes-feed window failed; {start} to {end} uncovered; marker not advanced.`
+  and returns `FAILURE`.
+  - The capped run **still covers the 14 days it can reach**; it reports the gap
+    rather than skipping the window.
+  - The marker deliberately stays put, so the alarm repeats every run until an
+    operator runs `catalog:seed-movies`. That is the intended escalation: ideal
+    operation is the assumption, and the guard exists so a departure is noticed
+    immediately instead of months later. Production carried **no**
+    `catalog:sync:marker:tmdb_movies` entry at all while every row was stamped —
+    `advance()` fires only on a zero-failure run, and one transient failure among
+    ~66k hydrations was enough to block it forever.
+  - **TMDB legs only so far.** The guard lives in `TmdbSyncCommand`; the TVDB legs
+    share `SyncMarker` but not that base, so a capped TVDB window is still silent.
 

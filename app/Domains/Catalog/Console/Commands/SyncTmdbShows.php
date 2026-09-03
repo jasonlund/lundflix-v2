@@ -47,7 +47,15 @@ class SyncTmdbShows extends TmdbSyncCommand
         $this->upsertImages = $upsertImages;
         $this->reindexTouchedRows = $reindexTouchedRows;
 
-        return $this->runLeg($marker, fn (): bool => $this->insertNew());
+        return $this->runLeg($marker, function () use ($marker): bool {
+            $insertFailed = $this->insertNew();
+
+            // --fresh already re-hydrated every candidate, so a changes pass is redundant.
+            // Assigned before the `||` so a failing insert can't short-circuit the phase away.
+            $changesFailed = $this->option('fresh') ? false : $this->updateChanged($marker);
+
+            return $insertFailed || $changesFailed;
+        });
     }
 
     /**

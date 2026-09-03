@@ -23,11 +23,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
- * The frame both TMDB syncs run inside: the leg pipeline (watermark → insert →
- * update-changed → marker), the deferred-indexing policy, the heartbeat counters
- * and the phase timing. Each concrete command owns only its insert phase (an ids
- * export for movies, our own rows for shows) and hands this base the per-feed
- * seams below.
+ * The frame every TMDB leg runs inside: the leg pipeline (watermark → ingest →
+ * marker), the deferred-indexing policy, the heartbeat counters and the phase
+ * timing. Each concrete command owns which ingest phases it runs and hands this
+ * base the per-feed seams below.
  */
 abstract class TmdbSyncCommand extends Command
 {
@@ -79,6 +78,16 @@ abstract class TmdbSyncCommand extends Command
     /** Changes-feed windows the run never finished reading. */
     private int $failedChangesWindows = 0;
 
+    /**
+     * The span a CAP_DAYS floor cut off the front of this run's window, as
+     * `{start} to {end}`, or null when the floor never fired.
+     *
+     * Held for the closing summary rather than printed where it is detected: the
+     * run still covers what it can reach, so the gap is a fact about the whole
+     * run, not an event partway through it.
+     */
+    private ?string $uncoveredSpan = null;
+
     /** The marker feed whose window this command reads and advances. */
     abstract protected function feed(): SyncFeed;
 
@@ -95,6 +104,20 @@ abstract class TmdbSyncCommand extends Command
 
     /** Heartbeat tag, source-prefixed (`tmdb movies`) so a line names which sync emitted it. */
     abstract protected function heartbeatTag(): string;
+
+    /**
+     * The heartbeat tag for a changed id we do NOT already hold — an insert candidate
+     * the feed just discovered. Null means the leg refreshes only: an unheld id is left
+     * to whatever other phase owns discovery.
+     *
+     * Opt-in rather than default, because a feed-driven insert is only safe where TMDB
+     * owns the row's identity. `shows` rows are created solely from TVDB, so an unheld
+     * /tv/changes id must never reach the table (see Catalog/GUIDELINES.md).
+     */
+    protected function insertHeartbeatTag(): ?string
+    {
+        return null;
+    }
 
     /**
      * The changes feed for the window. A generator, so nothing is requested
@@ -150,25 +173,21 @@ abstract class TmdbSyncCommand extends Command
      * leg adds, its every upsert lands inside the indexing wrap and the single
      * deferred pass lands outside it — the one ordering that must not be got wrong.
      *
-     * Reads the `--fresh` switch, so every leg's signature must declare it.
+     * The leg owns its WHOLE ingest body, including whether it reads the changes
+     * feed at all — a seed leg rescans its source and has no window to refresh.
      *
-     * @param  Closure(): bool  $insertNew  the leg's own insert phase; true if any of it failed
+     * @param  Closure(): bool  $ingest  every ingest phase the leg runs; true if any of it failed
      */
-    protected function runLeg(SyncMarker $marker, Closure $insertNew): int
+    protected function runLeg(SyncMarker $marker, Closure $ingest): int
     {
         // Run-start, not run-end: updates landing mid-run stay inside the next run's
         // overlap window rather than falling in the gap.
         $startedAt = CarbonImmutable::now();
 
-        $this->withoutIndexing(function () use ($marker, $insertNew, $startedAt): void {
-            $insertFailed = $insertNew();
-
-            // --fresh already re-hydrated every candidate, so a changes pass is redundant.
-            $changesFailed = $this->option('fresh') ? false : $this->updateChanged($marker);
-
+        $this->withoutIndexing(function () use ($marker, $ingest, $startedAt): void {
             // A failure means the window wasn't fully covered — the marker must not move
             // past a span still owed to the next run.
-            if (! $insertFailed && ! $changesFailed) {
+            if (! $ingest()) {
                 $marker->advance($this->feed(), $startedAt);
             }
         });
@@ -192,8 +211,24 @@ abstract class TmdbSyncCommand extends Command
 
         $this->flushTotal($tag, $this->counted[$tag] ?? 0);
 
+        // Only a leg that can insert closes an insert total; a refresh-only leg would
+        // otherwise report a `0` for volume it never had any way to produce.
+        $insertTag = $this->insertHeartbeatTag();
+
+        if ($insertTag !== null) {
+            $this->flushTotal($insertTag, $this->counted[$insertTag] ?? 0);
+        }
+
         $this->failureSummary($this->failedEntities, $this->entityLabel(), 'marker not advanced');
-        $this->failureSummary($this->failedChangesWindows, 'changes-feed window', 'marker not advanced');
+        $this->failureSummary(
+            $this->failedChangesWindows,
+            'changes-feed window',
+            // The span only exists for a capped window; a feed that simply failed to
+            // read has no gap to name, so it keeps the bare consequence.
+            $this->uncoveredSpan === null
+                ? 'marker not advanced'
+                : "{$this->uncoveredSpan} uncovered; marker not advanced",
+        );
 
         $this->output->writeln('Done.');
 
@@ -241,29 +276,59 @@ abstract class TmdbSyncCommand extends Command
     }
 
     /**
-     * Refresh titles we already hold that TMDB reports changed in the marker window.
+     * Hydrate what TMDB reports changed in the marker window: the ids we already
+     * hold, and — where the leg opts in — the ones we don't.
+     *
+     * The two used to be separate phases fed by separate sources, which is the only
+     * reason they were ever apart: they ask the same question from opposite sides of
+     * syncedIdsAmong(). Once the feed became the sole source for both, keeping them
+     * split meant probing the same slice twice.
      *
      * Reading, resolving and hydrating share one pass, so a mid-stream throw leaves
      * earlier slices already hydrated. Accepted: the marker doesn't advance, so the
      * next run re-covers the whole window over idempotent upserts.
      */
-    private function updateChanged(SyncMarker $marker): bool
+    protected function updateChanged(SyncMarker $marker): bool
     {
-        return $this->timedPhase("Updating changed {$this->entityLabel()}…", function () use ($marker): bool {
+        $insertTag = $this->insertHeartbeatTag();
+
+        // A leg that only refreshes is still honestly "updating"; one that also
+        // discovers rows from the feed is not.
+        $label = $insertTag === null
+            ? "Updating changed {$this->entityLabel()}…"
+            : "Syncing changed {$this->entityLabel()}…";
+
+        return $this->timedPhase($label, function () use ($marker, $insertTag): bool {
             $window = $marker->window($this->feed());
 
-            $failed = false;
+            // A floored window is a real, permanent gap: the span between the marker
+            // and the floor is never fetched and never retried. The run still covers
+            // what it can reach — it just must not pass for a clean one, or the
+            // marker advances over the gap and the loss becomes unrecoverable. This
+            // is what let a stalled marker sit unnoticed on production for months.
+            $failed = $this->recordCappedWindow($window);
 
             // The whole loop sits inside the try, not just the call: the feed is a
             // generator, so it defers its first request to the first iteration.
             try {
-                // Only ids we already hold — a changed id never synced is an insert
-                // candidate the insert phase owns. The feed is unbounded, so probe per
-                // slice; one whereIn over a busy window risks the placeholder limit.
+                // The feed is unbounded, so probe per slice; one whereIn over a busy
+                // window risks the placeholder limit.
                 foreach (Batches::of($this->changedIds($window), self::PROBE_SIZE) as $slice) {
                     $this->beatEvery('probe', self::PROBE_BEAT, count($slice));
 
-                    $failed = $this->syncInBatches($this->syncedIdsAmong($slice)->all()) || $failed;
+                    $held = $this->syncedIdsAmong($slice);
+
+                    // Both halves accumulate into $failed on their own line: neither
+                    // side may short-circuit the other away.
+                    $refreshFailed = $this->syncInBatches($held->all());
+
+                    // Two tags inside one pass, because an operator reads insert volume
+                    // and refresh volume as different facts about a run.
+                    $insertFailed = $insertTag === null
+                        ? false
+                        : $this->syncInBatches(collect($slice)->diff($held)->values()->all(), $insertTag);
+
+                    $failed = $refreshFailed || $insertFailed || $failed;
                 }
             } catch (\Throwable $e) {
                 report($e);
@@ -275,6 +340,25 @@ abstract class TmdbSyncCommand extends Command
 
             return $failed;
         });
+    }
+
+    /**
+     * Note a window the CAP_DAYS floor truncated, returning whether it did.
+     *
+     * Counted on $failedChangesWindows rather than a counter of its own: that
+     * counter exists for a window-level fault with no entity to count, and an
+     * unfetchable span is exactly that. It carries the exit code for free.
+     */
+    private function recordCappedWindow(SyncWindow $window): bool
+    {
+        if (! $window->isCapped()) {
+            return false;
+        }
+
+        $this->uncoveredSpan = "{$window->uncoveredStartDate()} to {$window->startDate()}";
+        $this->failedChangesWindows++;
+
+        return true;
     }
 
     /**
@@ -327,13 +411,14 @@ abstract class TmdbSyncCommand extends Command
 
     /**
      * @param  array<int, int>  $ids  a whole probe slice, re-cut to HYDRATE_SIZE
+     * @param  string|null  $tag  the beat tag for these ids; null takes heartbeatTag()
      */
-    protected function syncInBatches(array $ids): bool
+    protected function syncInBatches(array $ids, ?string $tag = null): bool
     {
         $failed = false;
 
         foreach (array_chunk($ids, self::HYDRATE_SIZE) as $batch) {
-            $failed = $this->syncChunkSafely($batch) || $failed;
+            $failed = $this->syncChunkSafely($batch, $tag) || $failed;
         }
 
         return $failed;
@@ -345,10 +430,10 @@ abstract class TmdbSyncCommand extends Command
      *
      * @param  array<int, int>  $ids
      */
-    protected function syncChunkSafely(array $ids): bool
+    protected function syncChunkSafely(array $ids, ?string $tag = null): bool
     {
         try {
-            return $this->syncChunk($ids);
+            return $this->syncChunk($ids, $tag);
         } catch (\Throwable $e) {
             report($e);
 
@@ -386,8 +471,10 @@ abstract class TmdbSyncCommand extends Command
      *
      * @param  array<int, int>  $ids
      */
-    protected function syncChunk(array $ids): bool
+    protected function syncChunk(array $ids, ?string $tag = null): bool
     {
+        $tag ??= $this->heartbeatTag();
+
         $results = $this->hydrate($ids);
 
         $missing = max(count(array_unique($ids)) - count($results), 0);
@@ -405,7 +492,7 @@ abstract class TmdbSyncCommand extends Command
         $this->upsertPayloads($payloads);
 
         foreach ($payloads as $payload) {
-            $this->beatEvery($this->heartbeatTag(), self::HYDRATE_BEAT, suffix: $this->payloadTitle($payload) ?? '—');
+            $this->beatEvery($tag, self::HYDRATE_BEAT, suffix: $this->payloadTitle($payload) ?? '—');
         }
 
         $models = $this->query()

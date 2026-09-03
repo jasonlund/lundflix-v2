@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
@@ -23,7 +23,7 @@ uses(RefreshDatabase::class);
 | Fixtures (byte-exact real source slices)
 |--------------------------------------------------------------------------
 | tests/Fixtures/Catalog/tmdb/movie_ids.json.gz — daily export incl. id 603
-|   (The Matrix).
+|   (The Matrix). Read only by the --fresh run's catalog:seed-movies leg.
 | tests/Fixtures/Catalog/tmdb/movie.json — /movie/603 (imdb_id tt0133093);
 |   tv.json — /tv/1399 (external_ids.imdb_id tt0944947).
 | tests/Fixtures/Catalog/tvdb/* — login JWT, chained /updates feed, and
@@ -32,29 +32,42 @@ uses(RefreshDatabase::class);
 |   allSeries crawl (GET /series?page=0 then /series?page=1) that --fresh now
 |   drives via catalog:seed-shows-tvdb, faked in fakeCatalogSyncFreshAndUpdates().
 |
+| Hand-authored (synthetic) bodies, for inputs no real capture supplies:
+| — the one-result and empty-result /movie/changes and /tv/changes pages;
+| — the EMPTY-gz ids export in fakeCatalogSync(), whose only job is to make a run
+|   that still downloads the export fail on a behavioural assertion rather than
+|   die as a stray request (stray requests are globally prevented). Nothing can
+|   reach the catalog through it.
+|
 | A default catalog:sync dispatches catalog:sync-movies → catalog:sync-shows-tvdb →
-| catalog:sync-episodes-tvdb → catalog:sync-shows-tmdb. Under --fresh the TVDB step
-| swaps to the full crawl (catalog:seed-shows-tvdb) and --fresh is forwarded to both
-| TMDB syncs: catalog:sync-movies --fresh → catalog:seed-shows-tvdb →
-| catalog:sync-episodes-tvdb → catalog:sync-shows-tmdb --fresh.
+| catalog:sync-episodes-tvdb → catalog:sync-shows-tmdb, and never touches the ids
+| export: the incremental movies leg reads the changes feed alone. Under --fresh the
+| movies step swaps to the full export seed and the TVDB show step to the full crawl —
+| catalog:seed-movies --fresh → catalog:seed-shows-tvdb → catalog:sync-episodes-tvdb →
+| catalog:sync-shows-tmdb --fresh.
 */
 
 /**
- * Fake every host the catalog:sync flow touches with happy-path fixtures:
- * the TMDB movie + tv exports, the shared TMDB API (The Matrix for id 603,
- * Game of Thrones for id 1399, 404 else), and TheTVDB's /updates path (login
- * JWT, the chained updates feed, Breaking Bad's extended payload for the one
- * discovered recordId 434847).
+ * Fake every host a default catalog:sync touches with happy-path fixtures: the
+ * TMDB changes feeds, the shared TMDB API (The Matrix for id 603, Game of Thrones
+ * for id 1399, 404 else), and TheTVDB's /updates path (login JWT, the chained
+ * updates feed, Breaking Bad's extended payload for the one discovered recordId
+ * 434847).
+ *
+ * The ids export is stubbed EMPTY rather than omitted: a default run must never
+ * download it, and an empty body makes a run that still does fail on its
+ * behavioural assertion instead of dying as a stray request.
  */
 function fakeCatalogSync(): void
 {
     Http::fake([
-        '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
-        // Both TMDB commands hit their changes feed after the insert phase on a
-        // default run; empty-results pages drive the update phase through its
-        // success path (no swallowed exception, no stray stack trace). Listed
-        // before the generic detail stub since they live on the same host.
-        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*movie_ids*' => Http::response(gzencode('')),
+        // The changes feed is the incremental movies leg's only source, so The Matrix
+        // (603) has to arrive through it. The shows leg's feed stays empty, driving
+        // its update phase through the success path (no swallowed exception, no stray
+        // stack trace). Both are listed before the generic detail stub since they live
+        // on the same host.
+        '*/movie/changes*' => Http::response('{"results":[{"id":603}],"page":1,"total_pages":1,"total_results":1}'),
         '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => function (Request $request) {
             if (Str::contains($request->url(), '/movie/603')) {
@@ -78,21 +91,23 @@ function fakeCatalogSync(): void
 }
 
 /**
- * The full-crawl fake for a --fresh run: TheTVDB's login, the allSeries crawl
- * (/series?page=0|1), and Breaking Bad's extended payload for recordId 434847
- * (404 for every other crawled id). The /updates feed is faked too, purely as a
- * should-not-fire guard — under --fresh the TVDB step is the crawl, so the test
- * proves /updates is never requested. The specific /series?page patterns precede
- * the wildcard extended-series pattern so Http::fake matches them correctly.
+ * The full-seed fake for a --fresh run: the real ids export the catalog:seed-movies
+ * leg scans, TheTVDB's login, the allSeries crawl (/series?page=0|1), and Breaking
+ * Bad's extended payload for recordId 434847 (404 for every other crawled id). The
+ * /updates feed is faked too, purely as a should-not-fire guard — under --fresh the
+ * TVDB step is the crawl, so the test proves /updates is never requested. The
+ * specific /series?page patterns precede the wildcard extended-series pattern so
+ * Http::fake matches them correctly.
  */
 function fakeCatalogSyncFreshAndUpdates(): void
 {
     Http::fake([
         '*movie_ids*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz')),
-        // Both TMDB commands hit their changes feed after the insert phase on a
-        // default run; empty-results pages drive the update phase through its
-        // success path (no swallowed exception, no stray stack trace). Listed
-        // before the generic detail stub since they live on the same host.
+        // /movie/changes is a should-not-fire guard here: under --fresh the movies
+        // step is the export seed, which reads no changes feed. /tv/changes is real —
+        // the TMDB show sync still runs — and its empty-results page drives that
+        // update phase through its success path. Both are listed before the generic
+        // detail stub since they live on the same host.
         '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
         '*api.themoviedb.org*' => function (Request $request) {
@@ -126,10 +141,12 @@ function fakeCatalogSyncFreshAndUpdates(): void
  * into its own `Artisan::call` per child, which leaves the kernel's last output an
  * `OutputStyle` — no `fetch()`, so the read yields ''. Passing our own buffer keeps
  * the whole run in one readable string, which is what ordering assertions need.
+ *
+ * @param  array<string, bool>  $arguments
  */
-function catalogSyncOutput(): string
+function catalogSyncOutput(array $arguments = []): string
 {
-    Artisan::call('catalog:sync', [], $buffer = new BufferedOutput);
+    Artisan::call('catalog:sync', $arguments, $buffer = new BufferedOutput);
 
     return $buffer->fetch();
 }
@@ -148,6 +165,8 @@ describe('catalog:sync title creation', function (): void {
         $this->artisan('catalog:sync');
 
         // Assert
+        // The ids export is stubbed empty, so the changes feed is the only place 603
+        // can have come from: the incremental leg discovered and inserted The Matrix.
         $matrix = Movie::where('_tmdb_id', 603)->first();
         expect($matrix)->not->toBeNull();
         expect($matrix->_imdb_id)->toBe('tt0133093');
@@ -226,17 +245,18 @@ describe('catalog:sync exit codes and failure handling', function (): void {
         Sleep::fake();
         Exceptions::fake();
         // Http::fake merges stubs and the first registered match wins, so this 500
-        // registered ahead of the happy-path helper overrides only the ids export.
-        Http::fake(['*movie_ids*' => Http::response('', 500)]);
+        // registered ahead of the happy-path helper overrides only the changes feed —
+        // the incremental movies leg's sole source, and so its only way to die.
+        Http::fake(['*/movie/changes*' => Http::response('', 500)]);
         fakeCatalogSync();
 
         // Act & Assert
         $this->artisan('catalog:sync')->assertExitCode(Command::FAILURE);
 
         // Assert
-        // The dead export takes catalog:sync-movies down with it, but the orchestrator
+        // The dead feed takes catalog:sync-movies down with it, but the orchestrator
         // reports the throwable and keeps dispatching — so the TVDB show still lands.
-        Exceptions::assertReported(fn (RequestException $e): bool => true);
+        Exceptions::assertReported(TmdbRequestFailed::class);
         expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
     });
 
@@ -244,20 +264,18 @@ describe('catalog:sync exit codes and failure handling', function (): void {
         // Arrange
         Sleep::fake();
         Exceptions::fake();
-        Http::fake(['*movie_ids*' => Http::response('', 500)]);
+        Http::fake(['*/movie/changes*' => Http::response('', 500)]);
         fakeCatalogSync();
 
         // Act & Assert
-        // The defect this pins: a leg that threw was report()ed and nothing was
-        // printed, so a run that lost a leg read as a clean exit at the prompt.
-        // The 500 lands inside the download phase, so the phase must close itself
-        // too — without that line its start line is the last thing printed and a
-        // dead phase is indistinguishable from a hung one. Asserted as a prefix
-        // because the elapsed seconds vary.
+        // The defect this pins: a leg that lost its window was report()ed and nothing
+        // was printed, so a run that lost a leg read as a clean exit at the prompt.
+        // The leg catches the feed failure itself and closes on a non-zero exit code,
+        // so the orchestrator has to relay that code by name — otherwise the only
+        // trace of a half-covered window is buried in the child's own output.
         $this->artisan('catalog:sync')
-            ->expectsOutputToContain('Downloading movie-ids export… failed after')
-            ->expectsOutputToContain('catalog:sync-movies failed:')
-            ->expectsOutputToContain('Completed with 1 failed leg: catalog:sync-movies')
+            ->expectsOutputToContain('catalog:sync-movies failed with exit code 1')
+            ->expectsOutputToContain('Failed commands: catalog:sync-movies')
             ->assertExitCode(Command::FAILURE);
     });
 
@@ -281,7 +299,7 @@ describe('catalog:sync exit codes and failure handling', function (): void {
 });
 
 describe('catalog:sync --fresh and default routing', function (): void {
-    it('under --fresh crawls the full TVDB seed and forwards --fresh to both TMDB syncs', function (): void {
+    it('under --fresh crawls the full TVDB seed, re-seeds every exported movie and forwards --fresh to the TMDB show sync', function (): void {
         // Arrange
         fakeCatalogSyncFreshAndUpdates();
         Movie::factory()->withTmdb()->create(['_tmdb_id' => 603]);
@@ -296,9 +314,10 @@ describe('catalog:sync --fresh and default routing', function (): void {
         // must never fire. The marker-driven episodes step still walks /updates, and
         // the shared fixture's real next-link is a type=series&page=1 capture, so we
         // discriminate on the page-0 entry rather than that borrowed cursor; the
-        // type=episodes dispatch itself is asserted elsewhere. Forwarding --fresh
-        // reprocesses the already-synced 603/1399 rows a plain run skips, so both
-        // hydrations fire.
+        // type=episodes dispatch itself is asserted elsewhere. Both TMDB hydrations
+        // are discriminators for a forwarded --fresh: 603 and 1399 are arranged as
+        // already-synced rows, which a plain export seed filters out and a plain show
+        // sync skips, so each request can only come from a leg that got the flag.
         Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
         Http::assertNotSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=series')
             && ! Str::contains($request->url(), 'page='));
@@ -306,22 +325,57 @@ describe('catalog:sync --fresh and default routing', function (): void {
         Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
     });
 
-    it('on a default run uses the TVDB updates feed and forwards no --fresh to the TMDB syncs', function (): void {
+    it('on a default run uses the TVDB updates feed and forwards no --fresh to the TMDB show sync', function (): void {
         // Arrange
         fakeCatalogSync();
-        Movie::factory()->withTmdb()->create(['_tmdb_id' => 603]);
         Show::factory()->withTmdb()->create(['_tmdb_id' => 1399]);
 
         // Act
         $this->artisan('catalog:sync');
 
         // Assert
-        // No --fresh means the updates feed (never the crawl) and the already-synced
-        // 603/1399 rows are skipped, so neither hydration fires.
+        // No --fresh means the updates feed, never the crawl, and the already-synced
+        // 1399 row is skipped so its hydration never fires. The movies leg is no
+        // longer part of this pair: catalog:sync-movies carries no --fresh option at
+        // all, and refreshes every id its changes feed reports whether the catalog
+        // holds it or not — what the default run must NOT do there is fetch the ids
+        // export, asserted in "catalog:sync movies-leg routing".
         Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/updates'));
         Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series?page'));
-        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/603'));
         Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/1399'));
+    });
+});
+
+describe('catalog:sync movies-leg routing', function (): void {
+    it('downloads no ids export on a default run, reading the changes feed instead', function (): void {
+        // Arrange
+        fakeCatalogSync();
+
+        // Act
+        $this->artisan('catalog:sync');
+
+        // Assert
+        // Both halves matter: the twice-daily sync must not re-scan a ~1M-row export,
+        // and the feed assertion is what stops a run that did nothing at all from
+        // passing the first half by default.
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), 'movie_ids'));
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
+    });
+
+    it('dispatches catalog:seed-movies under --fresh, never catalog:sync-movies', function (): void {
+        // Arrange
+        fakeCatalogSyncFreshAndUpdates();
+
+        // Act
+        $output = catalogSyncOutput(['--fresh' => true]);
+
+        // Assert
+        // The announcement line names which leg was dispatched; the export request is
+        // the independent behavioural half, since only the seed leg downloads it.
+        // Together they pin the switch without reaching for the dispatcher itself.
+        expect($output)->toContain('Running catalog:seed-movies…');
+        expect($output)->not->toContain('Running catalog:sync-movies…');
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'movie_ids'));
     });
 });
 
@@ -385,7 +439,7 @@ describe('catalog:sync progress output', function (): void {
         // under PHP's loose comparison — so the presence check has to be its own
         // assertion rather than being folded into the ordering one.
         $announcedAt = strpos($output, 'Running catalog:sync-movies…');
-        $firstPhaseAt = strpos($output, 'Downloading movie-ids export…');
+        $firstPhaseAt = strpos($output, 'Syncing changed movies…');
 
         expect($announcedAt)->toBeInt();
         expect($announcedAt)->toBeLessThan($firstPhaseAt);
@@ -399,8 +453,9 @@ describe('catalog:sync progress output', function (): void {
         Sleep::fake();
         Exceptions::fake();
         // Http::fake merges stubs and the first registered match wins, so this 500
-        // registered ahead of the happy-path helper overrides only the ids export.
-        Http::fake(['*movie_ids*' => Http::response('', 500)]);
+        // registered ahead of the happy-path helper overrides only the changes feed —
+        // the incremental movies leg's sole source, and so its only way to die.
+        Http::fake(['*/movie/changes*' => Http::response('', 500)]);
         fakeCatalogSync();
 
         // Act
