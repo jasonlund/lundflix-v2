@@ -8,6 +8,7 @@ use App\Domains\Catalog\Models\Season;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Download\Models\Download;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -211,5 +212,64 @@ describe('db:import shell escaping', function (): void {
             (string) $process->command,
             escapeshellarg(base_path('tests/Fixtures/Database').'/movies.sql.gz'),
         ));
+    });
+});
+
+describe('db:import output', function (): void {
+    it('announces itself before the first table it loads', function (): void {
+        // Arrange
+        Process::fake();
+
+        // Act
+        Artisan::call('db:import', ['--from' => base_path('tests/Fixtures/Database')]);
+
+        // The phase line has to precede the first destructive truncate; at this seam
+        // its position ahead of the first per-table line is the observable form of that.
+        // Assert
+        $output = Artisan::output();
+        expect($output)->toContain('Importing the dumps…');
+        expect(strpos($output, 'Importing the dumps…'))->toBeLessThan(strpos($output, '  [import movies]'));
+    });
+
+    it('reports every table it loads', function (): void {
+        // Arrange
+        Process::fake();
+
+        // Act
+        Artisan::call('db:import', ['--from' => base_path('tests/Fixtures/Database')]);
+
+        // Assert
+        $output = Artisan::output();
+        foreach (['movies', 'shows', 'media', 'downloads'] as $table) {
+            expect($output)->toContain("  [import {$table}]");
+        }
+    });
+
+    it('reports nothing for a table whose dump file is absent', function (): void {
+        // Arrange
+        $dir = storage_path('framework/testing/import-'.uniqid());
+        File::ensureDirectoryExists($dir);
+        File::copy(base_path('tests/Fixtures/Database/movies.sql.gz'), "{$dir}/movies.sql.gz");
+        Process::fake();
+
+        // Act
+        Artisan::call('db:import', ['--from' => $dir]);
+
+        // Assert
+        $output = Artisan::output();
+        expect($output)->toContain('  [import movies]');
+        foreach (['shows', 'seasons', 'media', 'downloads'] as $absent) {
+            expect($output)->not->toContain("[import {$absent}]");
+        }
+    });
+
+    it('ends a completed run with a Done. line', function (): void {
+        // Arrange
+        Process::fake();
+
+        // Act & Assert
+        $this->artisan('db:import', ['--from' => base_path('tests/Fixtures/Database')])
+            ->expectsOutputToContain('Done.')
+            ->assertSuccessful();
     });
 });

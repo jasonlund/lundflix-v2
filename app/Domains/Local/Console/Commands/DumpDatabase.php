@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Local\Console\Commands;
 
+use App\Domains\Common\Console\Concerns\EmitsHeartbeat;
 use App\Domains\Local\Database\DumpFit;
 use App\Domains\Local\Database\DumpSelection;
 use App\Domains\Local\Database\MysqlConnection;
@@ -20,6 +21,8 @@ use Illuminate\Support\Str;
 #[Signature('db:dump {--unlimited} {--vc} {--full} {--path=}')]
 class DumpDatabase extends Command
 {
+    use EmitsHeartbeat;
+
     /**
      * Per-file budget for the version-controlled set, held under GitHub's 50 MiB
      * warning line. The 512 KiB margin absorbs run-to-run drift: the fit measures
@@ -42,12 +45,16 @@ class DumpDatabase extends Command
         $writeFull = ! $this->option('vc') || $this->option('full');
 
         if ($writeVc) {
+            $this->output->writeln('Dumping the version-controlled set…');
             $this->dumpSet(database_path('dumps'), capped: ! $this->option('unlimited'));
         }
 
         if ($writeFull) {
+            $this->output->writeln('Dumping the full set…');
             $this->dumpSet($this->fullDir(), capped: false);
         }
+
+        $this->output->writeln('Done.');
 
         return self::SUCCESS;
     }
@@ -72,6 +79,10 @@ class DumpDatabase extends Command
         if (! $capped) {
             foreach (self::TABLES as $table) {
                 $this->dumpTable($table, null, "{$dir}/{$table}.sql.gz");
+
+                // Uncapped dumps every row, so the reported total costs a count per
+                // table — there is no fitted number to reuse as the capped branch has.
+                $this->mark("dump {$table}", DB::table($table)->count());
             }
 
             return;
@@ -119,6 +130,7 @@ class DumpDatabase extends Command
         );
 
         $this->dumpTable($table, $whereFor($n), $dest);
+        $this->mark("dump {$table}", $n);
 
         return $n;
     }

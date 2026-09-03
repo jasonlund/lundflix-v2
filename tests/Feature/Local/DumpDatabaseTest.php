@@ -8,6 +8,7 @@ use App\Domains\Catalog\Models\Season;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Download\Models\Download;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -181,5 +182,86 @@ describe('db:dump destination paths and failure', function (): void {
         // Assert
         Process::assertRan(fn ($process): bool => Str::contains((string) $process->command, '/tmp/lundflix-dumps/movies.sql.gz'));
         Process::assertNotRan(fn ($process): bool => Str::contains((string) $process->command, 'database/dumps/'));
+    });
+});
+
+describe('db:dump output', function (): void {
+    it('announces both sets on a default run', function (): void {
+        // Arrange
+        Movie::factory()->count(3)->create();
+        Show::factory()->count(3)->create();
+        Media::factory()->count(3)->create();
+        Download::factory()->count(3)->create();
+        Process::fake();
+
+        // Act & Assert
+        $this->artisan('db:dump')
+            ->expectsOutputToContain('Dumping the version-controlled set…')
+            ->expectsOutputToContain('Dumping the full set…')
+            ->assertSuccessful();
+    });
+
+    it('announces only the version-controlled set when --vc is passed', function (): void {
+        // Arrange
+        Movie::factory()->count(3)->create();
+        Process::fake();
+
+        // Act & Assert
+        $this->artisan('db:dump', ['--vc' => true])
+            ->expectsOutputToContain('Dumping the version-controlled set…')
+            ->doesntExpectOutputToContain('Dumping the full set…')
+            ->assertSuccessful();
+    });
+
+    it('closes the run with a completion line', function (): void {
+        // Arrange
+        Movie::factory()->count(3)->create();
+        Process::fake();
+
+        // Act & Assert
+        $this->artisan('db:dump', ['--vc' => true])
+            ->expectsOutputToContain('Done.')
+            ->assertSuccessful();
+    });
+
+    it('reports the fitted row count for a capped table', function (): void {
+        // Arrange
+        Movie::factory()->count(3)->create();
+        // Only the measuring pipeline ends in `wc -c`; the dump pipeline ends in
+        // `gzip -c > '…'`. Answering every measurement oversized drives the binary
+        // search down to a fitted 0, which a plain row count could never print — so
+        // the reported number can only have come from the fit.
+        Process::fake(['*wc -c*' => Process::result(output: '99999999'), '*' => Process::result()]);
+
+        // Act & Assert
+        $this->artisan('db:dump', ['--vc' => true])
+            ->expectsOutputToContain('  [dump movies 0]')
+            ->assertSuccessful();
+    });
+
+    it('reports the table row count for an uncapped table', function (): void {
+        // Arrange
+        Movie::factory()->count(3)->create();
+        Process::fake();
+
+        // Act & Assert
+        $this->artisan('db:dump', ['--full' => true, '--path' => '/tmp/lundflix-dumps'])
+            ->expectsOutputToContain('  [dump movies 3]')
+            ->assertSuccessful();
+    });
+
+    it('reports a capped table once, not once per fit measurement', function (): void {
+        // Arrange
+        Movie::factory()->count(3)->create();
+        // The oversized measuring stage makes the binary search take several
+        // measurements for movies, so an implementation that beat inside measure()
+        // would emit more than one line here.
+        Process::fake(['*wc -c*' => Process::result(output: '99999999'), '*' => Process::result()]);
+
+        // Act
+        Artisan::call('db:dump', ['--vc' => true]);
+
+        // Assert
+        expect(substr_count(Artisan::output(), '[dump movies'))->toBe(1);
     });
 });
