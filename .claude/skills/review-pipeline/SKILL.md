@@ -91,10 +91,12 @@ before speaking.
    or cross-system/integration issue. Style, formatting, naming taste, and
    "alternative approach" preferences are **not** defects — cap them at NIT and
    respect the nit cap, or say nothing.
-   **Verbatim duplication also qualifies as objective** — that two blocks are
-   byte-identical is a measurable fact, not taste, so it is not NIT-capped. This
-   exemption is narrow and belongs to `duplication-reviewer`: it covers repetition
-   it can quote twice, never "these two look similar".
+   **Duplication also qualifies as objective** — that two blocks are
+   byte-identical or near-verbatim (differing only by type/name/literal) is a
+   measurable fact, not taste, so it is not NIT-capped. This exemption is
+   narrow. It belongs to `duplication-reviewer`, and to `testing-reviewer` for
+   cloned test helpers, fixtures, and repeated Arrange blocks. It covers
+   repetition the agent can quote twice, never "these two look similar".
 4. **Ownership bar — not already owned.** A deterministic gate
    (Pint/Rector/ESLint/Vitest/Pest) or an endorsed convention does not already own
    it. Repeating a gate or flagging an endorsed pattern is itself a review defect
@@ -205,7 +207,8 @@ rules bind every entry, without exception:**
   generality and overengineering as BLOCKING or SHOULD_FIX. Both hold: grade the
   grounded defect, cap the bare label. **Duplication is the exception and is never
   BLOCKING** — it breaks no behavior, so it is not on the BLOCKING list above.
-  `duplication-reviewer` owns it and floors at CONSIDER.
+  `duplication-reviewer` owns it and floors at CONSIDER; `testing-reviewer`
+  owns cloned test helpers, fixtures, and repeated Arrange blocks.
 
 Each reads *what it is* → *the fix*:
 

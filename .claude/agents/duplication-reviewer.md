@@ -22,7 +22,8 @@ sweep safe, and nothing reaches it. That is your primary territory.
 You also backstop duplicated *code*, because the sweep is conditional (a genuine
 one-slice PR skips it), approval-gated (the user can decline), and absent entirely
 on PRs that never ran `/review:run`. If the sweep already ran and consolidated,
-there is simply nothing left for you to find — no double-reporting in practice.
+there is no duplicated *code* left for you to find — no double-reporting in
+practice. It never touches **prose**, so that territory is yours either way.
 
 **You are a reporter, not a fixer.** The sweep applies changes behind a green gate;
 you emit findings into the review pipeline. Never propose running it yourself.
@@ -48,7 +49,7 @@ Quote the two and name the shared members.
 A helper function defined near-identically in two test files, or the same multi-line
 Arrange repeated across a file. Note: **near-identical test *bodies* are the
 convention here, not a finding** — one Act per test is the rule. Only helpers,
-fixtures, and repeated Arrange setup count. (See `testing-reviewer.md`.)
+fixtures, and repeated Arrange setup count. (See `.claude/agents/testing-reviewer.md`.)
 
 ### 4. Repeated literal blocks
 The same constant, config array, magic-number set, or query builder chain written
@@ -92,7 +93,9 @@ repetition that now justifies extraction.
   intentional, per `CLAUDE.md`.
 - Similar-but-not-identical logic. If deduping it would require inventing an
   abstraction to reconcile real differences, stay silent.
-- Duplication entirely inside untouched files. Scope is the PR diff.
+- Duplication entirely inside untouched files. Scope is the PR diff; a touched copy
+  duplicating an untouched one is in scope, capped at CONSIDER and tagged
+  pre-existing.
 
 ## Output Format
 
@@ -100,9 +103,11 @@ Return findings in the standard `=== FINDING ===` block from
 `.claude/skills/review-pipeline/SKILL.md`, `SOURCE: duplication-reviewer`,
 `CATEGORY: architecture` (or `testing` for test helpers/fixtures). Set `FILE`/`LINE`
 to the **second** occurrence and quote **both** in EVIDENCE with their own
-`file:line`. RECOMMENDATION names the concrete extraction — the shared parent, trait,
-helper, or constant, and where it should live. If the PR is free of duplication,
-return a `=== NO FINDINGS ===` block naming the file pairs you compared.
+`file:line`. RECOMMENDATION names **both** occurrences with their `file:line` —
+it is the only field the posted PR comment carries — plus the concrete extraction:
+the shared parent, trait, helper, or constant, and where it should live. If the PR
+is free of duplication, return a `=== NO FINDINGS ===` block naming the file pairs
+you compared.
 
 ## Convention-Awareness
 
