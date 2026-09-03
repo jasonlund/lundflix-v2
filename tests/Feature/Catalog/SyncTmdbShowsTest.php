@@ -6,6 +6,7 @@ use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Exceptions\TmdbShowCrosswalkCollision;
 use App\Domains\Catalog\Models\Show;
+use App\Domains\Catalog\Support\SyncMarker;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -430,7 +431,7 @@ describe('catalog:sync-shows-tmdb changes-feed update phase', function (): void 
         // window starts fall on three different calendar days, the only granularity
         // the assertion compares: marker − 6h → 2026-07-13; overlap dropped →
         // 2026-07-14; marker ignored for the 24h fallback → 2026-07-15.
-        Cache::put(SyncFeed::TmdbShows->cacheKey(), now()->subDays(2)->subHours(8)->toImmutable());
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbShows, now()->subDays(2)->subHours(8)->toImmutable());
         Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
         fakeTmdbShowUpdateSync();
 
@@ -746,7 +747,7 @@ describe('catalog:sync-shows-tmdb marker advancement', function (): void {
         $this->artisan('catalog:sync-shows-tmdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbShows->cacheKey())->equalTo(now()))->toBeTrue();
+        expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBe(now()->toIso8601String());
     });
 
     it('advances the shows marker on a --fresh run', function (): void {
@@ -759,7 +760,7 @@ describe('catalog:sync-shows-tmdb marker advancement', function (): void {
         $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbShows->cacheKey())->equalTo(now()))->toBeTrue();
+        expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBe(now()->toIso8601String());
     });
 
     it('does not advance the shows marker when an insert-phase per-id hydrate fails', function (): void {

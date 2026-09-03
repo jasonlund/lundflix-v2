@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
+use App\Domains\Catalog\Support\SyncMarker;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -139,7 +140,7 @@ describe('catalog:sync-episodes-tvdb feed hydration and marker window', function
         // Arrange
         Date::setTestNow('2026-07-16 12:00:00');
         $marker = now()->subHours(10)->toImmutable();
-        Cache::forever(SyncFeed::TvdbEpisodes->cacheKey(), $marker);
+        resolve(SyncMarker::class)->advance(SyncFeed::TvdbEpisodes, $marker);
         fakeTvdbEpisodes();
 
         // Act
@@ -159,7 +160,7 @@ describe('catalog:sync-episodes-tvdb feed hydration and marker window', function
         $this->artisan('catalog:sync-episodes-tvdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey())->equalTo(now()))->toBeTrue();
+        expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBe(now()->toIso8601String());
     });
 
     it('does not advance the marker when an episodes fetch fails', function (): void {

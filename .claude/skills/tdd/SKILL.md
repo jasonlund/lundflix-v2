@@ -22,7 +22,7 @@ only through (a) the prompt you pass in, (b) the text the subagent returns, and
 (c) files on disk (shared workspace).
 
 ```
-YOU approve RED plan card (Conductor plan UI)
+YOU approve RED plan card (plan UI, or terminal approval)
    ▼
 orchestrator ─spawn▶ tdd-test-writer (🔴)  → returns failing output → GATE
    ▼
@@ -85,7 +85,11 @@ seam question above — is adapted from `mattpocock-skills:tdd`'s *Seams: where
 tests go*, which puts tests only at pre-agreed public boundaries. Offer to explain
 the upstream contract when a slice's seam is in question.
 
-## Step 1 — 🔴 RED (presented for approval via Conductor's plan UI)
+## Step 1 — 🔴 RED (presented for approval via the plan UI)
+
+The gate is the **approval**, not the UI that renders it: Conductor's plan UI, or
+plain `EnterPlanMode` / `ExitPlanMode` approval in the terminal under LaborForest +
+Solo. Either way the RED slice is agreed before any test is written.
 
 **On the first slice for a ticket, move it to In Progress.** Before presenting
 that ticket's first RED card, advance the ticket to **In Progress** per the

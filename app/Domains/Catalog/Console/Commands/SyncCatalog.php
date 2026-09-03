@@ -8,6 +8,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Str;
 use Throwable;
 
 #[Description('Sync the catalog from TMDB and TVDB, surviving any single failure')]
@@ -16,35 +17,63 @@ class SyncCatalog extends Command
 {
     public function handle(): int
     {
-        $failedNames = [];
+        $failed = [];
 
         foreach ($this->commands() as $command => $arguments) {
-            $name = resolve($command)->getName();
-
-            $this->output->writeln("Running {$name}…");
+            // The class-string stands in until the friendly name resolves. Reading that
+            // name builds the command through the container, which can throw — inside
+            // the try that costs one leg; outside it would kill every remaining leg and
+            // the closing summary, in the one command that exists to survive a failure.
+            $name = $command;
 
             try {
-                if (Artisan::call($command, $arguments, $this->output) !== self::SUCCESS) {
-                    $failedNames[] = $name;
+                $name = $this->commandName($command);
+
+                $this->output->writeln("Running {$name}…");
+
+                $exitCode = Artisan::call($command, $arguments, $this->output);
+
+                // Defensive and currently unreachable: every leg returns SUCCESS even
+                // when individual ids failed, spending its failure flag on holding the
+                // sync marker back instead. No test exercises this — don't read it as covered.
+                if ($exitCode !== self::SUCCESS) {
+                    $this->output->writeln("{$name} failed with exit code {$exitCode}");
+                    $failed[] = $name;
                 }
             } catch (Throwable $e) {
                 report($e);
-                $failedNames[] = $name;
+                $this->output->writeln("{$name} failed: {$e->getMessage()}");
+                $failed[] = $name;
             }
         }
 
-        // Names the guilty children rather than counting them, so this cannot go
-        // through EmitsHeartbeat::failureSummary(): that renders a count, which
-        // here would say "1 command failed" of a run whose whole point is that it
-        // kept going — leaving the operator to find which one in the interleaved
-        // wall of child output.
-        if ($failedNames !== []) {
-            $this->output->writeln('Failed commands: '.implode(', ', $failedNames));
+        if ($failed === []) {
+            $this->output->writeln('Done.');
+
+            return self::SUCCESS;
         }
 
-        $this->output->writeln('Done.');
+        // The per-leg line above scrolls away under a quarter-hour of heartbeats, so
+        // the run also closes by naming every leg it lost — an operator coming back to
+        // the terminal reads the last line, not the transcript.
+        $this->output->writeln(
+            'Completed with '.count($failed).' failed '.Str::plural('leg', $failed).': '.implode(', ', $failed)
+        );
 
-        return $failedNames === [] ? self::SUCCESS : self::FAILURE;
+        return self::FAILURE;
+    }
+
+    /**
+     * The artisan signature behind a class-string key — `catalog:sync-movies`, the
+     * name an operator can re-run, rather than an FQCN they would have to translate.
+     * Resolving it is container work that can throw, so callers read it from inside
+     * their own failure handling.
+     *
+     * @param  class-string<Command>  $command
+     */
+    private function commandName(string $command): string
+    {
+        return resolve($command)->getName() ?? $command;
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Show;
+use App\Domains\Catalog\Support\SyncMarker;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -76,7 +77,7 @@ describe('catalog:sync-shows-tvdb updates-feed hydration and marker', function (
         // Arrange
         Date::setTestNow('2026-07-16 12:00:00');
         $marker = now()->subHours(10)->toImmutable();
-        Cache::forever(SyncFeed::TvdbShows->cacheKey(), $marker);
+        resolve(SyncMarker::class)->advance(SyncFeed::TvdbShows, $marker);
         fakeTvdbUpdates();
 
         // Act
@@ -107,7 +108,7 @@ describe('catalog:sync-shows-tvdb updates-feed hydration and marker', function (
         $this->artisan('catalog:sync-shows-tvdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TvdbShows->cacheKey())->equalTo(now()))->toBeTrue();
+        expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBe(now()->toIso8601String());
     });
 
     it('does not advance the marker when a hydrate fails', function (): void {

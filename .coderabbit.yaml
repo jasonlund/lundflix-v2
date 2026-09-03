@@ -56,6 +56,24 @@ reviews:
         `report()`ed and never thrown, so the message reaches the operator's log
         only — the user sees generic copy from a lang file. Carrying the detail
         that says which account failed and why is the deliberate design.
+    - path: "app/**"
+      instructions: >-
+        Do not flag a domain importing `App\Domains\Common\Data\*` as a
+        cross-domain boundary violation, and do not ask for such a DTO to be
+        republished behind `App\Domains\Common\Contracts` or a Common service.
+        `Common` is the documented shared kernel and explicitly holds DTOs, so
+        depending on one is the intended direction; the "only through
+        `Contracts/`" rule governs reaching into another domain's internals, not
+        the kernel. Routing a plain data carrier through an interface would add
+        indirection with no second implementation behind it.
+
+
+        Do not suggest replacing `array_key_exists()` with `Arr::exists()`.
+        `.ai/guidelines/project.md` lists `array_key_exists` under "stay native —
+        do NOT 'fix' these", because `Arr::exists($array, $key)` swaps the
+        argument order and the project's positional Rector map cannot express it.
+        `array_key_exists()` is also the correct call where a key whose value is
+        `null` must still count as present, which `isset()` would miss.
   auto_review:
     enabled: true
     # Only auto-review PRs targeting main, so branch-to-branch diffs don't
