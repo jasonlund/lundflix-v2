@@ -36,9 +36,13 @@ return [
 
     'stores' => [
 
+        // Serializing on purpose, against the framework default: this is the store the
+        // test suite runs on, and a non-serializing store round-trips objects the
+        // production store cannot. Leaving it false made SyncMarker's cached Carbon
+        // pass every test and fail every production run (FLIX-287).
         'array' => [
             'driver' => 'array',
-            'serialize' => false,
+            'serialize' => true,
         ],
 
         'database' => [

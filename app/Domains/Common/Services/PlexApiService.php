@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domains\Common\Services;
 
+use App\Domains\Common\Data\PlexAccount;
+use App\Domains\Common\Data\PlexPin;
+use App\Domains\Common\Data\PlexServerConnection;
 use App\Domains\Common\Exceptions\PlexAuthenticationFailed;
 use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\Common\Exceptions\PlexServerIdentifierMissing;
@@ -24,10 +27,7 @@ final class PlexApiService
 
     private const string PRODUCT_NAME = 'lundflix';
 
-    /**
-     * @return array{id: int, code: string}
-     */
-    public function createPin(): array
+    public function createPin(): PlexPin
     {
         $url = self::CLIENTS_HOST.'/pins?strong=true';
 
@@ -39,10 +39,10 @@ final class PlexApiService
 
         $body = $this->decode($response);
 
-        return [
-            'id' => $body['id'] ?? null,
-            'code' => $body['code'] ?? null,
-        ];
+        return new PlexPin(
+            $body['id'] ?? null,
+            $body['code'] ?? null,
+        );
     }
 
     public function getTokenFromPin(int $pinId): ?string
@@ -64,20 +64,17 @@ final class PlexApiService
         return self::AUTH_HOST.'#?'.$params;
     }
 
-    /**
-     * @return array{id: int|null, uuid: string|null, username: string|null, email: string|null, thumb: string|null}
-     */
-    public function getUserInfo(string $token): array
+    public function getUserInfo(string $token): PlexAccount
     {
         $body = $this->decode($this->get(self::USER_HOST.'/user', $token)) ?? [];
 
-        return [
-            'id' => $body['id'] ?? null,
-            'uuid' => $body['uuid'] ?? null,
-            'username' => $body['username'] ?? null,
-            'email' => $body['email'] ?? null,
-            'thumb' => $body['thumb'] ?? null,
-        ];
+        return new PlexAccount(
+            $body['id'] ?? null,
+            $body['uuid'] ?? null,
+            $body['username'] ?? null,
+            $body['email'] ?? null,
+            $body['thumb'] ?? null,
+        );
     }
 
     /**
@@ -115,21 +112,39 @@ final class PlexApiService
     }
 
     /**
-     * @return Collection<int, mixed>
+     * @return Collection<int, PlexServerConnection>
      */
     public function getOnlineServers(string $token): Collection
     {
         return $this->getUserResources($token)
             ->filter(fn (array $r): bool => ($r['provides'] ?? '') === 'server' && ($r['presence'] ?? false) === true)
-            ->map(fn (array $r): array => [
-                'name' => $r['name'],
-                'clientIdentifier' => $r['clientIdentifier'],
-                'accessToken' => $r['accessToken'],
-                'owned' => $r['owned'],
-                'uri' => $this->selectBestConnection($r['connections'] ?? []),
-            ])
-            ->filter(fn (array $s): bool => $s['uri'] !== null)
+            ->map(fn (array $resource): ?PlexServerConnection => $this->toServerConnection($resource))
+            ->filter()
             ->values();
+    }
+
+    /**
+     * Project a discovery resource, or null when none of its connections is
+     * reachable: {@see PlexServerConnection::$uri} is non-nullable, so a server
+     * with no usable uri is dropped rather than constructed.
+     *
+     * @param  array<string, mixed>  $resource
+     */
+    private function toServerConnection(array $resource): ?PlexServerConnection
+    {
+        $uri = $this->selectBestConnection($resource['connections'] ?? []);
+
+        if ($uri === null) {
+            return null;
+        }
+
+        return new PlexServerConnection(
+            name: $resource['name'],
+            clientIdentifier: $resource['clientIdentifier'],
+            accessToken: $resource['accessToken'],
+            owned: $resource['owned'],
+            uri: $uri,
+        );
     }
 
     /**

@@ -93,6 +93,8 @@ and resolve. The fixing happens in `review-fixer` subagents.
    resolution receipts are skipped, not re-triaged.)
 6. **Conductor diff-comments** — read from the **current conversation's attachments**
    (the Conductor MCP cannot fetch them). If none are attached, note that and move on.
+   Under LaborForest + Solo there is no diff-comment equivalent, so this source is
+   simply empty and GitHub carries all the feedback.
 7. **Linear ticket context (body + comments).** Resolve every ticket id in the branch
    name and fetch each with `mcp__linear-server__get_issue` **and**
    `mcp__linear-server__list_comments`. Read the **body and the full comment thread** —

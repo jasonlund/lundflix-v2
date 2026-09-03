@@ -19,8 +19,9 @@ diff back never returns it.
 
 **3. Do you need to hand off?** Only for a **new harness**, a **new directory or
 repo**, a **colleague**, or forking a side task found **mid-phase**. What a handoff
-buys is portability. Nothing travelling means no handoff. In Conductor, a new
-workspace is the usual answer here.
+buys is portability. Nothing travelling means no handoff. A new workspace is the
+usual answer here — `lf` cutting a worktree under LaborForest, or a new Conductor
+workspace.
 
 **4. Can the task run AFK?** Scoped tightly enough to need no steering → a
 **subagent**, leaving this session untouched. Automated review is the standard case.

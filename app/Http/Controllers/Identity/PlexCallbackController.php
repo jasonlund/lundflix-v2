@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Identity;
 use App\Domains\Common\Exceptions\PlexAuthenticationFailed;
 use App\Domains\Common\Exceptions\PlexRequestFailed;
 use App\Domains\Common\Services\PlexApiService;
+use App\Domains\Identity\Data\VerifiedPlexIdentity;
 use App\Domains\Identity\Exceptions\PlexAccountAlreadyRegistered;
 use App\Domains\Identity\Exceptions\PlexAccountLacksServerAccess;
 use App\Domains\Identity\Exceptions\PlexAccountMissingId;
@@ -57,7 +58,7 @@ final readonly class PlexCallbackController
 
         // users._plex_id is a nullable integer column, so a null id would turn the
         // lookup below into an IS NULL that matches any password-registered account.
-        if ($plexUser['id'] === null) {
+        if ($plexUser->id === null) {
             report(PlexAccountMissingId::for($pinId));
 
             return $this->refuse('plex.auth_failed');
@@ -69,7 +70,7 @@ final readonly class PlexCallbackController
             return $this->refuse('plex.no_access');
         }
 
-        $existing = User::query()->where('_plex_id', $plexUser['id'])->first();
+        $existing = User::query()->where('_plex_id', $plexUser->id)->first();
 
         if ($existing !== null) {
             report(PlexAccountAlreadyRegistered::for($plexUser, $existing->getKey()));
@@ -77,7 +78,7 @@ final readonly class PlexCallbackController
             return $this->refuse('plex.already_linked');
         }
 
-        PlexSession::stashVerifiedIdentity([...$plexUser, 'token' => $token]);
+        PlexSession::stashVerifiedIdentity(new VerifiedPlexIdentity($plexUser, $token));
 
         return to_route('register');
     }

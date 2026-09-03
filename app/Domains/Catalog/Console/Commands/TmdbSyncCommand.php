@@ -7,13 +7,13 @@ namespace App\Domains\Catalog\Console\Commands;
 use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Console\Commands\Concerns\MeasuresElapsedTime;
+use App\Domains\Catalog\Data\SyncWindow;
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Support\Batches;
 use App\Domains\Catalog\Support\SyncMarker;
-use App\Domains\Catalog\Support\SyncWindow;
 use Carbon\CarbonImmutable;
 use Closure;
 use DateTimeInterface;
@@ -252,7 +252,15 @@ abstract class TmdbSyncCommand extends Command
 
         $startedAt = CarbonImmutable::now();
 
-        $result = $work();
+        try {
+            $result = $work();
+        } catch (\Throwable $e) {
+            // Without this the start line is the last thing printed and the phase's
+            // missing closing line is the only symptom a leg died at all.
+            $this->output->writeln("{$label} failed after {$this->secondsSince($startedAt)}s");
+
+            throw $e;
+        }
 
         $this->output->writeln("{$label} done in {$this->secondsSince($startedAt)}s");
 
