@@ -7,6 +7,7 @@ use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Exceptions\TmdbShowCrosswalkCollision;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\SyncMarker;
+use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
@@ -469,7 +470,7 @@ describe('catalog:sync-shows-tmdb changes-feed update phase', function (): void 
 });
 
 describe('catalog:sync-shows-tmdb changes-feed failure handling', function (): void {
-    it('reports a persistent changes-feed failure and still exits SUCCESS', function (): void {
+    it('reports a persistent changes-feed failure and exits FAILURE', function (): void {
         // Arrange
         Exceptions::fake();
         // Empty export → the insert phase is a no-op; the changes feed 404s on every
@@ -481,13 +482,13 @@ describe('catalog:sync-shows-tmdb changes-feed failure handling', function (): v
         ]);
 
         // Act
-        $this->artisan('catalog:sync-shows-tmdb')->assertExitCode(0);
+        $this->artisan('catalog:sync-shows-tmdb')->assertExitCode(Command::FAILURE);
 
         // Assert
         Exceptions::assertReported(TmdbRequestFailed::class);
     });
 
-    it('reports a mid-stream changes-feed failure and still exits SUCCESS', function (): void {
+    it('reports a mid-stream changes-feed failure and exits FAILURE', function (): void {
         // Arrange
         Exceptions::fake();
         // The feed fails on page TWO, not page one: it yields page 1's ids first and
@@ -497,11 +498,38 @@ describe('catalog:sync-shows-tmdb changes-feed failure handling', function (): v
         Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
         fakeTmdbShowMidStreamChangesFailure();
 
-        // Act
-        $this->artisan('catalog:sync-shows-tmdb')->assertExitCode(0);
+        // A half-read feed page names no entity that failed, so the run can only
+        // count the window it never finished reading.
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tmdb')
+            ->expectsOutputToContain('1 changes-feed window failed; marker not advanced.')
+            ->assertExitCode(Command::FAILURE);
 
         // Assert
         Exceptions::assertReported(TmdbRequestFailed::class);
+    });
+
+    it('closes the run with the failed show count and the marker consequence', function (): void {
+        // Arrange
+        Exceptions::fake();
+        // A held candidate carrying _tmdb_id 500 whose /tv/500 detail 500s persistently;
+        // the pool aggregates it as a per-id failure and drops the key from its result,
+        // so the run ends owing one show.
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 500, 'tmdb_synced_at' => null]);
+        Http::fake([
+            '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+            '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/tv/500')
+                ? Http::response('', 500)
+                : Http::response('', 404),
+        ]);
+
+        // The summary is deliberately unindented: the two-space indent belongs to the
+        // `  [tag value]` heartbeat vocabulary, and a run-level consequence is not one
+        // more running count.
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tmdb')
+            ->expectsOutputToContain('1 shows failed; marker not advanced.')
+            ->doesntExpectOutputToContain('  1 shows failed');
     });
 
     it('does not hydrate the un-flushed partial buffer when a later feed page fails', function (): void {
@@ -658,9 +686,10 @@ describe('catalog:sync-shows-tmdb heartbeat and elapsed phase lines', function (
         // Arrange
         // 1001 candidates, each carrying a distinct _tmdb_id (the column is uniquely
         // indexed), whose every /tv/{id} detail 404s — so nothing hydrates, nothing is
-        // upserted, and the upsert heartbeat can never fire. A scan-unit beat is then
-        // the only thing that can show the walk is alive. A 404 stays present-as-key in
-        // the pooled result, so it is a miss, not a fetch failure.
+        // upserted, and the upsert heartbeat can never fire — the run's closing total is
+        // therefore 0. A scan-unit beat is then the only thing that can show the walk is
+        // alive. A 404 stays present-as-key in the pooled result, so it is a miss, not a
+        // fetch failure.
         $rows = [];
         for ($i = 0; $i < 1001; $i++) {
             $rows[] = ['_tmdb_id' => 900_000 + $i];
@@ -674,7 +703,7 @@ describe('catalog:sync-shows-tmdb heartbeat and elapsed phase lines', function (
         // Act & Assert
         $this->artisan('catalog:sync-shows-tmdb')
             ->expectsOutputToContain('  [scan 1000]')
-            ->doesntExpectOutputToContain('[tmdb shows');
+            ->expectsOutputToContain('  [tmdb shows 0]');
     });
 
     it('prints the reindex phase line and the heartbeat', function (): void {

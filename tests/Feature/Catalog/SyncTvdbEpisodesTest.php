@@ -6,6 +6,7 @@ use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\SyncMarker;
+use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Arr;
@@ -86,6 +87,22 @@ function tvdbEpisodeUpdateRecord(int $recordId, mixed $seriesId): array
         'seriesId' => $seriesId,
         'entityType' => 'episodes',
     ];
+}
+
+/**
+ * The happy-path fakes with the per-show /episodes fetch 500ing: the feed itself
+ * still drains cleanly, so every seeded show the walk reaches fails on its own
+ * fetch and the run ends with failures to report.
+ */
+function fakeTvdbEpisodesWithFailingShowFetch(): void
+{
+    Http::fake([
+        '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+        '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+            ? Http::response(fixtureBytes('Catalog/tvdb/episode_updates_page2.json'))
+            : Http::response(fixtureBytes('Catalog/tvdb/episode_updates.json')),
+        '*api4.thetvdb.com/v4/series/*/episodes*' => Http::response('', 500),
+    ]);
 }
 
 beforeEach(function (): void {
@@ -383,7 +400,33 @@ describe('catalog:sync-episodes-tvdb progress output', function (): void {
         $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('Syncing episodes…');
     });
 
-    it('emits an episode-count heartbeat once the running total crosses 100', function (): void {
+    it('beats the feed drain once every 10 000 records', function (): void {
+        // Arrange
+        // Synthetic feed body: a >10 000-record page is a structural input a committed
+        // real fixture can't practically provide (the committed capture carries 4).
+        // Records otherwise keep TheTVDB's real /updates shape, varying only the ids.
+        // No shows are seeded, so the run issues no /episodes calls and the drain is
+        // the only work it does.
+        $records = array_map(
+            fn (int $seriesId): array => tvdbEpisodeUpdateRecord(9786562 + $seriesId, $seriesId),
+            range(1, 10001),
+        );
+        $body = json_encode(['status' => 'success', 'data' => $records, 'links' => ['prev' => null, 'self' => '/updates', 'next' => null]]);
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/updates*' => Http::response($body),
+        ]);
+
+        // 10 001 records cross exactly one 10 000 boundary, so the first boundary being
+        // present while the second is absent pins the cadence at once per 10 000 —
+        // a per-record or per-page beat would fail one of the two.
+        // Act & Assert
+        $this->artisan('catalog:sync-episodes-tvdb')
+            ->expectsOutputToContain('  [tvdb feed 10000]')
+            ->doesntExpectOutputToContain('  [tvdb feed 20000]');
+    });
+
+    it('emits a source-prefixed episode-count heartbeat once the running total crosses 100', function (): void {
         // Arrange
         // Synthetic feed body: 17 distinct seriesIds (the committed capture carries 3)
         // is a structural input a real fixture can't practically provide — 17 shows ×
@@ -427,10 +470,40 @@ describe('catalog:sync-episodes-tvdb progress output', function (): void {
 
         // The 17th show takes the total to 102, the first crossing of a 100 boundary;
         // the shows before it must stay silent, or the beat is per show, not per 100.
+        // The half-rename guard has to be `[episodes ` — bracket AND trailing space —
+        // because the prefixed line `[tvdb episodes 102]` itself contains the substring
+        // `episodes 102]`, so a naked `episodes` guard would reject the very line it
+        // exists to allow. Only the opening bracket immediately followed by the bare tag
+        // identifies the old, unprefixed shape.
         // Act & Assert
         $this->artisan('catalog:sync-episodes-tvdb')
-            ->expectsOutputToContain('[episodes 102]')
-            ->doesntExpectOutputToContain('[episodes 6]');
+            ->expectsOutputToContain('[tvdb episodes 102]')
+            ->doesntExpectOutputToContain('[tvdb episodes 6]')
+            ->doesntExpectOutputToContain('[episodes ');
+    });
+});
+
+describe('catalog:sync-episodes-tvdb run-closing output', function (): void {
+    it('reports its exact final count on a run that never reaches the beat interval', function (): void {
+        // Arrange
+        // The happy-path fake walks exactly one seeded show, whose /episodes crawl pages
+        // 3 + 3 = 6 episodes — far short of the 100-episode beat interval, which is why
+        // nothing is printed today. The count is pinned to the observed run (the sibling
+        // `Synced 6 episodes` line), not to the interval arithmetic.
+        fakeTvdbEpisodes();
+        Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('  [tvdb episodes 6]');
+    });
+
+    it('ends the run with a Done. line', function (): void {
+        // Arrange
+        fakeTvdbEpisodes();
+        Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('Done.');
     });
 });
 
@@ -490,6 +563,40 @@ describe('catalog:sync-episodes-tvdb index silence and elapsed phase lines', fun
             ->expectsOutputToContain('Read the episodes update feed in 0s')
             ->expectsOutputToContain('Synced 0 episodes in 0s')
             ->assertExitCode(0);
+    });
+});
+
+describe('catalog:sync-episodes-tvdb failed-show run outcome', function (): void {
+    it('exits FAILURE when a show\'s episodes fetch failed', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+        fakeTvdbEpisodesWithFailingShowFetch();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-episodes-tvdb')->assertExitCode(Command::FAILURE);
+    });
+
+    it('closes the run with the failed show count and the marker consequence', function (): void {
+        // Arrange
+        // One seeded show is walked and its /episodes fetch 500s, so the run's failure
+        // count is 1 — the catch is per show, not per episode or per HTTP attempt.
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+        fakeTvdbEpisodesWithFailingShowFetch();
+
+        // The summary is deliberately unindented: the two-space indent belongs to the
+        // `  [tag value]` heartbeat vocabulary, and a run-level consequence is not one
+        // more running count.
+        // Act
+        $this->artisan('catalog:sync-episodes-tvdb')
+            ->expectsOutputToContain('1 shows failed; marker not advanced.')
+            ->doesntExpectOutputToContain('  1 shows failed')
+            ->run();
+
+        // Assert
+        // The consequence the line claims, proven alongside the line itself.
+        expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBeNull();
     });
 });
 
