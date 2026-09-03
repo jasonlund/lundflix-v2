@@ -93,6 +93,8 @@ final class Show extends Model
             '_tmdb_genres' => 'array',
             '_tmdb_external_ids' => 'array',
             'tmdb_synced_at' => 'datetime',
+            'tmdb_unresolved_attempts' => 'integer',
+            'tmdb_retry_after' => 'datetime',
             '_tvdb_id' => 'integer',
             '_tvdb_year' => 'integer',
             '_tvdb_averageRuntime' => 'integer',

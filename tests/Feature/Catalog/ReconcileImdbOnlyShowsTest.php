@@ -13,7 +13,8 @@ use Illuminate\Support\Facades\Http;
 |--------------------------------------------------------------------------
 | ReconcileImdbOnlyShows resolves the /find tmdb id for a chunk's imdb-only
 | rows and stamps each resolved id onto its row, scoped to its PK. It does not
-| hydrate — it returns the resolved `_tmdb_id` set the caller then hydrates.
+| hydrate — it returns the resolved `_tmdb_id` set the caller then hydrates,
+| alongside whether any lookup failed outright.
 |
 | /find responses are byte-exact real captures:
 | find_tv_by_imdb.json — real /find/tt0903747; tv_results[0].id 1396.
@@ -39,7 +40,8 @@ describe('handle() tmdb id resolution', function (): void {
         $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$show]), resolve(TmdbApiService::class));
 
         // Assert
-        expect($resolved)->toBe([1396]);
+        expect($resolved->resolvedIds)->toBe([1396]);
+        expect($resolved->failed)->toBeFalse();
         expect($show->fresh()->_tmdb_id)->toBe(1396);
     });
 
@@ -52,7 +54,7 @@ describe('handle() tmdb id resolution', function (): void {
         $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$show]), resolve(TmdbApiService::class));
 
         // Assert
-        expect($resolved)->toBe([]);
+        expect($resolved->resolvedIds)->toBe([]);
         expect($show->fresh()->_tmdb_id)->toBeNull();
     });
 
@@ -67,7 +69,7 @@ describe('handle() tmdb id resolution', function (): void {
         $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$imdbOnly]), resolve(TmdbApiService::class));
 
         // Assert
-        expect($resolved)->toBe([]);
+        expect($resolved->resolvedIds)->toBe([]);
         expect($imdbOnly->fresh()->_tmdb_id)->toBeNull();
         Exceptions::assertReported(TmdbShowCrosswalkCollision::class);
     });

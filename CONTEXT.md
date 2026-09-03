@@ -51,6 +51,15 @@ source's feed: several sources report them, and each ingest path must record a
 refused title *as refused* rather than skip it, or the title is rediscovered and
 re-fetched on every later run. See [ADR-0004](docs/adr/0004-refused-titles-are-stored-not-dropped.md).
 
+**Deferred candidate**:
+A row an ingest leg attempted and could not resolve — nothing came back, so there
+is no payload to record the outcome in. Distinct from a refused title, which the
+source did describe and the app declines to surface. The row keeps its unset
+`*_synced_at` stamp and instead carries a count of failed attempts and the
+instant it becomes a candidate again, on a doubling interval. Deferred, never
+retired: an unresolvable row is usually only unresolvable *today*. See
+[ADR-0005](docs/adr/0005-unresolvable-rows-are-deferred-not-retired.md).
+
 **Crosswalk id**:
 A third-party identifier for a title that SQL must key on (`_imdb_id`,
 `_tmdb_id`, `_tvdb_id`). Unlike other source-owned columns it is normalized at

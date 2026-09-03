@@ -172,7 +172,8 @@ non-null tag opts the leg into inserting from the feed *and* names the second ta
 
 Only `catalog:sync-movies` opts in. **`catalog:sync-shows-tmdb` must not**: TVDB is
 the sole creator of `shows` rows (see below), so an unheld `/tv/changes` id would
-create a show with no TVDB identity. That leg's own residue is FLIX-291.
+create a show with no TVDB identity. That leg's own residue is handled by the
+backoff below, not by discovery.
 
 ## Sync ordering (`catalog:sync-shows-tmdb`)
 
@@ -188,6 +189,37 @@ create a show with no TVDB identity. That leg's own residue is FLIX-291.
   resolved id already claimed by another row can't be re-pointed (UNIQUE
   `_tmdb_id`) — the row stays TVDB-only and the collision is reported, same as an
   empty `/find` result.
+
+### Unresolvable candidates are deferred (`DeferUnresolvedShows`, FLIX-291)
+
+A candidate the chunk attempted and left without a `tmdb_synced_at` stamp — a
+`/find` miss, a crosswalk collision, a `/tv/{id}` 404 — has its
+`tmdb_unresolved_attempts` counted up and `tmdb_retry_after` pushed out by
+`Support\RetryBackoff` (doubling from 1 day, ceilinged at 64). The hydrate walk
+filters on that floor, so the residue converges instead of re-`/find`ing 95,340
+rows every run. `--fresh` skips the floor along with the `tmdb_synced_at` filter,
+so one command still re-attempts the whole residue. See `ADR-0005`.
+
+- **Both columns are app-owned bookkeeping, so unprefixed** — TMDB reports neither.
+  They sit right after `tmdb_synced_at`, the stamp they qualify, under their own
+  `(tmdb_synced_at, tmdb_retry_after)` index: the `(_tmdb_id, tmdb_synced_at)` probe
+  index leads on `_tmdb_id`, and the rows this walk is heaviest over carry none.
+- **A failing chunk defers nothing.** A row TMDB never answered for is not
+  unresolvable, and deferring it would turn an outage into weeks of silence — the
+  one way this stamp could mask a real failure. Neither failure signal names a row
+  (`syncChunk`'s shortfall is a count; the pool drops a failed id's key), so the
+  guard is chunk-wide and the next run defers whatever it spared. This is why
+  `ReconcileImdbOnlyShows` returns a `ShowCrosswalkResult` rather than a bare id
+  list: a `/find` that never answered and one that answered with no `tv_results`
+  both leave the row unstamped, and only the short result map tells them apart.
+- **The defer write goes through `toBase()`**, so `updated_at` is untouched. It is
+  the leg's reindex watermark, and deferring changes nothing the search index holds
+  — stamping it would push the whole residue through the engine every run, which is
+  the cost this change removes, moved.
+- **A crosswalk collision is not special-cased.** It will not heal by retrying, but
+  the ceilinged backoff already reduces it to a few attempts a year, and a
+  permanent-failure state would need the reconcile to name which rows collided for
+  a distinction nothing reads.
 - Update-changed phase (default full run only, skipped under `--fresh`)
   — re-hydrates the intersection of the marker-derived changes window (see
   **Incremental sync markers** below) and rows we've already synced. It stays an
@@ -308,11 +340,18 @@ read only the changes feed and moved the export to the unscheduled
 residue itself: a refused title persists and stamps, so no leg re-fetches one it
 already holds, and the export sweep converges.
 
-Offenders still open, each with its own ticket: `catalog:sync-shows-tmdb`, where a
-`/find` miss or `_tmdb_id` collision is re-walked every run — 95,340 rows on
-production, ~55% of the show universe (FLIX-291); and `catalog:sync-episodes-tvdb`,
-which reads only `seriesId` off an updates record that also carries the episode's own
-`recordId`, then re-crawls the show's entire episode list (FLIX-292).
+**Fixed (FLIX-291):** `catalog:sync-shows-tmdb` re-walked every `/find` miss and
+`_tmdb_id` collision on every run — 95,340 rows on production, ~55% of the show
+universe. A candidate that resolves to nothing now carries its own backoff (see
+**Unresolvable candidates are deferred** above), so the walk shrinks as the catalog
+converges. Note the third question this one adds to the two above: **does the leg
+have any way to record that it attempted a row and got nothing?** A refused record
+carries its answer in a column; an unresolvable one has no payload at all, so it
+needs bookkeeping of its own or it is retried forever.
+
+Offenders still open: `catalog:sync-episodes-tvdb`, which reads only `seriesId` off
+an updates record that also carries the episode's own `recordId`, then re-crawls the
+show's entire episode list (FLIX-292).
 
 ## Incremental sync markers (`SyncMarker` / `SyncFeed`)
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
+use App\Domains\Catalog\Actions\DeferUnresolvedShows;
 use App\Domains\Catalog\Actions\ReconcileImdbOnlyShows;
 use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
@@ -13,6 +14,7 @@ use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Support\SyncMarker;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,13 +31,23 @@ final class SyncTmdbShows extends TmdbSyncCommand
      */
     private const int SCAN_BEAT = 1000;
 
+    /**
+     * Candidates deferred before a `[deferred n]` beat. The residue is otherwise
+     * invisible: `scan` counts rows READ, so a run that resolves nothing at all
+     * reads exactly like one making progress.
+     */
+    private const int DEFER_BEAT = 1000;
+
     private ReconcileImdbOnlyShows $reconcileImdbOnly;
+
+    private DeferUnresolvedShows $deferUnresolved;
 
     private UpsertTmdbShows $upsertShows;
 
     public function handle(
         TmdbApiService $api,
         ReconcileImdbOnlyShows $reconcileImdbOnly,
+        DeferUnresolvedShows $deferUnresolved,
         UpsertTmdbShows $upsertShows,
         UpsertTmdbImages $upsertImages,
         SyncMarker $marker,
@@ -43,6 +55,7 @@ final class SyncTmdbShows extends TmdbSyncCommand
     ): int {
         $this->api = $api;
         $this->reconcileImdbOnly = $reconcileImdbOnly;
+        $this->deferUnresolved = $deferUnresolved;
         $this->upsertShows = $upsertShows;
         $this->upsertImages = $upsertImages;
         $this->reindexTouchedRows = $reindexTouchedRows;
@@ -128,15 +141,23 @@ final class SyncTmdbShows extends TmdbSyncCommand
 
     private function hydrateOwnShows(): bool
     {
-        // chunkById specifically: the loop WRITES the columns it filters on (the
-        // reconcile stamps _tmdb_id, hydration stamps tmdb_synced_at), and a --fresh
-        // run spans the whole ~173k-row TVDB show universe.
+        // chunkById specifically: the loop WRITES every column it filters on (the
+        // reconcile stamps _tmdb_id, hydration stamps tmdb_synced_at, the defer stamps
+        // tmdb_retry_after), and a --fresh run spans the whole ~173k-row TVDB show
+        // universe.
         $query = Show::query()
             ->where(function ($query): void {
                 $query->whereNotNull('_tmdb_id')->orWhereNotNull('_imdb_id');
             })
             ->unless($this->option('fresh'), function ($query): void {
-                $query->whereNull('tmdb_synced_at');
+                $query->whereNull('tmdb_synced_at')
+                    // The backoff floor. A row TMDB has already refused to resolve
+                    // waits out its interval instead of costing a /find every run;
+                    // --fresh skips the floor along with the stamp, so an operator
+                    // still has one command that re-attempts the whole residue.
+                    ->where(fn ($query) => $query
+                        ->whereNull('tmdb_retry_after')
+                        ->orWhere('tmdb_retry_after', '<=', CarbonImmutable::now()));
             })
             ->select(['id', '_tmdb_id', '_imdb_id']);
 
@@ -168,8 +189,9 @@ final class SyncTmdbShows extends TmdbSyncCommand
     }
 
     /**
-     * An unresolved imdb-only row (a /find miss) is NOT a failure — it stays
-     * tmdb_synced_at-null and is retried every run regardless of the marker.
+     * An unresolved row — a /find miss, a crosswalk collision, a /tv 404 — is NOT a
+     * leg failure: nothing is owed and the marker still advances. It is bookkeeping,
+     * so the row is deferred rather than left to be re-attempted at full rate.
      *
      * @param  Collection<int, Show>  $shows
      */
@@ -177,10 +199,20 @@ final class SyncTmdbShows extends TmdbSyncCommand
     {
         $directIds = $shows->whereNotNull('_tmdb_id')->pluck('_tmdb_id')->all();
 
-        $resolvedIds = $this->reconcileImdbOnly->handle($shows, $this->api);
+        $crosswalk = $this->reconcileImdbOnly->handle($shows, $this->api);
 
-        $ids = array_values(array_unique(array_merge($directIds, $resolvedIds)));
+        $ids = array_values(array_unique(array_merge($directIds, $crosswalk->resolvedIds)));
 
-        return $ids === [] ? false : $this->syncChunk($ids);
+        $failed = $ids === [] ? false : $this->syncChunk($ids);
+
+        // A row TMDB never answered for is not unresolvable, and deferring it would
+        // turn an outage into weeks of silence. Neither signal names a row — the pool
+        // drops a failed id's key, and syncChunk's shortfall is a count — so a failing
+        // chunk keeps its whole candidate set at full rate; the next run defers them.
+        if (! $failed && ! $crosswalk->failed) {
+            $this->beatEvery('deferred', self::DEFER_BEAT, $this->deferUnresolved->handle($shows));
+        }
+
+        return $failed;
     }
 }

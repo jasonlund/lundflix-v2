@@ -71,9 +71,6 @@ const DTO_BOUNDARY_EXEMPT_METHODS = [
     'App\Domains\Identity\Actions\UpdateUserProfile::update' => 'Fortify UpdatesUserProfileInformation contract',
     'App\Domains\Identity\Actions\ResetUserPassword::reset' => 'Fortify ResetsUserPasswords contract',
     'App\Domains\Identity\Actions\UpdateUserPassword::update' => 'Fortify UpdatesUserPasswords contract',
-
-    // Scalar list: nothing to model, a DTO would only wrap ints.
-    'App\Domains\Catalog\Actions\ReconcileImdbOnlyShows::handle' => 'list<int> of reconciled ids',
 ];
 
 /**

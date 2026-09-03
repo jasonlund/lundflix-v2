@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Actions;
 
+use App\Domains\Catalog\Data\ShowCrosswalkResult;
 use App\Domains\Catalog\Exceptions\TmdbShowCrosswalkCollision;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TmdbApiService;
@@ -14,22 +15,30 @@ final readonly class ReconcileImdbOnlyShows
     /**
      * Resolve tmdb ids for the chunk's imdb-only rows through /find, stamping each
      * resolved id onto its row. An imdb id whose result has no tv_results stays
-     * TVDB-only — no stamp. Returns the resolved `_tmdb_id` set the caller hydrates.
+     * TVDB-only — no stamp. Returns the resolved `_tmdb_id` set the caller hydrates,
+     * alongside whether any lookup failed outright.
      *
      * @param  Collection<int, Show>  $shows
-     * @return array<int, int>
      */
-    public function handle(Collection $shows, TmdbApiService $api): array
+    public function handle(Collection $shows, TmdbApiService $api): ShowCrosswalkResult
     {
         $imdbOnly = $shows->whereNull('_tmdb_id')
             ->filter(fn (Show $show): bool => $show->_imdb_id !== null)
             ->values();
 
         if ($imdbOnly->isEmpty()) {
-            return [];
+            return new ShowCrosswalkResult([], false);
         }
 
-        $results = $api->findManyByImdbId($imdbOnly->pluck('_imdb_id')->unique()->values()->all());
+        $imdbIds = $imdbOnly->pluck('_imdb_id')->unique()->values()->all();
+
+        $results = $api->findManyByImdbId($imdbIds);
+
+        // A short result map is the only per-id failure signal TMDB's pooled paths
+        // give (see Catalog/GUIDELINES.md): the pool drops a failed id's key, while
+        // a 404 stays present-as-null. Without it, a lookup that never answered is
+        // indistinguishable here from one that answered with no tv_results.
+        $failed = count($results) < count($imdbIds);
 
         $resolvedIds = [];
 
@@ -70,6 +79,6 @@ final readonly class ReconcileImdbOnlyShows
             $resolvedIds[] = $tmdbId;
         }
 
-        return $resolvedIds;
+        return new ShowCrosswalkResult($resolvedIds, $failed);
     }
 }
