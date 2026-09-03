@@ -382,14 +382,4 @@ Summarize the run:
 with a ticket-prefixed subject plus the co-author trailer the harness supplies for this
 session — a hardcoded trailer stamps a model version that rots — then push.
 
-## Orchestration Notes
-
-- **Dispatch every code change to a `review-fixer`** and trust its isolated work.
-- **Fixers are foreground `Agent` calls**, enforced by the `no-bg-review-fixer` hook. A
-  background completion would re-invoke you mid-flow and pull status chatter into the run;
-  foreground calls return in-turn.
-- **A wave is file-disjoint.** Two fixers sharing a file go in different waves.
-- **Resolve everything you considered**, skips and dismissals included. An open thread is
-  one the next run re-triages.
-
 $ARGUMENTS
