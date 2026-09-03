@@ -203,7 +203,7 @@ Each reads *what it is* → *the fix*:
 - **Mysterious Name** — a name that doesn't reveal what it does or holds. → rename;
   if no honest name comes, the design is murky.
 - **Duplicated Code** — the same logic shape in more than one hunk, **or the same
-  rationale comment or docblock copied across files**, where a stale copy misleads
+  rationale comment or docblock copied across files** — a stale prose copy misleads
   and no test catches it. → extract, call from both; for prose, keep one copy and
   point the other at it.
 - **Feature Envy** — a method reaching into another object's data more than its
