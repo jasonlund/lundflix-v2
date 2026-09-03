@@ -8,7 +8,6 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Str;
 use Throwable;
 
 #[Description('Sync the catalog from TMDB and TVDB, surviving any single failure')]
@@ -17,7 +16,7 @@ final class SyncCatalog extends Command
 {
     public function handle(): int
     {
-        $failed = [];
+        $failedNames = [];
 
         foreach ($this->commands() as $command => $arguments) {
             // The class-string stands in until the friendly name resolves. Reading that
@@ -29,36 +28,33 @@ final class SyncCatalog extends Command
             try {
                 $name = $this->commandName($command);
 
+                $this->output->writeln("Running {$name}…");
+
                 $exitCode = Artisan::call($command, $arguments, $this->output);
 
-                // Defensive and currently unreachable: every leg returns SUCCESS even
-                // when individual ids failed, spending its failure flag on holding the
-                // sync marker back instead. No test exercises this — don't read it as covered.
                 if ($exitCode !== self::SUCCESS) {
                     $this->output->writeln("{$name} failed with exit code {$exitCode}");
-                    $failed[] = $name;
+                    $failedNames[] = $name;
                 }
             } catch (Throwable $e) {
                 report($e);
                 $this->output->writeln("{$name} failed: {$e->getMessage()}");
-                $failed[] = $name;
+                $failedNames[] = $name;
             }
         }
 
-        if ($failed === []) {
-            $this->output->writeln('Done.');
-
-            return self::SUCCESS;
+        // Names the guilty children rather than counting them, so this cannot go
+        // through EmitsHeartbeat::failureSummary(): that renders a count, which
+        // here would say "1 command failed" of a run whose whole point is that it
+        // kept going — leaving the operator to find which one in the interleaved
+        // wall of child output.
+        if ($failedNames !== []) {
+            $this->output->writeln('Failed commands: '.implode(', ', $failedNames));
         }
 
-        // The per-leg line above scrolls away under a quarter-hour of heartbeats, so
-        // the run also closes by naming every leg it lost — an operator coming back to
-        // the terminal reads the last line, not the transcript.
-        $this->output->writeln(
-            'Completed with '.count($failed).' failed '.Str::plural('leg', $failed).': '.implode(', ', $failed)
-        );
+        $this->output->writeln('Done.');
 
-        return self::FAILURE;
+        return $failedNames === [] ? self::SUCCESS : self::FAILURE;
     }
 
     /**

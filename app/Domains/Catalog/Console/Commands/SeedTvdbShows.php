@@ -81,7 +81,14 @@ final class SeedTvdbShows extends TvdbShowsCommand
         // indexes nothing itself, so a run with failures must still index what it touched.
         $this->reindexTouchedShows($reindexTouchedRows, $startedAt);
 
-        return self::SUCCESS;
+        // No failure summary: the owed-shows counter accumulates across both syncIds()
+        // passes, so a crawl miss the retry healed would still be reported as owed. The
+        // retry line above is this leg's failure report.
+        $this->closeRun(failureConsequence: null);
+
+        // Gated on what the retry pass could NOT heal, not on the run's failure counter:
+        // an id that failed the crawl and recovered on the retry is a covered id.
+        return $stillFailing !== [] ? self::FAILURE : self::SUCCESS;
     }
 
     /**

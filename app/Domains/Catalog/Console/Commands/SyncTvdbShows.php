@@ -60,7 +60,14 @@ final class SyncTvdbShows extends TvdbShowsCommand
         // retried — the watermark is this run's start, so it covers exactly those.
         $this->reindexTouchedShows($reindexTouchedRows, $startedAt);
 
-        return self::SUCCESS;
+        // Safe to print the owed-shows count beside a $result->failed exit: both are fed
+        // by the same two sites — a pooled per-id miss, and a chunk a throw dropped — so
+        // a non-zero count and a clean exit can't disagree.
+        $this->closeRun('marker not advanced');
+
+        // Any failure means the window wasn't fully covered — the non-zero exit is what
+        // tells a scheduler the marker is still holding it.
+        return $result->failed ? self::FAILURE : self::SUCCESS;
     }
 
     /**

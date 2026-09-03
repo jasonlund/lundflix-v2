@@ -15,18 +15,36 @@ use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TvdbApiService;
 use App\Domains\Catalog\Support\Batches;
+use App\Domains\Common\Console\Concerns\EmitsHeartbeat;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
 abstract class TvdbShowsCommand extends Command
 {
+    use EmitsHeartbeat;
     use MeasuresElapsedTime;
 
     /** Decoded `/series/{id}/extended` bodies held live at once (~150 KB each) — see GUIDELINES.md. */
     private const int BATCH_SIZE = 250;
 
+    /** Heartbeat tag, source-prefixed so a line names which pipeline emitted it. */
+    private const string HEARTBEAT_TAG = 'tvdb shows';
+
+    /** Shows upserted before a `[tvdb shows n] {name}` beat. */
+    private const int HEARTBEAT_INTERVAL = 1000;
+
     private int $processed = 0;
+
+    /**
+     * Shows the run owed at the end — pooled per-id misses plus whole chunks a throw
+     * dropped.
+     *
+     * Accumulated across every syncIds() pass a leg makes, so a leg that retries its
+     * own failures in-run (SeedTvdbShows) counts a healed show twice; such a leg gates
+     * neither its exit code nor its failure summary on this figure.
+     */
+    private int $failedShows = 0;
 
     /**
      * The id source each concrete command feeds into the shared pipeline.
@@ -95,6 +113,9 @@ abstract class TvdbShowsCommand extends Command
         } catch (TvdbRequestFailed|TvdbAuthenticationFailed $e) {
             report($e);
 
+            // A throw carries no per-id detail, so the whole chunk is owed.
+            $this->failedShows += count($ids);
+
             return new SyncIdsResult(true, $this->collectsFailedIds() ? array_values($ids) : []);
         }
     }
@@ -125,9 +146,7 @@ abstract class TvdbShowsCommand extends Command
         $upsertShows->handle($payloads);
 
         foreach ($payloads as $payload) {
-            if (++$this->processed % 1000 === 0) {
-                $this->output->writeln("  [tvdb shows {$this->processed}] ".($payload['name'] ?? '—'));
-            }
+            $this->beat(self::HEARTBEAT_TAG, ++$this->processed, self::HEARTBEAT_INTERVAL, $payload['name'] ?? '—');
         }
 
         // Downstream reads only the PK (morph relation + season FK) and the keyBy
@@ -148,6 +167,26 @@ abstract class TvdbShowsCommand extends Command
         }
 
         return $this->chunkResult($pooled->failedIds);
+    }
+
+    /**
+     * Close the run's output: the heartbeat tag on the run's exact final total (which
+     * a rounded interval mark can't supply), then what the run owed, then Done.
+     *
+     * $failureConsequence names what a failure cost — "marker not advanced" — and a
+     * null suppresses the summary entirely, for a leg whose owed-shows counter isn't
+     * the figure it acts on. The exit code deliberately stays with the leg: the two
+     * legs derive it from different things.
+     */
+    protected function closeRun(?string $failureConsequence): void
+    {
+        $this->flushTotal(self::HEARTBEAT_TAG, $this->processed);
+
+        if ($failureConsequence !== null) {
+            $this->failureSummary($this->failedShows, 'shows', $failureConsequence);
+        }
+
+        $this->output->writeln('Done.');
     }
 
     /**
@@ -182,6 +221,10 @@ abstract class TvdbShowsCommand extends Command
      */
     private function chunkResult(array $failedIds): SyncIdsResult
     {
+        // Counted off the pooled misses rather than the returned list, which a leg that
+        // doesn't collect ids empties.
+        $this->failedShows += count($failedIds);
+
         return new SyncIdsResult(
             $failedIds !== [],
             $this->collectsFailedIds() ? array_map(intval(...), $failedIds) : [],

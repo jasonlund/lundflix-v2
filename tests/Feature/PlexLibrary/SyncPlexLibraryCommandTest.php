@@ -236,6 +236,26 @@ describe('plex:sync crawl selection', function (): void {
     });
 });
 
+// plex:sync inherits its heartbeat from the same base command plex:seed uses, so
+// this is the only thing holding the subclass to the shared source-tagged shape —
+// without it the base could be retagged and this command silently left behind.
+describe('plex:sync heartbeat output', function (): void {
+    it('emits source-tagged heartbeat output for each phase', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+
+        // Act & Assert
+        $this->artisan('plex:sync')
+            ->expectsOutputToContain('Connecting to Plex server')
+            ->expectsOutputToContain('[plex libraries 2]')
+            ->expectsOutputToContain('[plex movies 3]')
+            ->expectsOutputToContain('[plex shows 3]')
+            ->expectsOutputToContain('[plex episodes 72]')
+            ->expectsOutputToContain('Done.')
+            ->run();
+    });
+});
+
 describe('plex:sync episode watermark & failure', function (): void {
     it('exits FAILURE when a show episode crawl failed', function (): void {
         // Arrange

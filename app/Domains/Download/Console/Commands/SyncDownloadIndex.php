@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Download\Console\Commands;
 
+use App\Domains\Common\Console\Concerns\EmitsHeartbeat;
 use App\Domains\Download\Actions\UpsertDownloads;
 use App\Domains\Download\Enums\Category;
 use App\Domains\Download\Enums\SyncChannel;
@@ -17,6 +18,8 @@ use Illuminate\Console\Command;
 #[Signature('download:sync-index {--fresh}')]
 final class SyncDownloadIndex extends Command
 {
+    use EmitsHeartbeat;
+
     public function handle(DownloadService $downloads, UpsertDownloads $upsert): int
     {
         $fresh = (bool) $this->option('fresh');
@@ -43,7 +46,9 @@ final class SyncDownloadIndex extends Command
         Category $category,
         bool $fresh,
     ): void {
+        $tag = "download index {$category->name}";
         $pageNumber = 1;
+        $upserted = 0;
 
         do {
             $page = $downloads->index($category, $pageNumber);
@@ -58,6 +63,7 @@ final class SyncDownloadIndex extends Command
 
             foreach ($page->results as $result) {
                 $upsert->handle($result, $category, SyncChannel::Index);
+                $upserted++;
             }
 
             // Default incremental walk: once a page carries only already-ingested
@@ -68,11 +74,16 @@ final class SyncDownloadIndex extends Command
 
             // Heartbeat: a deep category walk is otherwise silent for minutes, so
             // periodically prove the walk is still advancing under a given category.
+            // Written plainly rather than through the emitter because a page number
+            // is a walk position, not a running total — marking it would make the
+            // closing total look already-reported and suppress it.
             if ($pageNumber % 10 === 0) {
-                $this->output->writeln("  [index {$category->name} p{$pageNumber}]");
+                $this->output->writeln("  [{$tag} p{$pageNumber}]");
             }
 
             $pageNumber++;
         } while ($pageNumber <= $page->lastPage);
+
+        $this->flushTotal($tag, $upserted);
     }
 }

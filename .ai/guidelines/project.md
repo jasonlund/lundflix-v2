@@ -338,13 +338,80 @@ unsure anything happened (the `plex:seed` regression) — that is a defect.
   `PlexLibraryCommand`). Not `$this->info()`, not `$this->components`, not a logger.
 - **Two line shapes, that's it:**
   - a plain phase line — `writeln('Syncing movies…')`, `writeln('Done.')`;
-  - an indented bracketed heartbeat — `writeln("  [movies {$count}]")`,
-    `writeln("  [episodes {$ratingKey}]")` (two-space indent, `[tag value]`).
+  - an indented bracketed heartbeat — `  [tmdb movies 1000]`, `  [plex episodes 288]`
+    (two-space indent, `[tag value]`).
 - **Simple, not fancy.** No progress bars, spinners, tables, colors, or ASCII art.
   Line by line. A heartbeat per phase boundary and per item in a long fan-out —
   enough to prove liveness, not a dashboard.
 - Put the output in the shared base when a family of commands share an engine
   (e.g. `PlexLibraryCommand`), so every subcommand inherits it.
+
+### Heartbeat tags are source-prefixed
+
+- **Every tag names its source first** — `imdb` / `tmdb` / `tvdb` / `plex` /
+  `download`: `[tmdb movies 1000]`, `[tvdb episodes 102]`, `[tvdb feed 10000]`,
+  `[imdb ratings 250000]`, `[plex episodes 288]`, `[download rss Movies 40]`.
+  `catalog:sync` runs its children into one interleaved stream, so an unprefixed
+  `[movies N]` / `[episodes N]` is ambiguous — each meant one thing in Catalog and
+  a different thing in Plex.
+- **Local tooling has no third-party source, so the tag names the work instead** —
+  `[dump movies 240]`, `[import movies]`. Don't invent a prefix for it.
+- **`[elapsed …]` is the one unprefixed exception**, and it predates this rule —
+  `SyncImdbCatalog` emits `[elapsed {dataset} 12.4s]` and `ImdbSyncCommand`
+  `[elapsed 12.4s]`. It measures the leg rather than naming what the leg read, so
+  there is no source to put first. Don't prefix it, and don't copy the shape for a
+  tag that does count a source's work.
+- **The value need not be a count.** `[download index Movies p10]` is a walk
+  position and `[elapsed titles 12.4s]` a leg duration; a reader tells them apart
+  by the value. Only *running totals* go through the emitter below — a position or
+  a one-shot fact stays a plain `writeln`.
+
+### `EmitsHeartbeat` is the shared emitter
+
+`App\Domains\Common\Console\Concerns\EmitsHeartbeat`. New commands `use` it rather
+than hand-rolling a counter: it tracks the last mark **per tag**, so one command
+can beat several tags independently and the closing total never repeats a line the
+beat already printed.
+
+- **`mark($tag, $total, $suffix = null)` — the caller owns the cadence.** For a
+  one-shot count (`[plex libraries 2]`) or a per-batch flush where the batch size
+  is already the operator's cadence knob (IMDb's probe batches). Reaching for
+  `beat()` at those callsites silences nearly every line, because the totals sit
+  far below any sensible interval.
+- **`beat($tag, $total, $interval, $suffix = null)` — a running total on interval
+  boundaries.** Reach for it when a total climbs steadily and the interval, not the
+  batch, is the operator's cadence knob.
+- **`flushTotal($tag, $total)` — the closing exact total.** Every run calls it, so a
+  run shorter than one interval still reports what it did.
+- **`failureSummary($count, $noun, $consequence)` — the closing failure line**,
+  a no-op at zero.
+
+### Every run closes: final total, failures, `Done.`
+
+- **A final total, then `Done.`, on every command.** `flushTotal()` exists so a run
+  shorter than one beat interval still reports what it did — 47 episodes or a
+  single sub-batch of titles used to print no count at all — and a run that
+  processed nothing still prints its `0`. The one exception is a marker-gated early
+  return (`IMDb … unchanged since the last sync; skipping.`): that line is already
+  terminal, and `Done.` after it would claim work that never happened.
+- **A caught-and-reported failure emits a plain closing line naming the count *and*
+  the consequence** — `3 shows failed; marker not advanced.` Unindented on purpose:
+  the two-space indent means "running count", and a run-level consequence is not
+  one. The consequence is the half that matters, and it names whatever *this* leg
+  held back — `marker not advanced` in Catalog, `watermark not advanced` in Plex.
+  Either way it says the window gets re-covered next run.
+- **…and the command returns `FAILURE`.** This knowingly overrode three tests that
+  named exit-SUCCESS-on-failure as intent: an invisible failure that silently skips
+  a marker advance is worse than a cron alert on a transient miss. A 404 is still
+  **not** a failure — it stays present-as-null, or every deleted upstream title
+  would alert on every run.
+- **An orchestrator names what it lost rather than counting it** — `catalog:sync`
+  closes with `Failed commands: catalog:sync-movies`, because a re-runnable command
+  name is more use to an operator than a number. That is why it does **not** go
+  through `failureSummary()`: a count would say "1 command failed" of a run whose
+  whole point is that it kept going, leaving the operator to find which one in the
+  interleaved wall of child output. `Done.` still follows it — losing a leg does not
+  exempt a run from closing.
 
 ## Persistence: third-party API columns (raw-source prefix)
 

@@ -41,6 +41,8 @@ final class ImportDatabase extends Command
         // so FK checks are lifted across the truncate/load loop.
         Schema::disableForeignKeyConstraints();
 
+        $this->output->writeln('Importing the dumps…');
+
         try {
             foreach (self::TABLES as $table) {
                 $file = $dir.'/'.$table.'.sql.gz';
@@ -62,10 +64,14 @@ final class ImportDatabase extends Command
 
                     return self::FAILURE;
                 }
+
+                $this->output->writeln("  [import {$table}]");
             }
         } finally {
             Schema::enableForeignKeyConstraints();
         }
+
+        $this->output->writeln('Done.');
 
         return self::SUCCESS;
     }

@@ -181,7 +181,12 @@ describe('download:sync-index console output', function (): void {
             ->assertSuccessful();
     });
 
-    it('prints a category-labeled heartbeat every 10th page walked', function (): void {
+    /*
+    | `[download index Movies p10]` itself contains the substring `index Movies`,
+    | so the guard against the old unprefixed tag has to carry its trailing space
+    | to avoid matching the very line it must allow.
+    */
+    it('names the source in the page marker printed every 10th page walked', function (): void {
         // Arrange
         $settings = resolve(DownloadSettings::class);
         $settings->uid = 'u123';
@@ -196,7 +201,49 @@ describe('download:sync-index console output', function (): void {
 
         // Act & Assert
         $this->artisan('download:sync-index', ['--fresh' => true])
-            ->expectsOutputToContain('[index Movies p10]')
+            ->expectsOutputToContain('[download index Movies p10]')
+            ->doesntExpectOutputToContain('[index ')
+            ->assertSuccessful();
+    });
+
+    /*
+    | 100 and 50 are fixture facts: the Movies walk covers index_movies_p1 (50
+    | results) and index_movies_p2 (50), the Tv walk index_tv_p1 (50), each
+    | terminated by the table-less catch-all page.
+    */
+    it('closes each category walk with the number of results it upserted', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake([
+            '*72=&p=1' => Http::response(fixtureBytes('Download/downloads/index_movies_p1.html'), 200),
+            '*72=&p=2' => Http::response(fixtureBytes('Download/downloads/index_movies_p2.html'), 200),
+            '*73=&p=1' => Http::response(fixtureBytes('Download/downloads/index_tv_p1.html'), 200),
+            '*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_no_table.html'), 200),
+        ]);
+
+        // Act & Assert
+        $this->artisan('download:sync-index', ['--fresh' => true])
+            ->expectsOutputToContain('  [download index Movies 100]')
+            ->expectsOutputToContain('  [download index Tv 50]')
+            ->assertSuccessful();
+    });
+
+    it('reports a zero total for a category whose first listing page is empty', function (): void {
+        // Arrange
+        $settings = resolve(DownloadSettings::class);
+        $settings->uid = 'u123';
+        $settings->pass = 'p123';
+        $settings->save();
+        Http::fake([
+            '*' => Http::response(fixtureBytes('Download/downloads/index_movies_p1_no_table.html'), 200),
+        ]);
+
+        // Act & Assert
+        $this->artisan('download:sync-index', ['--fresh' => true])
+            ->expectsOutputToContain('  [download index Movies 0]')
             ->assertSuccessful();
     });
 });

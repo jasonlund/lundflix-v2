@@ -189,6 +189,42 @@ describe('plex:seed episode crawl & failure', function (): void {
         $this->artisan('plex:seed')->assertExitCode(Command::FAILURE);
     });
 
+    // A bare non-zero exit tells the operator nothing, so the run also names the
+    // count and the consequence. '1 shows' is the shared emitter's fixed format,
+    // matching Catalog's own closing line. The consequence is the per-show
+    // episodes_synced_at watermark, deliberately left unstamped so the next sync
+    // re-crawls the show. The line is unindented on purpose: the two-space indent
+    // belongs to the `  [tag value]` running counts, and a run-level consequence is
+    // not one — hence the paired guard against the indented variant.
+    it('names the failed show count and the consequence in a closing line', function (): void {
+        // Arrange
+        fakePlexSeedCrawl(failLeavesForRatingKey: '34112');
+
+        // Act & Assert
+        $this->artisan('plex:seed')
+            ->expectsOutputToContain('1 shows failed; watermark not advanced.')
+            ->doesntExpectOutputToContain('  1 shows failed')
+            ->run();
+    });
+
+    // Characterization guard: a summary that fired unconditionally would announce a
+    // failure on a run where nothing failed.
+    it('emits no failure summary when every show crawled cleanly', function (): void {
+        // Arrange
+        fakePlexSeedCrawl();
+
+        // Act & Assert
+        $this->artisan('plex:seed')
+            ->doesntExpectOutputToContain('failed;')
+            ->run();
+    });
+
+    // Every count is tagged with its source, so an operator watching several sync
+    // commands at once can tell whose beat is whose. The old-prefix guards are
+    // written as bracket-plus-space ('[movies ') rather than the bare word: the
+    // prefixed line '[plex movies 3]' contains 'movies', so a naked guard would
+    // pass on the very output it is meant to reject. '[plex libraries 2]' also
+    // pins the library count as a one-shot line rather than a 100-boundary beat.
     it('emits heartbeat output for each phase', function (): void {
         // Arrange
         fakePlexSeedCrawl();
@@ -196,11 +232,15 @@ describe('plex:seed episode crawl & failure', function (): void {
         // Act & Assert
         $this->artisan('plex:seed')
             ->expectsOutputToContain('Connecting to Plex server')
-            ->expectsOutputToContain('[libraries 2]')
-            ->expectsOutputToContain('[movies 3]')
-            ->expectsOutputToContain('[shows 3]')
-            ->expectsOutputToContain('[episodes 72]')
+            ->expectsOutputToContain('[plex libraries 2]')
+            ->expectsOutputToContain('[plex movies 3]')
+            ->expectsOutputToContain('[plex shows 3]')
+            ->expectsOutputToContain('[plex episodes 72]')
             ->expectsOutputToContain('Done.')
+            ->doesntExpectOutputToContain('[libraries ')
+            ->doesntExpectOutputToContain('[movies ')
+            ->doesntExpectOutputToContain('[shows ')
+            ->doesntExpectOutputToContain('[episodes ')
             ->run();
     });
 });
@@ -301,11 +341,11 @@ describe('plex:seed episode heartbeat cadence', function (): void {
 
         // Act & Assert
         $this->artisan('plex:seed')
-            ->doesntExpectOutputToContain('[episodes 120]')
-            ->doesntExpectOutputToContain('[episodes 216]')
-            ->expectsOutputToContain('[episodes 100]')
-            ->expectsOutputToContain('[episodes 200]')
-            ->expectsOutputToContain('[episodes 288]')
+            ->doesntExpectOutputToContain('[plex episodes 120]')
+            ->doesntExpectOutputToContain('[plex episodes 216]')
+            ->expectsOutputToContain('[plex episodes 100]')
+            ->expectsOutputToContain('[plex episodes 200]')
+            ->expectsOutputToContain('[plex episodes 288]')
             ->run();
     });
 });
@@ -378,8 +418,8 @@ describe('plex:seed multi-page movie walk', function (): void {
         Artisan::call('plex:seed', [], $console);
 
         // Assert
-        expect($writtenWhenSecondPageWasRequested)->toContain('[movies 100]');
-        expect($console->fetch())->toContain('[movies 200]');
+        expect($writtenWhenSecondPageWasRequested)->toContain('[plex movies 100]');
+        expect($console->fetch())->toContain('[plex movies 200]');
     });
 
     it('keeps the pages already read and prunes nothing when a page fetch fails mid-walk', function (): void {

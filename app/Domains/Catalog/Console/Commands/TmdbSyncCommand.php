@@ -14,12 +14,14 @@ use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Support\Batches;
 use App\Domains\Catalog\Support\SyncMarker;
+use App\Domains\Common\Console\Concerns\EmitsHeartbeat;
 use Carbon\CarbonImmutable;
 use Closure;
 use DateTimeInterface;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * The frame both TMDB syncs run inside: the leg pipeline (watermark → insert →
@@ -30,6 +32,7 @@ use Illuminate\Support\Collection;
  */
 abstract class TmdbSyncCommand extends Command
 {
+    use EmitsHeartbeat;
     use MeasuresElapsedTime;
 
     /** Decoded payloads held live per batch — see "probe wide, hydrate narrow" in GUIDELINES.md. */
@@ -55,13 +58,27 @@ abstract class TmdbSyncCommand extends Command
     protected ReindexTouchedRows $reindexTouchedRows;
 
     /**
-     * Running totals per beat tag, so a phase's counter survives across the calls
-     * that feed it. Every beat in the family counts here — there is no second
-     * counter alongside it.
+     * Units counted per beat tag, so a phase's counter survives across the calls
+     * that feed it. Distinct from the trait's $heartbeatMarks, which holds the last
+     * boundary each tag PRINTED: runLeg() closes a tag on its exact final figure,
+     * which a rounded mark can't supply.
      *
      * @var array<string, int>
      */
     private array $counted = [];
+
+    /**
+     * Entities the run owed at the end — a hydrate throw, or ids the pool dropped.
+     *
+     * Counted alongside the booleans the phases return rather than in place of
+     * them: the booleans gate the marker and cover failures no counter sees (a
+     * leg's own catch, e.g. SyncTmdbShows::hydrateChunkSafely, which names no
+     * entity), so the two are not interchangeable.
+     */
+    private int $failedEntities = 0;
+
+    /** Changes-feed windows the run never finished reading. */
+    private int $failedChangesWindows = 0;
 
     /** The marker feed whose window this command reads and advances. */
     abstract protected function feed(): SyncFeed;
@@ -77,7 +94,7 @@ abstract class TmdbSyncCommand extends Command
     /** Names the entity in the phase line, e.g. "Updating changed movies…". */
     abstract protected function entityLabel(): string;
 
-    /** Heartbeat tag — TMDB shows disambiguate against the TVDB show sync's own. */
+    /** Heartbeat tag, source-prefixed (`tmdb movies`) so a line names which sync emitted it. */
     abstract protected function heartbeatTag(): string;
 
     /**
@@ -128,7 +145,7 @@ abstract class TmdbSyncCommand extends Command
     /**
      * Run a leg end to end: stamp its watermark, insert with indexing deferred,
      * refresh what the changes window reports, advance the marker if the run owed
-     * nothing, then index every row the leg touched.
+     * nothing, index every row the leg touched, then close the run.
      *
      * The frame lives here rather than in each handle() so that whatever phases a
      * leg adds, its every upsert lands inside the indexing wrap and the single
@@ -144,22 +161,65 @@ abstract class TmdbSyncCommand extends Command
         // overlap window rather than falling in the gap.
         $startedAt = CarbonImmutable::now();
 
-        $this->withoutIndexing(function () use ($marker, $insertNew, $startedAt): void {
+        $phaseFailed = false;
+
+        $this->withoutIndexing(function () use ($marker, $insertNew, $startedAt, &$phaseFailed): void {
             $insertFailed = $insertNew();
 
             // --fresh already re-hydrated every candidate, so a changes pass is redundant.
             $changesFailed = $this->option('fresh') ? false : $this->updateChanged($marker);
 
+            $phaseFailed = $insertFailed || $changesFailed;
+
             // A failure means the window wasn't fully covered — the marker must not move
             // past a span still owed to the next run.
-            if (! $insertFailed && ! $changesFailed) {
+            if (! $phaseFailed) {
                 $marker->advance($this->feed(), $startedAt);
             }
         });
 
         $this->reindexTouched($startedAt);
 
-        return self::SUCCESS;
+        return $this->closeRun($phaseFailed);
+    }
+
+    /**
+     * Close the run: the tag's exact final total, then whatever the run still
+     * owed, then the exit code.
+     *
+     * Reported at the end rather than raised at the failure site, because the
+     * rows a failing run did write are committed and indexed either way — the
+     * non-zero exit is what tells a scheduler the window was only part covered.
+     *
+     * Takes the phases' own verdict rather than re-deriving one from the
+     * counters: the counters are a subset of what holds the marker back. A leg's
+     * own catch (SyncTmdbShows::hydrateChunkSafely) and an upsert QueryException
+     * both name no entity, so a run can skip its marker advance with both
+     * counters at zero — which used to close on a bare `Done.` and exit SUCCESS.
+     */
+    private function closeRun(bool $phaseFailed): int
+    {
+        $tag = $this->heartbeatTag();
+
+        $this->flushTotal($tag, $this->counted[$tag] ?? 0);
+
+        $this->failureSummary($this->failedEntities, $this->entityLabel(), 'marker not advanced');
+        $this->failureSummary($this->failedChangesWindows, 'changes-feed window', 'marker not advanced');
+
+        // Counter-driven lines above, consequence-only line here: with nothing to
+        // count, the consequence is still the half an operator acts on, and a
+        // fabricated "1 shows failed" would name a scope the run never measured.
+        // Unindented and suppressed once a counted line already said it, so the run
+        // states the held-back marker exactly once.
+        if ($phaseFailed && $this->failedEntities === 0 && $this->failedChangesWindows === 0) {
+            $this->output->writeln(Str::ucfirst($this->entityLabel()).' sync failed; marker not advanced.');
+        }
+
+        $this->output->writeln('Done.');
+
+        return $phaseFailed || $this->failedEntities > 0 || $this->failedChangesWindows > 0
+            ? self::FAILURE
+            : self::SUCCESS;
     }
 
     /**
@@ -228,6 +288,8 @@ abstract class TmdbSyncCommand extends Command
             } catch (\Throwable $e) {
                 report($e);
 
+                $this->failedChangesWindows++;
+
                 return true;
             }
 
@@ -268,44 +330,19 @@ abstract class TmdbSyncCommand extends Command
     }
 
     /**
-     * Count $units of work under $tag and beat once per whole $cadence crossed.
+     * Count $units of work under $tag, then beat every $cadence boundary the new
+     * running total crossed.
      *
-     * The unit is work *scanned*, not written: on a seeded catalog nothing is
-     * upserted, so the upsert beat never fires and only this proves the run is
-     * alive.
+     * The single entry point for the counter: work *scanned* is counted here as
+     * well as work written, because on a seeded catalog nothing is upserted, so the
+     * upsert beat never fires and a scan or probe beat is the only thing proving
+     * the run is alive.
      */
-    protected function beatEvery(string $tag, int $cadence, int $units = 1): void
+    protected function beatEvery(string $tag, int $cadence, int $units = 1, ?string $suffix = null): void
     {
-        $beat = $this->beatDue($tag, $cadence, $units);
+        $this->counted[$tag] = ($this->counted[$tag] ?? 0) + $units;
 
-        if ($beat !== null) {
-            $this->output->writeln("  [{$tag} {$beat}]");
-        }
-    }
-
-    /**
-     * The count $tag should print now that $units more have landed, or null while
-     * the cadence hasn't been crossed.
-     *
-     * A caller may add a whole slice or chunk at once, so a boundary is a *crossing*
-     * of the running total rather than a modulo on a single increment — a modulo
-     * misses every boundary a multi-unit step jumped clean over.
-     *
-     * Separate from beatEvery() only so the upsert beat, whose line carries a
-     * trailing title, can share this counter instead of running its own.
-     */
-    private function beatDue(string $tag, int $cadence, int $units = 1): ?int
-    {
-        $before = $this->counted[$tag] ?? 0;
-        $after = $before + $units;
-
-        $this->counted[$tag] = $after;
-
-        if (intdiv($before, $cadence) === intdiv($after, $cadence)) {
-            return null;
-        }
-
-        return intdiv($after, $cadence) * $cadence;
+        $this->beat($tag, $this->counted[$tag], $cadence, $suffix);
     }
 
     /**
@@ -323,6 +360,9 @@ abstract class TmdbSyncCommand extends Command
     }
 
     /**
+     * A throw carries no per-id detail, so the whole chunk is owed — unlike a
+     * short result set, where the pool names which ids came back.
+     *
      * @param  array<int, int>  $ids
      */
     protected function syncChunkSafely(array $ids): bool
@@ -331,6 +371,8 @@ abstract class TmdbSyncCommand extends Command
             return $this->syncChunk($ids);
         } catch (\Throwable $e) {
             report($e);
+
+            $this->failedEntities += count($ids);
 
             return true;
         }
@@ -354,7 +396,13 @@ abstract class TmdbSyncCommand extends Command
 
     /**
      * A short result count is the only signal of a per-id fetch failure (see
-     * GUIDELINES.md). A 404 stays present-as-null, so it never counts as one.
+     * GUIDELINES.md), and the shortfall is how many entities the run owes. A 404
+     * stays present-as-null, so it never counts as one.
+     *
+     * Measured against the DISTINCT ids: the pool de-duplicates and keys by id,
+     * so a repeated id comes back once and would otherwise read as a loss. The
+     * clamp holds that floor for any hydrate() that returns more than it was
+     * asked for, which no current leg does.
      *
      * @param  array<int, int>  $ids
      */
@@ -362,7 +410,11 @@ abstract class TmdbSyncCommand extends Command
     {
         $results = $this->hydrate($ids);
 
-        $failed = count($results) < count(array_unique($ids));
+        $missing = max(count(array_unique($ids)) - count($results), 0);
+
+        $failed = $missing > 0;
+
+        $this->failedEntities += $missing;
 
         $payloads = $this->payloads($results);
 
@@ -373,11 +425,7 @@ abstract class TmdbSyncCommand extends Command
         $this->upsertPayloads($payloads);
 
         foreach ($payloads as $payload) {
-            $beat = $this->beatDue($this->heartbeatTag(), self::HYDRATE_BEAT);
-
-            if ($beat !== null) {
-                $this->output->writeln("  [{$this->heartbeatTag()} {$beat}] ".($this->payloadTitle($payload) ?? '—'));
-            }
+            $this->beatEvery($this->heartbeatTag(), self::HYDRATE_BEAT, suffix: $this->payloadTitle($payload) ?? '—');
         }
 
         $models = $this->query()

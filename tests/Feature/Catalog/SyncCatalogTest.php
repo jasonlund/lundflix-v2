@@ -7,12 +7,14 @@ use App\Domains\Catalog\Models\Show;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 uses(RefreshDatabase::class);
 
@@ -114,6 +116,22 @@ function fakeCatalogSyncFreshAndUpdates(): void
             ? Http::response(fixtureBytes('Catalog/tvdb/series_extended.json'))
             : Http::response('', 404),
     ]);
+}
+
+/**
+ * Run the orchestrator against a buffer we own and hand back everything it wrote,
+ * children included.
+ *
+ * `Artisan::output()` reads back empty here: catalog:sync forwards `$this->output`
+ * into its own `Artisan::call` per child, which leaves the kernel's last output an
+ * `OutputStyle` — no `fetch()`, so the read yields ''. Passing our own buffer keeps
+ * the whole run in one readable string, which is what ordering assertions need.
+ */
+function catalogSyncOutput(): string
+{
+    Artisan::call('catalog:sync', [], $buffer = new BufferedOutput);
+
+    return $buffer->fetch();
 }
 
 beforeEach(function (): void {
@@ -222,7 +240,7 @@ describe('catalog:sync exit codes and failure handling', function (): void {
         expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
     });
 
-    it('names the failed leg on the console and closes with a summary', function (): void {
+    it('names the failed leg on the console and lists it under Failed commands', function (): void {
         // Arrange
         Sleep::fake();
         Exceptions::fake();
@@ -239,7 +257,7 @@ describe('catalog:sync exit codes and failure handling', function (): void {
         $this->artisan('catalog:sync')
             ->expectsOutputToContain('Downloading movie-ids export… failed after')
             ->expectsOutputToContain('catalog:sync-movies failed:')
-            ->expectsOutputToContain('Completed with 1 failed leg: catalog:sync-movies')
+            ->expectsOutputToContain('Failed commands: catalog:sync-movies')
             ->assertExitCode(Command::FAILURE);
     });
 
@@ -349,5 +367,82 @@ describe('catalog:sync episodes dispatch', function (): void {
         // marker-driven with no --fresh flag, so it must still run — seeing type=episodes
         // proves it did (ordering after the crawl is enforced by its list placement).
         Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'type=episodes'));
+    });
+});
+
+describe('catalog:sync progress output', function (): void {
+    it('announces each child command before running it', function (): void {
+        // Arrange
+        fakeCatalogSync();
+
+        // Act
+        $output = catalogSyncOutput();
+
+        // Assert
+        // Offsets, not substrings: the point is that the announcement lands *before*
+        // the child's own first phase line, which containment alone cannot express.
+        // strpos returns false while the line is missing, and `false < int` is true
+        // under PHP's loose comparison — so the presence check has to be its own
+        // assertion rather than being folded into the ordering one.
+        $announcedAt = strpos($output, 'Running catalog:sync-movies…');
+        $firstPhaseAt = strpos($output, 'Downloading movie-ids export…');
+
+        expect($announcedAt)->toBeInt();
+        expect($announcedAt)->toBeLessThan($firstPhaseAt);
+        expect($output)->toContain('Running catalog:sync-shows-tvdb…')
+            ->toContain('Running catalog:sync-episodes-tvdb…')
+            ->toContain('Running catalog:sync-shows-tmdb…');
+    });
+
+    it('names the failed child in a closing line', function (): void {
+        // Arrange
+        Sleep::fake();
+        Exceptions::fake();
+        // Http::fake merges stubs and the first registered match wins, so this 500
+        // registered ahead of the happy-path helper overrides only the ids export.
+        Http::fake(['*movie_ids*' => Http::response('', 500)]);
+        fakeCatalogSync();
+
+        // Act
+        $output = catalogSyncOutput();
+
+        // Assert
+        // A run that keeps dispatching past a dead child otherwise names the guilty
+        // one only by accident, buried in the interleaved wall of child output.
+        expect($output)->toContain("Failed commands: catalog:sync-movies\n");
+    });
+
+    it('closes a run that lost a child with its own Done. too', function (): void {
+        // Arrange
+        Sleep::fake();
+        Exceptions::fake();
+        // Http::fake merges stubs and the first registered match wins, so this 500
+        // registered ahead of the happy-path helper overrides only the ids export.
+        Http::fake(['*movie_ids*' => Http::response('', 500)]);
+        fakeCatalogSync();
+
+        // Act
+        $output = catalogSyncOutput();
+
+        // Assert
+        // Only the movies leg dies, so the surviving children still sign off with their
+        // own `Done.` — containment would pass on theirs alone. The ordered pair pinned
+        // to the very end is what proves the orchestrator closed a losing run itself
+        // instead of returning FAILURE straight off the failure line.
+        expect($output)->toEndWith("Failed commands: catalog:sync-movies\nDone.\n");
+    });
+
+    it('closes the run with its own Done.', function (): void {
+        // Arrange
+        fakeCatalogSync();
+
+        // Act
+        $output = catalogSyncOutput();
+
+        // Assert
+        // The last child (catalog:sync-shows-tmdb) signs off with its own `Done.`, so
+        // a second one on the final line is what proves catalog:sync closed the run
+        // rather than just trailing off after the last child.
+        expect($output)->toEndWith("Done.\nDone.\n");
     });
 });

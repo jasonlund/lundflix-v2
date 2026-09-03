@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Models\Show;
 use Carbon\CarbonImmutable;
+use Illuminate\Console\Command;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -191,6 +192,20 @@ describe('catalog:seed-shows-tvdb exit code and output', function (): void {
         // Act & Assert
         $this->artisan('catalog:seed-shows-tvdb')->expectsOutputToContain('Syncing shows…');
     });
+
+    it('closes a clean crawl with its exact final count and a Done. line', function (): void {
+        // Arrange
+        // The crawl fake hydrates exactly one id (70327 → the extended payload) and 404s
+        // every other crawled id, so the run upserts one payload — far short of the
+        // 1000-payload beat interval, which is why nothing is printed today. The count is
+        // pinned to the observed run, not to the interval arithmetic.
+        fakeTvdbSeedCrawl();
+
+        // Act & Assert
+        $this->artisan('catalog:seed-shows-tvdb')
+            ->expectsOutputToContain('  [tvdb shows 1]')
+            ->expectsOutputToContain('Done.');
+    });
 });
 
 describe('catalog:seed-shows-tvdb failure retry', function (): void {
@@ -256,7 +271,7 @@ describe('catalog:seed-shows-tvdb failure retry', function (): void {
         Exceptions::assertReported(fn (TvdbRequestFailed $e): bool => Str::contains($e->getMessage(), '70327'));
     });
 
-    it('prints an end-of-run summary line naming the still-failing ids', function (): void {
+    it('prints an end-of-run summary line naming the still-failing ids and exits FAILURE', function (): void {
         // Arrange
         Sleep::fake();
         Http::fake([
@@ -271,7 +286,7 @@ describe('catalog:seed-shows-tvdb failure retry', function (): void {
         $this->artisan('catalog:seed-shows-tvdb')
             ->expectsOutputToContain('still failing')
             ->expectsOutputToContain('70327')
-            ->assertExitCode(0);
+            ->assertExitCode(Command::FAILURE);
     });
 
     it('propagates a non-API upsert exception instead of swallowing it as a retryable failure', function (): void {

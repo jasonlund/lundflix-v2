@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\PlexLibrary\Console\Commands;
 
+use App\Domains\Common\Console\Concerns\EmitsHeartbeat;
 use App\Domains\PlexLibrary\Actions\NotifyRecentlyAdded;
 use App\Domains\PlexLibrary\Actions\ReconcilePlexEpisodes;
 use App\Domains\PlexLibrary\Actions\ReconcilePlexLibraries;
@@ -24,6 +25,8 @@ use Throwable;
 
 abstract class PlexLibraryCommand extends Command
 {
+    use EmitsHeartbeat;
+
     public function __construct(
         private readonly PlexLibraryService $library,
         private readonly UpsertPlexServer $upsertServer,
@@ -47,28 +50,25 @@ abstract class PlexLibraryCommand extends Command
 
         $sections = $this->library->fetchSections($uri, $token);
         $libraryCount = $this->reconcileLibraries->handle($server, $sections);
-        $this->output->writeln("  [libraries {$libraryCount}]");
+        $this->mark('plex libraries', $libraryCount);
 
         $libraries = PlexLibrary::query()
             ->where('plex_server_id', $server->id)
             ->get()
             ->groupBy('_plex_type');
 
-        $this->reconcileTopLevel($server, $uri, $token, $libraries->get('movie', collect()), $this->reconcileMovies, 'movies');
+        $this->reconcileTopLevel($server, $uri, $token, $libraries->get('movie', collect()), $this->reconcileMovies, 'plex movies');
 
         $showLibraries = $libraries->get('show', collect());
 
-        $this->reconcileTopLevel($server, $uri, $token, $showLibraries, $this->reconcileShows, 'shows');
+        $this->reconcileTopLevel($server, $uri, $token, $showLibraries, $this->reconcileShows, 'plex shows');
 
-        $failed = false;
+        $failedShows = 0;
         $episodeTotal = 0;
-        $lastBeat = -1;
 
         // A single show's fetch failure is tolerated so one bad show doesn't sink
         // the whole crawl — mirrors SyncCatalog's report-and-continue posture.
         foreach ($this->showsToCrawl($showLibraries) as $show) {
-            $before = $episodeTotal;
-
             try {
                 $children = $this->library->fetchShowChildren($uri, $token, $show->_plex_ratingKey);
                 $leaves = $this->library->fetchShowLeaves($uri, $token, $show->_plex_ratingKey);
@@ -81,13 +81,13 @@ abstract class PlexLibraryCommand extends Command
                 $show->update(['episodes_synced_at' => now()]);
             } catch (Throwable $e) {
                 report($e);
-                $failed = true;
+                $failedShows++;
             }
 
-            $lastBeat = $this->hundredBeat('episodes', $before, $episodeTotal, $lastBeat);
+            $this->beat('plex episodes', $episodeTotal, 100);
         }
 
-        $this->flushTotal('episodes', $episodeTotal, $lastBeat);
+        $this->flushTotal('plex episodes', $episodeTotal);
 
         if ($this->notifiesRecentlyAdded()) {
             $this->notifyRecentlyAdded->handle();
@@ -114,9 +114,11 @@ abstract class PlexLibraryCommand extends Command
                 ->update(['announced_at' => now()]);
         }
 
+        $this->failureSummary($failedShows, 'shows', 'watermark not advanced');
+
         $this->output->writeln('Done.');
 
-        return $failed ? self::FAILURE : self::SUCCESS;
+        return $failedShows > 0 ? self::FAILURE : self::SUCCESS;
     }
 
     /**
@@ -137,7 +139,6 @@ abstract class PlexLibraryCommand extends Command
         string $label,
     ): void {
         $total = 0;
-        $lastBeat = -1;
 
         foreach ($libraries as $library) {
             // One clock per library, shared by every page: the sweep below deletes
@@ -146,44 +147,18 @@ abstract class PlexLibraryCommand extends Command
             $now = now();
 
             foreach ($this->library->fetchSectionItems($uri, $token, $library->_plex_key) as $page) {
-                $before = $total;
                 $total += $reconciler->upsertPage($server, $library, $page, $now);
 
                 // Beats per page, not per library: a production section walks for
                 // hours, and a beat deferred to the end of the library is silence
                 // followed by one burst.
-                $lastBeat = $this->hundredBeat($label, $before, $total, $lastBeat);
+                $this->beat($label, $total, 100);
             }
 
             $reconciler->prune($server, $library, $now);
         }
 
-        $this->flushTotal($label, $total, $lastBeat);
-    }
-
-    /**
-     * Emit a heartbeat at every multiple-of-100 the running total crosses in
-     * this step (a single batch can cross several), printing the clean
-     * boundary. Returns the last multiple emitted, or $lastBeat if none.
-     */
-    private function hundredBeat(string $label, int $before, int $after, int $lastBeat): int
-    {
-        for ($mark = intdiv($before, 100) * 100 + 100; $mark <= $after; $mark += 100) {
-            $this->output->writeln("  [{$label} {$mark}]");
-            $lastBeat = $mark;
-        }
-
-        return $lastBeat;
-    }
-
-    /**
-     * Emit the final total once, unless the last heartbeat already reported it.
-     */
-    private function flushTotal(string $label, int $total, int $lastBeat): void
-    {
-        if ($total !== $lastBeat) {
-            $this->output->writeln("  [{$label} {$total}]");
-        }
+        $this->flushTotal($label, $total);
     }
 
     /**

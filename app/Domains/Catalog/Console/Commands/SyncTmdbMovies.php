@@ -86,7 +86,7 @@ final class SyncTmdbMovies extends TmdbSyncCommand
 
     protected function heartbeatTag(): string
     {
-        return 'movies';
+        return 'tmdb movies';
     }
 
     /**
