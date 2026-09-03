@@ -93,9 +93,10 @@ repetition that now justifies extraction.
   intentional, per `CLAUDE.md`.
 - Similar-but-not-identical logic. If deduping it would require inventing an
   abstraction to reconcile real differences, stay silent.
-- Duplication entirely inside untouched files. Scope is the PR diff; a touched copy
-  duplicating an untouched one is in scope, capped at CONSIDER and tagged
-  pre-existing.
+- Duplication entirely inside untouched files. Scope is the PR diff.
+
+A touched copy duplicating an untouched one is the exception: in scope, but capped
+at CONSIDER and tagged pre-existing.
 
 ## Output Format
 
@@ -104,10 +105,11 @@ Return findings in the standard `=== FINDING ===` block from
 `CATEGORY: architecture` (or `testing` for test helpers/fixtures). Set `FILE`/`LINE`
 to the **second** occurrence and quote **both** in EVIDENCE with their own
 `file:line`. RECOMMENDATION names **both** occurrences with their `file:line` —
-it is the only field the posted PR comment carries — plus the concrete extraction:
-the shared parent, trait, helper, or constant, and where it should live. If the PR
-is free of duplication, return a `=== NO FINDINGS ===` block naming the file pairs
-you compared.
+EVIDENCE is not rendered in the posted comment, so it is the only field that
+reaches the reader with the first one — plus the concrete extraction: the shared
+parent, trait, helper, or constant, and where it should live. If the PR is free
+of duplication, return a `=== NO FINDINGS ===` block naming the file pairs you
+compared.
 
 ## Convention-Awareness
 
