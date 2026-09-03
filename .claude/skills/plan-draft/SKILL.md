@@ -117,7 +117,9 @@ can be approved a cluster at a time, not big-bang.
 
 Walk the clusters **one at a time**. Per cluster: state the decision, give 2–3
 concrete options with a **recommendation and its reasoning**, and get the user's
-pick. Use `AskUserQuestion` / the Conductor plan UI for structured choices.
+pick. Use `AskUserQuestion` for structured choices — it is Claude Code's own tool
+and renders its picker in the terminal under any harness, Conductor or
+LaborForest + Solo.
 
 Ask a cluster as a **numbered round**, every question carrying your recommended
 answer, then wait. Numbering lets the user answer `3. b` instead of re-quoting the

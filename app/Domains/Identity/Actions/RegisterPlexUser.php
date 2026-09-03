@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domains\Identity\Actions;
 
+use App\Domains\Identity\Data\PlexRegistrationInput;
+use App\Domains\Identity\Data\VerifiedPlexIdentity;
 use App\Domains\Identity\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -18,20 +20,18 @@ final readonly class RegisterPlexUser
      * $plex is the server-verified identity — trusted, unvalidated; $input is the
      * form's half — untrusted, validated.
      *
-     * @param  array{id: int|null, uuid: string|null, username: string|null, email: string|null, thumb: string|null, token: string}  $plex  PlexApiService::getUserInfo() plus the PIN's token
-     * @param  array<string, string>  $input
-     *
      * @throws ValidationException
      */
-    public function handle(array $plex, array $input): User
+    public function handle(VerifiedPlexIdentity $plex, PlexRegistrationInput $input): User
     {
-        // The email is never taken from $input — a submitted one is spoofable —
-        // so it is folded in from the verified account to be uniqueness-checked.
+        // The email is never taken from $input — a submitted one is spoofable, and
+        // PlexRegistrationInput carries no email field at all — so it is folded in
+        // from the verified account to be uniqueness-checked.
         Validator::make([
-            'name' => $input['name'] ?? null,
-            'email' => $plex['email'],
-            'password' => $input['password'] ?? null,
-            'password_confirmation' => $input['password_confirmation'] ?? null,
+            'name' => $input->name,
+            'email' => $plex->account->email,
+            'password' => $input->password,
+            'password_confirmation' => $input->passwordConfirmation,
         ], [
             'name' => ['required', 'string', 'max:255'],
             'email' => [
@@ -45,14 +45,14 @@ final readonly class RegisterPlexUser
         ])->validate();
 
         return User::create([
-            'name' => $input['name'],
-            'email' => $plex['email'],
-            'password' => Hash::make($input['password']),
-            '_plex_id' => $plex['id'],
-            '_plex_uuid' => $plex['uuid'],
-            '_plex_username' => $plex['username'],
-            '_plex_thumb' => $plex['thumb'],
-            '_plex_token' => $plex['token'],
+            'name' => $input->name,
+            'email' => $plex->account->email,
+            'password' => Hash::make($input->password),
+            '_plex_id' => $plex->account->id,
+            '_plex_uuid' => $plex->account->uuid,
+            '_plex_username' => $plex->account->username,
+            '_plex_thumb' => $plex->account->thumb,
+            '_plex_token' => $plex->token,
         ]);
     }
 }

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services\Concerns;
 
+use App\Domains\Catalog\Data\PooledResult;
 use App\Domains\Catalog\Exceptions\PooledIdFailed;
-use App\Domains\Catalog\Support\PooledResult;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;

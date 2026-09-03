@@ -89,6 +89,63 @@ Single-purpose actions live in `App\Domains\{Domain}\Actions`.
   auth/profile actions live in `App\Domains\Identity\Actions`, wired in
   `App\Providers\FortifyServiceProvider`.
 
+### DTOs — domain boundaries speak in types, not array shapes
+
+A public method on a domain's `Actions`/`Services` **never takes or returns a bare
+`array`** for an app-shaped struct. `array{id: int, …}` in a docblock is a type the
+language won't check; make it a class. Enforced by
+`tests/Feature/Architecture/DtoBoundaryTest.php`.
+
+- **Location: `App\Domains\{Domain}\Data`** — every data-carrying shape. `Support/`
+  holds **behavior helpers only** (`SourceId`, `RawSourceColumns`, `BulkCaseUpdate`).
+  A class whose job is to carry values belongs in `Data/` even when it exposes
+  accessors over them (`SyncWindow`).
+- **Base class by boundary:** plain `final readonly class` by default; extend spatie
+  `Data` **only** when the object crosses a serialization boundary — Inertia props,
+  `#[TypeScript]`, `::from()` hydration. A reflection-heavy base buys nothing on an
+  internal service→action struct.
+- **Plain carriers.** No `toArray()`, named constructors, or behavior. Marshalling
+  belongs to the seam that needs it, not the DTO (see `PlexSession`).
+- **Nullability states trust.** A DTO of verified data types its fields tightly
+  (`PlexServerConnection`); one carrying unvalidated request data is nullable so a
+  missing field reaches the validator instead of the constructor
+  (`PlexRegistrationInput`). Omitting a field entirely is a real guard —
+  `PlexRegistrationInput` has no `email`, so a spoofed one has nowhere to land.
+
+**Three exemptions, and only these** (the fence documents each entry with its reason):
+
+1. **Raw upstream payloads** — the wire shape is the source's, not ours. Two forms,
+   and which one you have decides how much of the signature is exempt:
+   - **Ingest sinks — the exempt `array` is a *parameter*.** `array $payloads`/`$rows`/
+     `$page`/`$sections` feeding the `_{source}_*` raw-parity columns
+     (`UpsertTmdbMovies::handle`, `ReconcilePlexLibraries::handle`,
+     `ImportImdbTitles::handle`). A DTO there is a transform at ingest and breaks the
+     `RAW_COLUMNS` list-driven mapping. The **return** still converts — these hand
+     back a count or a DTO (`TitleImportCounts`).
+   - **Wire-shape reads — the exempt `array` is the *return*.** A method whose
+     `array`/`?array` return *is* the decoded upstream response body
+     (`TmdbApiService::movie`, `TmdbApiService::configuration`,
+     `PlexLibraryService::fetchSections`, and their TVDB/Plex siblings). No
+     `RAW_COLUMNS` mapping to break and no DTO planned — modelling a third party's
+     response shape buys a class that changes whenever they change. The return
+     stays `array` indefinitely.
+2. **Framework-fixed signatures** — Fortify's `CreatesNewUsers::create(array $input)`,
+   Inertia's `share(): array`. Not ours to retype.
+3. **Scalar lists** — `list<int>`/`list<string>` returns. A list of ints is not a
+   struct.
+
+The fence **throws on an exemption entry that no longer resolves** to a real
+`Class::method`, so the list can't rot into silently exempting nothing. Adding an
+entry is a deliberate act — a new source integration must classify its ingest methods
+consciously.
+
+**Session gotcha:** `config('session.serialization')` is `json`, so a PHP object put
+in the session decodes back as an array. Stash a JSON-safe payload and hydrate on
+read (`PlexSession`). The Feature suite **cannot catch this** — the test client sends
+no session cookie between requests, so each gets a fresh id and an in-memory object
+survives. Round-trip the value through the serializer in the test, as
+`PlexRegistrationTest` does.
+
 ### Exceptions
 
 **One explicitly named class per distinct failure**, named for the condition,
@@ -160,7 +217,9 @@ the intended appearance.
 
 **Test-first by default** via the `tdd` skill: RED → GREEN → REFACTOR, one
 behavior **slice** (~2–6 tests) per cycle, each phase in an isolated subagent so
-tests can't be retrofitted. RED slice approved in Conductor's plan UI first.
+tests can't be retrofitted. RED slice approved in the harness's plan UI first
+(Conductor's, or plain terminal approval under LaborForest + Solo — the gate is the
+approval, not the UI that renders it).
 
 - **AAA, always.** Three blocks in order — arrange, **one** act, assert —
   separated by blank lines. One Act per test; need a second action → second test.
@@ -462,7 +521,30 @@ checkout/workspace has a usable dataset with no third-party API calls (FLIX-194)
 - **The test DB is sqlite `:memory:`; prod/dev is MySQL.** A MySQL-dialect dump
   can't load into sqlite, so `db:import` tests assert the real truncate + the
   faked load invocation, not reloaded rows — the byte-apply is covered by the
-  Conductor setup smoke, not a Pest test.
+  workspace setup smoke (Conductor's `setup.sh`, or LaborForest's `refresh`
+  workflow), not a Pest test.
+
+## Cache: store scalars, never objects
+
+`config/cache.php` sets `'serializable_classes' => false` (Laravel's gadget-chain
+hardening default), so every store reads through
+`unserialize($value, ['allowed_classes' => false])` and **no object survives the
+round trip** — it returns as `__PHP_Incomplete_Class`. A `Cache::put`/`forever` of
+an object writes fine and can never be read back: the value is write-only.
+
+- **Cache strings, ints, bools, and arrays of those.** A timestamp goes in as
+  `->toIso8601String()` and is parsed on read (`SyncMarker`); a header goes in
+  verbatim (`ImdbDatasetMarker`).
+- **Type-check the read** whenever a stale key may predate the rule
+  (`is_string($marker)`) and degrade to the no-value path. An entry poisoned by an
+  older build then self-heals on the next write instead of throwing — no manual
+  `cache:forget` in the deploy.
+- **Never widen `serializable_classes` to rescue a call site** — it weakens a
+  security default app-wide for one value that should have been a scalar.
+- **The test `array` store is `'serialize' => true` on purpose**, against the
+  framework default, so the suite serializes exactly like production. Leaving it
+  false is what let a cached `CarbonImmutable` pass all 1217 tests and fail every
+  production run (FLIX-287). Never flip it back.
 
 ## Linting & formatting (finalize gates)
 
@@ -477,6 +559,82 @@ touched — scoped to your changed work, never a repo-wide sweep (a bare
   `npm run lint`, `npm run format`, `npm run types`.
 - Then re-run the affected tests — linters reorder and retype code, so re-verify
   green before finalizing.
+
+## Local worktree tooling: LaborForest + Solo
+
+Two tools, version-controlled. **LaborForest** (`lf`) owns worktree lifecycle
+through `.laborforest/workflows/{up,down,refresh}.yaml`; **Solo** owns the
+long-running dev processes through a committed `solo.yml`. Conductor's `.conductor/`
+is still live for its in-flight workspaces — both toolchains work side by side, and
+LaborForest + Solo is the current path for new work.
+
+- **Never put computation in a workflow's bash string.** A `shell` step's `run:` is
+  a string inside YAML — nothing can test it, so any logic there is unverifiable by
+  construction. Route it through an artisan command and test that at `artisan()`:
+  `lf:workspace-env` derives a workspace's site/database/URL. A step should be one
+  line.
+- **The workflows never touch Solo.** Solo owns its own project registry; worktrees
+  are added and removed in its UI. `up` creates no Solo state, so `down` has none to
+  reverse, and the boundary stays where the two tools already draw it — LaborForest
+  orchestrates worktrees, Solo runs processes inside one. Reaching across it means
+  either Solo's CLI (gated behind a per-machine "local CLI access" setting nothing in
+  the repo can enforce — it *silently no-ops* when off, which is worse than failing)
+  or a JSON-RPC socket client. Neither belongs in a `shell` step.
+- **`solo.yml` is repo-controlled, with limits worth knowing.** Solo syncs it into
+  local state, but **only `command` processes are YAML-backed** — terminals and
+  agents are not stored there at all, so they stay per-machine. New or changed YAML
+  commands start **untrusted** and will not run or auto-start until trusted in
+  Solo's UI.
+- **Only servers that resolve on every checkout belong in the committed `.mcp.json`.**
+  `php artisan boost:mcp` is repo-relative and qualifies. Solo's MCP server lives in
+  a macOS app bundle — machine-local, so it goes in a user-scoped Claude config, not
+  a project-scoped file every checkout inherits.
+- **Every destructive step carries the primary guard** —
+  `if: test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"` — and so does
+  `up`'s nested `refresh` call. The primary's `lundflix` database holds far more
+  than the committed dumps can restore. `tests/Unit/Local/LaborForestWorkflowTest.php`
+  is what enforces this; add a destructive step and you must add its matcher there.
+- **Teardown is best-effort and always exits 0.** `down` is the only path
+  `ready → suspended`, and LaborForest hides its Remove action unless a workspace is
+  suspended — so a step that fails makes the worktree permanently undeletable. An
+  orphaned resource is the cheaper failure; say so in a heartbeat rather than
+  returning non-zero.
+- **Per-workspace names are computed, never templated.** `{{ WORKSPACE_SLUG_SNAKE }}`
+  verbatim overflows MySQL's 64-char database-name limit on real branch names.
+  `lf:workspace-env` strips the project prefix, trims the branch to 40 chars, and
+  prefixes `lf-` (Herd site) / `lf_` (database) — which also keeps LaborForest's
+  databases visibly distinct from Conductor's `lundflix_*`.
+- **Drive LaborForest through its MCP, not the `lf` CLI.** When
+  `mcp__laborforest__*` tools are present, use `add-workspace` to cut the worktree,
+  `run-workflow` to run `up`/`down`/`refresh`, and `override-workspace-status` to
+  clear the `error` a failed run leaves behind — README's *"Driving it from an agent
+  (LaborForest MCP)"* carries each tool's arguments. `lf` exposes only `add-project`,
+  `run`, `validate` — it cannot create a workspace or clear a status at all. There
+  is **no `remove-workspace` tool**; final removal is a GUI action (`remove-project`
+  deletes a whole project, not one workspace).
+- **`run-workflow` only dispatches.** It returns a run id and the workflow executes
+  asynchronously inside the app, so its return says nothing about success. Read
+  `.laborforest/ignored/logs/` — the newest file records every step's exit code,
+  output and `skip_reason`. Judging a run by the dispatch call is how a failure gets
+  reported as a success.
+- **Validate through the MCP; the CLI's `lf validate` is inert.** `lf validate` exits
+  0 for a missing file *and* for a schema-invalid one. The MCP's `validate-workflow`
+  is a real check — it returns `isError` with the reason ("The selected require
+  status is invalid. The sort order field is required.") on the same file the CLI
+  passes. So a schema check exists, but only through the MCP; the Pest guards remain
+  the only check that runs in CI, and a real `up` → `down` round trip is still the
+  only end-to-end proof.
+- **Fall back to the GUI when the MCP is absent.** No `laborforest` tools usually
+  means the session started before the server was registered — a new session fixes
+  it. "Nothing is listening" usually means the Settings toggles were never saved;
+  `~/.laborforest/settings.yaml` is the source of truth, and the server starts from
+  the saved file.
+- Machine-local settings that cannot be version-controlled — `~/.laborforest/settings.yaml`
+  (`command_launch_terminal`) and trusting a worktree's `solo.yml` commands in Solo's
+  UI — are README operator steps. Keep that list short: **an operator step nothing
+  enforces is a liability**, so prefer a design that needs none over one that
+  documents another. Never install a tool by symlinking out of an app bundle; use
+  the app's own supported path, or don't depend on it.
 
 ## Configuration
 
@@ -496,9 +654,18 @@ touched — scoped to your changed work, never a repo-wide sweep (a bare
 - **Only *required* env vars belong in `.env.example`** — a secret/credential the
   app needs to run. Optional tunables that read `env()` with a `config/` default
   stay out; the default is the documentation.
-- **New required env var → also set the Conductor root `.env`.** Fresh workspaces
-  copy `.env` from `~/conductor/repos/<repo>/.env`, not from `.env.example` — set
-  it there too or new workspaces start without it.
+- **New required env var → also set the seed `.env` of whichever worktree tool you
+  use.** A fresh workspace copies `.env` from a seed checkout, never from
+  `.env.example`, so a var added only to `.env.example` leaves every new workspace
+  without it.
+  - **LaborForest + Solo (current)** — the seed is the primary checkout's own
+    `.env`, `~/Sites/<repo>/.env`, which `up.yaml` copies from
+    `{{ PROJECT_PRIMARY_DIR }}`.
+  - **Conductor (in-flight workspaces)** — the seed is
+    `~/conductor/repos/<repo>/.env`.
+
+  Both toolchains are live; set the var in the seed `.env` of each one you still
+  cut workspaces from.
 
 ## Documentation
 
@@ -609,8 +776,10 @@ The incident behind the rule and the timing forensics:
 
 Configuration the installed engineering skills read before they act —
 `mattpocock-skills:triage`, `:to-spec`, `:to-tickets`, `:wayfinder`,
-`:code-review`. They ship as the `mattpocock-skills` plugin, so **every one is
-invoked with that prefix**; the skill files' own cross-references to bare
+`:code-review`. They are **user-scoped**, not a plugin and not in this repo —
+they live under `~/.claude/skills/mattpocock-skills/`, so **every one is invoked
+with that prefix** and none of them are available in a checkout on a machine that
+has not installed them; the skill files' own cross-references to bare
 `/to-spec`-style names are upstream text and are stale here. Written by
 `mattpocock-skills:setup-matt-pocock-skills`; edit `docs/agents/*.md` directly to
 change the config.
@@ -645,8 +814,10 @@ cutover — offer `mattpocock-skills:wizard`. It generates an interactive bash s
 that opens each URL, captures each value, and writes it where it belongs, so the
 procedure stops being re-explained every time. Adding an API credential here is the
 standard case: the value must reach `.env.example`, the README key table, **and**
-the Conductor root `.env`. Do the work directly whenever you can; the wizard is for
-where a human is genuinely in the loop.
+the seed `.env` of every worktree tool in use — the primary checkout's `.env` under
+LaborForest + Solo, the Conductor root `.env` for in-flight Conductor workspaces.
+Do the work directly whenever you can; the wizard is for where a human is genuinely
+in the loop.
 
 ### Issue tracker
 

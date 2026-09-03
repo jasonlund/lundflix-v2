@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Services;
 
+use App\Domains\Catalog\Data\PooledResult;
 use App\Domains\Catalog\Exceptions\PooledIdFailed;
 use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TvdbRequestFailed;
 use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
-use App\Domains\Catalog\Support\PooledResult;
 use Generator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
