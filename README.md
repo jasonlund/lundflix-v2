@@ -231,9 +231,10 @@ worktree is one MCP call, and only trusting its processes needs a human.
 - **Trusting — only you can do this.** New or changed YAML commands start
   **untrusted**, and every Solo start/restart tool is scoped to trusted commands, so a
   freshly registered project sits with all four processes stopped — `npm:dev` included,
-  despite its `auto_start: true`. Trust them in the Solo UI or they will not run. The
-  gate is deliberate — see "Local worktree tooling: LaborForest + Solo" in
-  `.ai/guidelines/project.md` for why it stays a manual click.
+  despite its `auto_start: true`. Trust them in the Solo UI or they will not run —
+  otherwise cloning a repo would run its `solo.yml` commands. The gate is deliberate —
+  see "Local worktree tooling: LaborForest + Solo" in `.ai/guidelines/project.md` for
+  why it stays a manual click.
 - Solo reads the worktree's committed `solo.yml` and syncs those processes in. Only
   **command** processes are YAML-backed — terminals and agents are not stored in
   `solo.yml`, so those stay per-machine.
