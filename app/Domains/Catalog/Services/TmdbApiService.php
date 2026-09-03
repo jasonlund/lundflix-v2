@@ -217,14 +217,6 @@ final class TmdbApiService
             $body = $this->decode($response) ?? [];
 
             foreach ($body['results'] ?? [] as $result) {
-                // The daily export reader was quietly the only place adult/softcore
-                // titles were screened out; discovering ids from the change feed
-                // instead loses that, and `movies` carries no adult column for
-                // anything downstream to catch them by.
-                if (($result['adult'] ?? false) === true || ($result['softcore'] ?? false) === true) {
-                    continue;
-                }
-
                 $id = (int) $result['id'];
 
                 if (isset($seen[$id])) {

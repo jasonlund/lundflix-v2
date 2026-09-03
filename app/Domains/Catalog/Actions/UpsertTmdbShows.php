@@ -23,7 +23,8 @@ final class UpsertTmdbShows
     private const array RAW_COLUMNS = [
         'id', 'name', 'original_name', 'original_language',
         'overview', 'tagline', 'status', 'first_air_date', 'popularity',
-        'vote_average', 'vote_count', 'genres', 'poster_path', 'backdrop_path',
+        'vote_average', 'vote_count', 'adult', 'softcore',
+        'genres', 'poster_path', 'backdrop_path',
         'external_ids',
     ];
 

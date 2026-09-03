@@ -22,7 +22,8 @@ final class UpsertTmdbMovies
         'id', 'title', 'original_title', 'original_language',
         'overview', 'tagline', 'homepage', 'status', 'release_date',
         'runtime', 'budget', 'revenue', 'popularity', 'vote_average',
-        'vote_count', 'video', 'genres', 'origin_country', 'production_companies',
+        'vote_count', 'video', 'adult', 'softcore',
+        'genres', 'origin_country', 'production_companies',
         'production_countries', 'spoken_languages', 'belongs_to_collection',
         'release_dates', 'poster_path', 'backdrop_path',
     ];

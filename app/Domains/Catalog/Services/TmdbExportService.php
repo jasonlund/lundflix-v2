@@ -69,45 +69,45 @@ final class TmdbExportService
     }
 
     /**
-     * Count the kept JSONL rows that rows() would actually yield.
+     * Count the decoded JSONL rows that rows() would actually yield.
      *
-     * Counts over the SAME keptRows() generator rows() streams, so the returned
+     * Counts over the SAME decodedRows() generator rows() streams, so the returned
      * total equals the number of rows advanced over downstream — keeping a
      * progress bar's total honest (it reaches 100% exactly, not snapping early).
-     * JSONL has no header line, so every non-blank, non-excluded line is counted.
+     * JSONL has no header line, so every non-blank, decodable line is counted.
      */
     public function count(string $path): int
     {
-        return iterator_count($this->keptRows($path));
+        return iterator_count($this->decodedRows($path));
     }
 
     /**
-     * Stream the kept, decoded JSONL rows of a downloaded export as a lazy collection.
+     * Stream the decoded JSONL rows of a downloaded export as a lazy collection.
      *
-     * Wraps the keptRows() generator so each non-blank line is JSON-decoded on
-     * demand (a partially consumed collection never parses past where it stopped)
-     * and adult/softcore rows are dropped. The underlying gz handle is closed in a
-     * finally that runs when the generator completes or is garbage-collected, so
-     * callers MUST fully consume the returned collection or the handle leaks until GC.
+     * Wraps the decodedRows() generator so each non-blank line is JSON-decoded on
+     * demand (a partially consumed collection never parses past where it stopped).
+     * The underlying gz handle is closed in a finally that runs when the generator
+     * completes or is garbage-collected, so callers MUST fully consume the returned
+     * collection or the handle leaks until GC.
      */
     public function rows(string $path): LazyCollection
     {
-        return LazyCollection::make(fn () => yield from $this->keptRows($path));
+        return LazyCollection::make(fn () => yield from $this->decodedRows($path));
     }
 
     /**
-     * Lazily yield each kept, decoded JSONL row of a downloaded export.
+     * Lazily yield each decoded JSONL row of a downloaded export.
      *
      * The shared read skeleton behind both rows() and count(): open the archive,
-     * skip blank lines, JSON-decode on demand, and drop adult/softcore rows via
-     * isExcluded() — so both methods see exactly the same kept set. The gz handle
+     * skip blank lines, JSON-decode on demand, and skip any line that does not
+     * decode to an array — so both methods see exactly the same set. The gz handle
      * is closed in a single finally that runs when the generator completes or is
      * garbage-collected, so callers MUST fully consume it or the handle leaks
      * until GC.
      *
      * @return Generator<int, array<string, mixed>>
      */
-    private function keptRows(string $path): Generator
+    private function decodedRows(string $path): Generator
     {
         $handle = $this->open($path);
 
@@ -123,25 +123,11 @@ final class TmdbExportService
                     continue;
                 }
 
-                if ($this->isExcluded($row)) {
-                    continue;
-                }
-
                 yield $row;
             }
         } finally {
             gzclose($handle);
         }
-    }
-
-    /**
-     * Whether a decoded row is adult or softcore and must be dropped.
-     *
-     * @param  array<string, mixed>  $row
-     */
-    private function isExcluded(array $row): bool
-    {
-        return ($row['adult'] ?? false) === true || ($row['softcore'] ?? false) === true;
     }
 
     /**

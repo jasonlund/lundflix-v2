@@ -90,23 +90,6 @@ class SyncTmdbMovies extends TmdbSyncCommand
     }
 
     /**
-     * A `video:true` TMDB record is a promo/trailer, not a real film. It stays
-     * present-as-key in the results, so dropping it here never reads as a fetch
-     * failure.
-     *
-     * @param  array<int, array<string, mixed>|null>  $results
-     * @return list<array<string, mixed>>
-     */
-    #[\Override]
-    protected function payloads(array $results): array
-    {
-        return array_values(array_filter(
-            $results,
-            static fn (?array $payload): bool => $payload !== null && empty($payload['video']),
-        ));
-    }
-
-    /**
      * @param  list<array<string, mixed>>  $payloads
      */
     protected function upsertPayloads(array $payloads): void

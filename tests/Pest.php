@@ -163,7 +163,8 @@ function fakePlexSeedCrawl(
 
 /**
  * Point Scout at a spy engine and hand back a getter for the model keys the
- * engine has been handed, each `update()` call kept in its own group.
+ * engine has been handed by $operation — `update` for the index writes,
+ * `delete` for the removals — each call kept in its own group.
  *
  * The suite runs `SCOUT_DRIVER=collection`, whose engine writes nothing a DB
  * assertion can see — what the engine is handed is the only observable evidence
@@ -171,19 +172,22 @@ function fakePlexSeedCrawl(
  * call boundaries can themselves be the subject: a flat list of ids can't tell
  * one 5-row call from three smaller ones.
  *
+ * Only one spy can own the driver at a time, so a test spanning both operations
+ * picks the one whose absence is the failure it is proving.
+ *
  * Call this LAST in Arrange: the `Searchable` trait syncs on every model save,
  * so a spy registered earlier also captures the arranged rows' create-time syncs
  * — every row looks reindexed and nothing can look quiet.
  *
  * @return Closure(): list<list<int|string>>
  */
-function spyOnScoutEngine(): Closure
+function spyOnScoutEngine(string $operation = 'update'): Closure
 {
     $captured = [];
 
     $spy = Mockery::spy(Engine::class);
 
-    $spy->shouldReceive('update')->andReturnUsing(
+    $spy->shouldReceive($operation)->andReturnUsing(
         function (EloquentCollection $models) use (&$captured): void {
             $captured[] = $models->modelKeys();
         },

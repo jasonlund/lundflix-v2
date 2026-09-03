@@ -145,7 +145,7 @@ abstract class TmdbSyncCommand extends Command
 
     /**
      * The results worth upserting. A null is a 404 miss, dropped here rather
-     * than treated as a failure; a feed with promo-only records narrows further.
+     * than treated as a failure.
      *
      * @param  array<int, array<string, mixed>|null>  $results
      * @return list<array<string, mixed>>

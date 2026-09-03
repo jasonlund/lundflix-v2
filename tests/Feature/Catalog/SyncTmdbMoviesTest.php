@@ -574,7 +574,10 @@ describe('catalog:sync-movies changes-feed window and batching', function (): vo
 });
 
 describe('catalog:sync-movies video-flagged details', function (): void {
-    it('does not persist a movie whose detail is flagged video true', function (): void {
+    it('persists a movie whose detail is flagged video true', function (): void {
+        // The ordinary film 701 shares the promo's hydrate batch, so the promo is
+        // proven to survive a MIXED batch — a batch of one could pass on a leg that
+        // stopped filtering only when it had nothing else to keep.
         // Arrange
         $promo = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
         $promo['id'] = 700;
@@ -599,10 +602,12 @@ describe('catalog:sync-movies video-flagged details', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        // Both halves in one test: the absence alone would pass on a run that ingested
-        // nothing at all, so its non-promo sibling is asserted alongside it.
-        expect(Movie::where('_tmdb_id', 700)->exists())->toBeFalse();
-        expect(Movie::where('_tmdb_id', 701)->exists())->toBeTrue();
+        // The stamp is the load-bearing half: a promo that gets no tmdb_synced_at is
+        // exactly what makes the membership probe report it missing on every later run.
+        $stored = Movie::where('_tmdb_id', 700)->first();
+        expect($stored)->not->toBeNull();
+        expect($stored->_tmdb_video)->toBeTrue();
+        expect($stored->tmdb_synced_at)->not->toBeNull();
     });
 
     it('persists a movie whose detail is not flagged video', function (): void {
@@ -624,6 +629,51 @@ describe('catalog:sync-movies video-flagged details', function (): void {
         $film = Movie::where('_tmdb_id', 702)->first();
         expect($film)->not->toBeNull();
         expect($film->_tmdb_title)->toBe('The Matrix');
+    });
+});
+
+describe('catalog:sync-movies refused details', function (): void {
+    it('persists a movie whose detail is flagged adult and softcore', function (): void {
+        // The feed row carries the flags too, so the id has to survive BOTH the
+        // changes-feed read and the hydrate to land — a detail-only fake would pass
+        // on a leg that still discarded refused ids at the feed. The ordinary film
+        // 801 shares the hydrate batch, so the refused title is proven to survive a
+        // MIXED batch rather than a batch of one.
+        // Arrange
+        $refused = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
+        $refused['id'] = 800;
+        $refused['adult'] = true;
+        $refused['softcore'] = true;
+        $film = json_decode(fixtureBytes('Catalog/tmdb/movie.json'), true);
+        $film['id'] = 801;
+        Http::fake([
+            '*movie_ids*' => Http::response(gzencode('')),
+            '*/movie/changes*' => Http::response('{"results":[{"id":800,"adult":true,"softcore":true},{"id":801,"adult":false,"softcore":false}],"page":1,"total_pages":1,"total_results":2}'),
+            '*api.themoviedb.org*' => function (Request $request) use ($refused, $film) {
+                $path = (string) parse_url($request->url(), PHP_URL_PATH);
+
+                return match (true) {
+                    Str::endsWith($path, '/movie/800') => Http::response(json_encode($refused)),
+                    Str::endsWith($path, '/movie/801') => Http::response(json_encode($film)),
+                    default => Http::response('', 404),
+                };
+            },
+        ]);
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        // The stamp is the load-bearing half: a refused title that gets no
+        // tmdb_synced_at is exactly what makes the membership probe report it
+        // missing on every later run (ADR-0004). isRefused() is what then keeps the
+        // stored row off every read path.
+        $stored = Movie::where('_tmdb_id', 800)->first();
+        expect($stored)->not->toBeNull();
+        expect($stored->_tmdb_adult)->toBeTrue();
+        expect($stored->_tmdb_softcore)->toBeTrue();
+        expect($stored->tmdb_synced_at)->not->toBeNull();
+        expect($stored->isRefused())->toBeTrue();
     });
 });
 

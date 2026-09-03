@@ -10,7 +10,6 @@ use App\Domains\Catalog\Services\ImdbDatasetService;
 use App\Domains\Catalog\Support\CatalogImdbIds;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
-use Illuminate\Support\Str;
 
 #[Description('Sync IMDb titles: re-download the title.basics dataset and refresh the basics columns on every matching catalog title')]
 #[Signature('catalog:sync-titles {--batch=} {--force}')]
@@ -22,9 +21,14 @@ class SyncImdbTitles extends ImdbSyncCommand
     private const int BATCH_SIZE = 2000;
 
     /**
-     * Adult rows matched in the catalog but deliberately never written.
+     * Titles is the widest IMDb write, so the placeholder cap binds here and
+     * nowhere else: `BulkCaseUpdate` spends 2 bindings per column per matched row
+     * plus 1 for the WHERE IN id — 8 columns × 2 + 1 = 17 a row — against MySQL's
+     * 65,535 cap less the single per-statement updated_at binding, so
+     * (65535 − 1) / 17 = 3854 rows. Rounded down to 3500 for headroom, since a
+     * global scope or a ninth column spends bindings this arithmetic does not see.
      */
-    private int $adultSkipped = 0;
+    private const int MAX_BATCH_SIZE = 3500;
 
     public function __construct(
         ImdbDatasetService $datasets,
@@ -49,6 +53,12 @@ class SyncImdbTitles extends ImdbSyncCommand
         return self::BATCH_SIZE;
     }
 
+    #[\Override]
+    protected function maxBatchSize(): int
+    {
+        return self::MAX_BATCH_SIZE;
+    }
+
     protected function stream(string $path): void
     {
         $size = $this->batchSize();
@@ -65,33 +75,6 @@ class SyncImdbTitles extends ImdbSyncCommand
         }
 
         $this->flush($batch);
-    }
-
-    /**
-     * Drop the adult rows, adding them to the run's skip tally.
-     *
-     * Runs on rows the pre-filter already matched, so the tally stays
-     * catalog-scoped.
-     *
-     * @param  array<string, array<string, mixed>>  $rows
-     * @return array<string, array<string, mixed>>
-     */
-    #[\Override]
-    protected function writable(array $rows): array
-    {
-        $writable = collect($rows)
-            ->reject(fn (array $row): bool => $row['isAdult'] === true)
-            ->all();
-
-        $this->adultSkipped += count($rows) - count($writable);
-
-        return $writable;
-    }
-
-    #[\Override]
-    protected function reportSummary(): void
-    {
-        $this->output->writeln("Skipped {$this->adultSkipped} adult ".Str::plural('title', $this->adultSkipped).'.');
     }
 
     /**

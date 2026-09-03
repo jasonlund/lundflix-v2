@@ -6,6 +6,7 @@ namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Casts\NullableDate;
 use App\Domains\Catalog\Database\Factories\MovieFactory;
+use App\Domains\Catalog\Models\Concerns\Refusable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -17,7 +18,9 @@ class Movie extends Model
     /** @use HasFactory<MovieFactory> */
     use HasFactory;
 
-    use Searchable;
+    use Refusable, Searchable {
+        Refusable::shouldBeSearchable insteadof Searchable;
+    }
 
     /**
      * @return MorphMany<Media, $this>
@@ -48,6 +51,17 @@ class Movie extends Model
     }
 
     /**
+     * TMDB marks a movie-only promo record (a trailer or extra) with `video`;
+     * /tv payloads carry no such key.
+     *
+     * @return list<string>
+     */
+    protected static function refusalColumns(): array
+    {
+        return [...self::REFUSAL_COLUMNS, '_tmdb_video'];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     #[\Override]
@@ -61,6 +75,7 @@ class Movie extends Model
             '_imdb_runtimeMinutes' => 'integer',
             '_imdb_genres' => 'array',
             '_imdb_akas' => 'array',
+            '_imdb_isAdult' => 'boolean',
             '_tmdb_id' => 'integer',
             '_tmdb_release_date' => NullableDate::class,
             '_tmdb_runtime' => 'integer',
@@ -70,6 +85,8 @@ class Movie extends Model
             '_tmdb_vote_average' => 'float',
             '_tmdb_vote_count' => 'integer',
             '_tmdb_video' => 'boolean',
+            '_tmdb_adult' => 'boolean',
+            '_tmdb_softcore' => 'boolean',
             '_tmdb_genres' => 'array',
             '_tmdb_origin_country' => 'array',
             '_tmdb_production_companies' => 'array',
