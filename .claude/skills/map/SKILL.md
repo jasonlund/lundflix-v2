@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Map
 
-You don't remember 33 toolkit files — 12 skills, 8 commands, 13 subagents, this
+You don't remember 32 toolkit files — 12 skills, 8 commands, 12 subagents, this
 skill among them — so ask. This page names all of them and when to reach for each.
 It carries no description into the agent's context and fires nothing on its own.
 

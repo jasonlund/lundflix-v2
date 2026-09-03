@@ -17,9 +17,11 @@ use Symfony\Component\Finder\SplFileInfo;
  * phase that no longer exists reads as live guidance to the next agent that
  * loads the file, and to the next human that edits it.
  *
- * Two halves, both static: the **roster** (which agent files exist, and who
- * names them) and the **contract** (which sections of
- * `.claude/skills/review-pipeline/SKILL.md` survive, and what they say).
+ * Three parts, all static: the **roster** (which agent files exist, and who
+ * names them), the **contract** (which sections of
+ * `.claude/skills/review-pipeline/SKILL.md` survive, and what they say), and the
+ * **inventory** (whether `.claude/skills/map/SKILL.md` — the router a human opens
+ * to find a file — counts the files that are actually on disk).
  *
  * Scope, deliberate: every assertion checks that TEXT IS PRESENT OR ABSENT,
  * never that a model obeyed it. A tier pin and a silence rule are enforced at
@@ -174,6 +176,45 @@ $survivingPatterns = fn (string $source, array $forbidden): array => collect($fo
     ->filter(fn (string $pattern): bool => preg_match($pattern, $source) === 1)
     ->keys()
     ->all();
+
+/**
+ * The committed `map` skill — the router that names every toolkit file — read
+ * from disk.
+ */
+$mapSource = fn (): string => (string) file_get_contents(
+    dirname(__DIR__, 2).'/.claude/skills/map/SKILL.md',
+);
+
+/**
+ * The number the map's inventory sentence states before a noun — `33 toolkit
+ * files`, `13 subagents` — or null when the sentence no longer states one.
+ *
+ * Null rather than 0 so a caller can tell "the map claims none" apart from "the
+ * pattern stopped matching": the second must fail loudly instead of comparing
+ * nothing to nothing.
+ */
+$statedCount = function (string $source, string $noun): ?int {
+    $pattern = sprintf('~(\d+)\s+%s\b~', preg_quote($noun, '~'));
+
+    return preg_match($pattern, $source, $matches) === 1 ? (int) $matches[1] : null;
+};
+
+/**
+ * How many toolkit files of one kind are actually on disk.
+ *
+ * Every expected count in the inventory tests comes from here, never from a
+ * literal — this roster has changed three times in one ticket, and a guard
+ * carrying its own hardcoded 12 is the same staleness one layer down.
+ */
+$countToolkitFiles = function (string $directory, string $name, ?string $depth = null): int {
+    $finder = (new Finder)->files()->in(dirname(__DIR__, 2).'/'.$directory)->name($name);
+
+    if ($depth !== null) {
+        $finder->depth($depth);
+    }
+
+    return count($finder);
+};
 
 describe('review agent roster', function () use ($scanCommittedLines, $retiredAgents, $survivingAgents): void {
     it('names no retired reviewer or hunter agent anywhere in version control', function () use ($scanCommittedLines, $retiredAgents): void {
@@ -350,5 +391,76 @@ describe('review-pipeline contract rules', function () use ($contractSource, $re
         expect($offenders)->toBe([])
             ->and(preg_match('~stay silent[^.]{0,400}pre-existing~is', $reviewCommandSource()))->toBe(1)
             ->and(count($lines))->toBeGreaterThan(100);
+    });
+});
+
+describe('map skill inventory', function () use ($mapSource, $statedCount, $countToolkitFiles): void {
+    it('states the subagent count it actually ships', function () use ($mapSource, $statedCount, $countToolkitFiles): void {
+        // The map opens by counting the toolkit, and a count nobody can verify
+        // rots on every roster change — this one has already said 14 when there
+        // were 13 and 13 when there were 12. The sweep is flat because an agent
+        // is loaded by basename alone, so a nested file is not one.
+        // Arrange
+        $shipped = $countToolkitFiles('.claude/agents', '*.md', '== 0');
+
+        // Act
+        $stated = $statedCount($mapSource(), 'subagents');
+
+        // Assert
+        expect($stated)->not->toBeNull()
+            ->and($shipped)->toBeGreaterThan(5)
+            ->and($stated)->toBe($shipped);
+    });
+
+    it('states the skill count it actually ships', function () use ($mapSource, $statedCount, $countToolkitFiles): void {
+        // A skill is a directory holding a `SKILL.md`, so the count is of those
+        // manifests one level down — supporting `.md` files beside a manifest are
+        // reference material the skill loads, not skills of their own.
+        // Arrange
+        $shipped = $countToolkitFiles('.claude/skills', 'SKILL.md', '== 1');
+
+        // Act
+        $stated = $statedCount($mapSource(), 'skills');
+
+        // Assert
+        expect($stated)->not->toBeNull()
+            ->and($shipped)->toBeGreaterThan(5)
+            ->and($stated)->toBe($shipped);
+    });
+
+    it('states the command count it actually ships', function () use ($mapSource, $statedCount, $countToolkitFiles): void {
+        // Recursive, unlike the agent sweep: a command in a subdirectory is
+        // namespaced by it rather than hidden — `review/claude.md` is invoked as
+        // `/review:claude` — so a depth-0 count would miss most of them.
+        // Arrange
+        $shipped = $countToolkitFiles('.claude/commands', '*.md');
+
+        // Act
+        $stated = $statedCount($mapSource(), 'commands');
+
+        // Assert
+        expect($stated)->not->toBeNull()
+            ->and($shipped)->toBeGreaterThan(3)
+            ->and($stated)->toBe($shipped);
+    });
+
+    it('states a toolkit total equal to its own parts', function () use ($mapSource, $statedCount): void {
+        // The one check here that reads no directory: the sentence names a total
+        // and then breaks it into three parts, so it can contradict itself
+        // without any file changing. Whoever edits one number has to edit both.
+        // Arrange
+        $source = $mapSource();
+
+        // Act
+        $stated = [
+            'total' => $statedCount($source, 'toolkit files'),
+            'skills' => $statedCount($source, 'skills'),
+            'commands' => $statedCount($source, 'commands'),
+            'subagents' => $statedCount($source, 'subagents'),
+        ];
+
+        // Assert
+        expect(array_keys($stated, null, true))->toBe([])
+            ->and($stated['total'])->toBe($stated['skills'] + $stated['commands'] + $stated['subagents']);
     });
 });
