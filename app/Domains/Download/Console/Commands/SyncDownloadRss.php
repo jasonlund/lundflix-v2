@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
 
 #[Description('Fetch the Movies and Tv mother-category RSS feeds and upsert each mapped result')]
 #[Signature('download:sync-rss')]
-class SyncDownloadRss extends Command
+final class SyncDownloadRss extends Command
 {
     public function handle(DownloadService $downloads, UpsertDownloads $upsert): int
     {

@@ -6,7 +6,7 @@ namespace App\Domains\Download\Data;
 
 use Spatie\LaravelData\Data;
 
-class DownloadDescription extends Data
+final class DownloadDescription extends Data
 {
     /**
      * @param  list<string>  $screenshots

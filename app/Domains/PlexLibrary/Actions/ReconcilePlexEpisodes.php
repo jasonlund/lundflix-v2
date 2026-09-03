@@ -11,7 +11,7 @@ use App\Domains\PlexLibrary\Support\PlexGuids;
 use App\Domains\PlexLibrary\Support\PlexTimestamp;
 use Carbon\CarbonInterface;
 
-final class ReconcilePlexEpisodes
+final readonly class ReconcilePlexEpisodes
 {
     /**
      * @param  array<int, array<string, mixed>>  $children

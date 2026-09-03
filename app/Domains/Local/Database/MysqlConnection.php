@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Local\Database;
 
-final class MysqlConnection
+final readonly class MysqlConnection
 {
     /**
      * `mysql`/`mysqldump` connection flags (`-h -P -u <db>`) resolved from the mysql

@@ -10,7 +10,7 @@ use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
 use Illuminate\Support\Facades\DB;
 
-class UpsertTmdbImages
+final readonly class UpsertTmdbImages
 {
     /**
      * TMDB image payload keys mapped to the artwork type they manage.

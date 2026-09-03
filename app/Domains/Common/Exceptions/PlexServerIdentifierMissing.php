@@ -6,7 +6,7 @@ namespace App\Domains\Common\Exceptions;
 
 use Exception;
 
-class PlexServerIdentifierMissing extends Exception
+final class PlexServerIdentifierMissing extends Exception
 {
     public static function notConfigured(): self
     {

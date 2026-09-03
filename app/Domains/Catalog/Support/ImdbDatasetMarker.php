@@ -7,7 +7,7 @@ namespace App\Domains\Catalog\Support;
 use App\Domains\Catalog\Enums\ImdbDataset;
 use Illuminate\Support\Facades\Cache;
 
-final class ImdbDatasetMarker
+final readonly class ImdbDatasetMarker
 {
     public function current(ImdbDataset $dataset): ?string
     {

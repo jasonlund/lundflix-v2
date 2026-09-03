@@ -31,7 +31,7 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\DomCrawler\Crawler;
 
-final class DownloadService
+final readonly class DownloadService
 {
     private const string BASE_URL = 'https://iptorrents.com';
 

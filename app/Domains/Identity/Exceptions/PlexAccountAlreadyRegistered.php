@@ -7,7 +7,7 @@ namespace App\Domains\Identity\Exceptions;
 use App\Domains\Common\Data\PlexAccount;
 use Exception;
 
-class PlexAccountAlreadyRegistered extends Exception
+final class PlexAccountAlreadyRegistered extends Exception
 {
     public static function for(PlexAccount $account, int|string $existingUserId): self
     {

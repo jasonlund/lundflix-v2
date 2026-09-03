@@ -13,7 +13,7 @@ use App\Domains\PlexLibrary\Support\PlexTimestamp;
 use Carbon\CarbonInterface;
 use stdClass;
 
-final class ReconcilePlexShows
+final readonly class ReconcilePlexShows
 {
     use MarksAndSweepsPlexRows;
 

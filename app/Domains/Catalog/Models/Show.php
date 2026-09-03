@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Laravel\Scout\Searchable;
 
-class Show extends Model
+final class Show extends Model
 {
     /** @use HasFactory<ShowFactory> */
     use HasFactory;

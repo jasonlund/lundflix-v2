@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class Episode extends Model
+final class Episode extends Model
 {
     /** @use HasFactory<EpisodeFactory> */
     use HasFactory;

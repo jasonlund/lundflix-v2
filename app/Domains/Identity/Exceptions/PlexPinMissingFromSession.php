@@ -6,7 +6,7 @@ namespace App\Domains\Identity\Exceptions;
 
 use Exception;
 
-class PlexPinMissingFromSession extends Exception
+final class PlexPinMissingFromSession extends Exception
 {
     public static function onCallback(): self
     {

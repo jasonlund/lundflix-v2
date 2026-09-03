@@ -6,7 +6,7 @@ namespace App\Domains\Local\Support;
 
 use Illuminate\Support\Str;
 
-final class WorkspaceName
+final readonly class WorkspaceName
 {
     /**
      * Branch names are ≤ 40 characters by convention, so this trims only a slug that

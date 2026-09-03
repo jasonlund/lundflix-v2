@@ -9,7 +9,7 @@ use App\Domains\Catalog\Models\Show;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Expression;
 
-final class BulkCaseUpdate
+final readonly class BulkCaseUpdate
 {
     /**
      * @param  Builder<Movie>|Builder<Show>  $query

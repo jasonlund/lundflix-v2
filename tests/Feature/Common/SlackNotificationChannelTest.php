@@ -2,29 +2,10 @@
 
 declare(strict_types=1);
 
-use Illuminate\Notifications\Notification;
-use Illuminate\Notifications\Slack\SlackMessage;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Illuminate\Support\Str;
-
-/**
- * Throwaway fixture notification exercising Laravel's `slack` channel — no
- * example notification ships in production.
- */
-class SlackChannelTestNotification extends Notification
-{
-    /** @return list<string> */
-    public function via(object $notifiable): array
-    {
-        return ['slack'];
-    }
-
-    public function toSlack(object $notifiable): SlackMessage
-    {
-        return (new SlackMessage)->text('hello');
-    }
-}
+use Tests\Support\SlackChannelTestNotification;
 
 describe('slack channel delivery', function (): void {
     it('posts to the Slack chat.postMessage endpoint', function (): void {

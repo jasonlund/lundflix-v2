@@ -19,7 +19,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 
-class AppSettings extends Page implements HasForms
+final class AppSettings extends Page implements HasForms
 {
     use InteractsWithForms;
 
