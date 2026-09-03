@@ -409,7 +409,7 @@ describe('catalog:sync progress output', function (): void {
         // Assert
         // A run that keeps dispatching past a dead child otherwise names the guilty
         // one only by accident, buried in the interleaved wall of child output.
-        expect($output)->toContain("Failed commands: catalog:sync-movies\n");
+        expect($output)->toContain("Completed with 1 failed leg: catalog:sync-movies\n");
     });
 
     it('closes the run with its own Done.', function (): void {
