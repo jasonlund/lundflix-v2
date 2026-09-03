@@ -392,11 +392,10 @@ beat already printed.
   `beat()` at those callsites silences nearly every line, because the totals sit
   far below any sensible interval.
 - **`beat($tag, $total, $interval, $suffix = null)` — a running total on interval
-  boundaries.** It emits a line for *every* boundary the total crossed, at the
-  clean boundary value: a batch jumping 90 → 288 prints 100 and 200, never the
-  ragged figures.
-- **`flushTotal($tag, $total)` — the closing exact total**, suppressed when the
-  last line already printed that number.
+  boundaries.** Reach for it when a total climbs steadily and the interval, not the
+  batch, is the operator's cadence knob.
+- **`flushTotal($tag, $total)` — the closing exact total.** Every run calls it, so a
+  run shorter than one interval still reports what it did.
 - **`failureSummary($count, $noun, $consequence)` — the closing failure line**,
   a no-op at zero.
 
