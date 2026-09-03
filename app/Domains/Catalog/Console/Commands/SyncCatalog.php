@@ -13,7 +13,7 @@ use Throwable;
 
 #[Description('Sync the catalog from TMDB and TVDB, surviving any single failure')]
 #[Signature('catalog:sync {--fresh}')]
-class SyncCatalog extends Command
+final class SyncCatalog extends Command
 {
     public function handle(): int
     {

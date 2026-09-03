@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 /**
  * @extends Factory<Season>
  */
-class SeasonFactory extends Factory
+final class SeasonFactory extends Factory
 {
     protected $model = Season::class;
 

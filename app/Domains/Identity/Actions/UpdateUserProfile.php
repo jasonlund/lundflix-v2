@@ -11,7 +11,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Contracts\UpdatesUserProfileInformation;
 
-class UpdateUserProfile implements UpdatesUserProfileInformation
+final readonly class UpdateUserProfile implements UpdatesUserProfileInformation
 {
     /**
      * Validate and update the given user's profile information.

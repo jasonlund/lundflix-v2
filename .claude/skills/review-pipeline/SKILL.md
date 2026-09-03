@@ -1,6 +1,6 @@
 ---
 name: review-pipeline
-description: Shared contract for all review agents — finding format, severity taxonomy, consensus rules, grounding, and lundflix conventions. Referenced by /review:claude and its reviewer/hunter agents.
+description: Shared contract for all review agents — finding format, severity taxonomy, the Comment Bar, model tiers, and lundflix conventions. Referenced by /review:claude and every reviewer and validator it dispatches.
 ---
 
 # Review Pipeline — Shared Agent Contract
@@ -66,9 +66,8 @@ Two things stay verbatim and are never rewritten into STE: **quoted code** in
 `EVIDENCE`, and a **quoted ticket line** in a requirements finding. Both are
 evidence; paraphrasing them destroys their value.
 
-**Source:** adapted from `mattpocock-skills:wait-what`, which re-pitches a message
-in STE using the `CONTEXT.md` vocabulary. Offer to explain the spec when a reader
-asks why findings read this way.
+Take the standard's rules, not its approved word list — that dictionary is built for
+aircraft maintenance, and the glossary rule above already names our terms.
 
 ## The Comment Bar — only comment if
 
@@ -84,19 +83,14 @@ before speaking.
    Naming-based guesses are the #1 false-positive source — if your only evidence is
    what something is *called*, drop it.
 2. **Scope bar — this diff.** The finding is about code the PR **added or
-   modified**. A real bug in untouched code is allowed **only** tagged pre-existing
-   (severity-capped at CONSIDER per rule 3 below). Do not re-audit the repo or
-   re-litigate settled design.
+   modified**. Stay silent on a pre-existing issue in untouched code, even a real
+   one — diff-locality is what bounds this review. Breadth across the repo belongs
+   to CodeRabbit in `/review:suite`, and `/review:process` keeps an out-of-scope
+   bucket for the ones another engine or a human raises.
 3. **Category bar — objective defect.** It's a bug, security, correctness, data,
    or cross-system/integration issue. Style, formatting, naming taste, and
-   "alternative approach" preferences are **not** defects — cap them at NIT and
-   respect the nit cap, or say nothing.
-   **Duplication also qualifies as objective** — that two blocks are
-   byte-identical or near-verbatim (differing only by type/name/literal) is a
-   measurable fact, not taste, so it is not NIT-capped. This exemption is
-   narrow. It belongs to `duplication-reviewer`, and to `testing-reviewer` for
-   cloned test helpers, fixtures, and repeated Arrange blocks. It covers
-   repetition the agent can quote twice, never "these two look similar".
+   "alternative approach" preferences are **not** defects — cap them at NIT, or say
+   nothing.
 4. **Ownership bar — not already owned.** A deterministic gate
    (Pint/Rector/ESLint/Vitest/Pest) or an endorsed convention does not already own
    it. Repeating a gate or flagging an endorsed pattern is itself a review defect
@@ -108,13 +102,13 @@ before speaking.
 |----------|---------|----------|
 | BLOCKING | Must fix before merge — **reserved for**: incorrect logic that breaks behavior, unscoped/tenant-leaking queries, secrets or PII in logs, non-backward-compatible migrations, a DDD-boundary break that changes behavior, a failing test, an unimplemented acceptance criterion. If a finding is not on this list, it is **not** BLOCKING. | Query missing a tenant scope; migration drops a column with no fallback; secret logged in plaintext |
 | SHOULD_FIX | Strongly recommended — a real defect that isn't on the BLOCKING list | Logic error on an edge case, missing test for a critical path, convention violation affecting maintainability |
-| CONSIDER | Author's judgment | Minor performance, alternative approach, pre-existing issue |
+| CONSIDER | Author's judgment | Minor performance, alternative approach, a design trade-off worth naming |
 | NIT | Trivial — **the only home for style/naming/taste** | Naming suggestion, a non-gate-owned readability tweak |
 
-**Nit cap.** Report **at most 5 NITs** across the whole review. Found more? Post
-the 5 highest-value and note "plus N similar nits" in the summary — never inline
-the rest. Style, formatting, import order, and type hints owned by a gate are **not
-nits, they are silence** (bar 4).
+**Style is silence, not a NIT.** Style, formatting, import order, and type hints a
+deterministic gate already owns are **silence** (bar 4). A NIT is the home for the
+taste call no gate owns, and `/review:claude`'s per-reviewer word cap bounds how
+many of those reach the report.
 
 ## Review Authority Rules
 
@@ -122,8 +116,7 @@ nits, they are silence** (bar 4).
    `CLAUDE.md` / project-guideline rule, a codebase convention, a deterministic
    tool result (Pint/Rector/Pest), or a security best practice.
 2. **If you can't cite the authority, the finding doesn't belong in the report.**
-3. **Pre-existing issues** not introduced by this PR: severity-capped at CONSIDER.
-   Note them but don't block the PR over them.
+3. **A pre-existing issue is silence** — see the scope bar above.
 4. **Don't be pedantic.** Minor style preferences aren't findings. The goal is
    catching real issues.
 5. **Quote specific code** for every finding. Vague references like "the
@@ -170,7 +163,7 @@ When reviewing, check changes against these standards (full detail in `CLAUDE.md
   (domain path passed in the name). Hand-written boilerplate where a generator
   exists is a smell.
 
-**Comments & docblocks** (owned by `conventions-reviewer`)
+**Comments & docblocks**
 - Comments capture a non-obvious *why*; flag ones that restate the *what* the
   code or a passing test already says. Docblocks keep only type info PHP can't
   express (generics, `@throws`) and genuine "why" prose — flag summary lines
@@ -202,20 +195,18 @@ rules bind every entry, without exception:**
   Severity Definitions table gives that defect, and the smell name is vocabulary
   for the recommendation. Example: "possible Speculative Generality" alone is
   CONSIDER; "the `$strategy` parameter added at L12 has one caller, which passes one
-  value, and the ticket asks for none" is graded as the defect it is. An agent brief
-  may rate the same phenomenon higher — `discipline-reviewer` grades speculative
-  generality and overengineering as BLOCKING or SHOULD_FIX. Both hold: grade the
-  grounded defect, cap the bare label. **Duplication is the exception and is never
-  BLOCKING** — it breaks no behavior, so it is not on the BLOCKING list above.
-  `duplication-reviewer` owns it and floors at CONSIDER; `testing-reviewer`
-  owns cloned test helpers, fixtures, and repeated Arrange blocks.
+  value, and the ticket asks for none" is graded as the defect it is. Grade the
+  grounded defect, cap the bare label.
 
 Each reads *what it is* → *the fix*:
 
 - **Mysterious Name** — a name that doesn't reveal what it does or holds. → rename;
   if no honest name comes, the design is murky.
-- **Duplicated Code** — the same logic shape in more than one hunk. → extract, call
-  from both.
+- **Duplicated Code** — the same logic shape in more than one hunk, **or the same
+  rationale comment or docblock copied across files**. → extract, call from both;
+  for prose, keep one copy and point the other at it. Duplicated prose drifts
+  silently: when one copy is updated and the other is not, the stale copy misleads
+  and no test fails.
 - **Feature Envy** — a method reaching into another object's data more than its
   own. → move it onto the data it envies.
 - **Data Clumps** — the same few fields always travelling together. → bundle into
@@ -338,99 +329,28 @@ positives, never at the author's judgment.
   also the correct choice where a key holding `null` must still count as present,
   which `isset()` would miss. Suggesting the `Arr::` swap is a review defect.
 
-## Consensus Rules (Used by Orchestrator, Not Agents)
-
-| Confidence | Rule | Action |
-|------------|------|--------|
-| DETERMINISTIC | Pint, Rector, Pest findings | Auto-include, never filtered |
-| HIGH | Same issue flagged by 2+ independent AI reviewers (deduped by file ±10 lines + category) | Auto-include without challenge |
-| MEDIUM | Flagged by exactly 1 AI reviewer, severity ≥ SHOULD_FIX | Route to adversarial verification |
-| LOW | Flagged by exactly 1 reviewer, severity < SHOULD_FIX | Auto-downgrade to CONSIDER |
-
-Deduplication: Match on (file, line range ±10 lines, category). Additionally,
-merge findings from different agents with the same FILE, same CATEGORY, and
-substantially the same recommended fix regardless of line distance. When multiple
-reviewers flag the same issue, keep the richest evidence and highest severity.
-
-**Category precedence — one defect keeps one category.** Two reviewers describe one
-defect under two categories often enough to matter: a stale page title arrived once
-as `requirements` and once as `convention`. Merge those as well — same FILE,
-same defect, substantially the same fix merges even when CATEGORY differs. Give the
-merged finding the single category that ranks highest here:
-
-`requirements` > `security` > `correctness` > `architecture` > `testing` >
-`performance` > `convention`
-
-`requirements` ranks first because Phase 4 of `/review:claude` routes on CATEGORY
-alone. The spec axis exists to keep an acceptance failure out of the standards pile,
-so a defect that is also an acceptance failure belongs on that axis; the convention
-angle is extra evidence for the same finding. Keep the losing category's EVIDENCE in
-the merged block, so one finding reaches one axis carrying both reviewers' reasoning.
-
-## Tiebreaker Rule (Phase 5)
-
-The false-positive-hunter's verdict is **binding**: a finding it defeats **with
-evidence** (shows the behavior is handled elsewhere, misread, pre-existing,
-convention-endorsed, or unsupported by a `file:line` citation) is **dropped
-entirely — not down-severitied.** A weakened-but-alive finding is a compromise that
-ships noise; either the defense holds and it dies, or it doesn't and the finding
-stands at full severity.
-
-**One exception — independent rediscovery.** If false-positive-hunter dismisses a
-finding that missing-defect-hunter *independently* rediscovers at SHOULD_FIX or
-higher, the finding survives at missing-defect-hunter's severity (minimum
-SHOULD_FIX): two independent reviewers seeing the same defect outweighs one
-dismissal. Absent that rediscovery, a defeated finding is removed from the report.
-
 ## Model Selection
 
 An agent's `model:` frontmatter follows its role, not its convenience. Four rules,
 enforced by `tests/Unit/AgentModelPolicyTest.php`:
 
-1. **Write-side agents `inherit`** — `review-fixer` and the `tdd-*` phases produce
-   code the session owns, so they run on whatever model the session runs.
-2. **Read-only breadth review and mechanical wrappers pin `sonnet`** — the seven
-   Phase 3 reviewers work a known checklist and `coderabbit-reviewer` only shells a
-   CLI and reshapes its output. Pin the **alias**, never a dated model id, so the
-   pin tracks the current Sonnet instead of rotting.
-3. **Adversarial verification `inherit`** — Phase 5's `false-positive-hunter` and
-   `missing-defect-hunter` decide which findings survive, and that judgment is worth
-   the session model. Two agents, so the cost is bounded.
+1. **Triage pins `haiku`** — `review-skip-check` returns a skip/no-skip call and
+   `review-summarizer` describes a diff. Both are mechanical, so they run on the
+   cheapest tier.
+2. **Compliance and mechanical wrappers pin `sonnet`** — `review-compliance` and
+   `review-compliance-validator` match code against a written rule set, and
+   `coderabbit-reviewer` shells a CLI and reshapes its output. All three judge
+   against something already written down, so the middle tier carries them.
+3. **Bug work and write-side agents `inherit`** — `review-bug-hunter`,
+   `review-bug-validator`, `review-fixer`, and the `tdd-*` trio run on whatever
+   model the session runs. Finding a real defect is the hardest judgement in the
+   pipeline, and a write-side agent produces code the session owns.
 4. **Never stamp a model version in prose, a commit trailer, or docs.** The harness
    supplies the co-author trailer per session and it tracks the model on its own; a
    hand-written stamp selects nothing and is guaranteed to go stale.
 
-## Mechanical Grounding Verification
-
-Before routing AI-generated findings to adversarial verification, programmatically
-verify that each finding references real code. **DETERMINISTIC findings are
-exempt** — they come from tools that already verified the code.
-
-For each AI-generated finding, check:
-
-1. **File exists:**
-   ```bash
-   test -f "{FILE}" && echo "EXISTS" || echo "MISSING"
-   ```
-   If MISSING: **discard the finding** with reason `GROUNDING_FAIL: file does not exist at {FILE}`
-
-2. **Line/range validity:**
-   ```bash
-   wc -l < "{FILE}"
-   ```
-   Parse LINE as a single integer N or a range N-M:
-   - If LINE cannot be parsed: **discard** with `GROUNDING_FAIL: non-numeric line reference ({LINE})`
-   - N and M (if present) must be positive integers (≥ 1); for ranges N ≤ M
-   - N ≤ total lines, and M ≤ total lines (if present)
-   If any check fails: **discard** with `GROUNDING_FAIL: invalid line reference ({LINE}) for file with {total} lines`
-
-Only these two checks. No fuzzy text matching — agents routinely paraphrase
-evidence, making text matching unreliable.
-
-Report grounding results in the coverage matrix:
-```
-| Grounding Check | {total_checked} checked | {discarded} discarded |
-```
+Both pinned tiers name the bare **alias**, so the pin tracks the current model
+instead of a dated snapshot the harness eventually stops dispatching.
 
 ## Ticket ID Auto-Extraction
 
@@ -443,8 +363,8 @@ extraction in this order (first match wins):
 2. **PR title:** Run `gh pr view --json title -q .title` and apply the same regex
    (normalize to uppercase). Use PR title only (not body — PR descriptions
    routinely mention multiple related tickets).
-3. **No match:** Set TICKET_ID to null. Skip requirements-reviewer. Warn: "No
-   ticket ID found. Running without requirements review."
+3. **No match:** Set TICKET_ID to null and warn: "No ticket ID found. Running
+   without ticket context."
 
 ## PR Number Auto-Extraction
 

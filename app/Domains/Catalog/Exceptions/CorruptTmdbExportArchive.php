@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Exceptions;
 
 use Exception;
 
-class CorruptTmdbExportArchive extends Exception
+final class CorruptTmdbExportArchive extends Exception
 {
     public static function at(string $path): self
     {

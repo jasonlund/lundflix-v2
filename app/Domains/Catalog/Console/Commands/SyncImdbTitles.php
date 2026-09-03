@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 
 #[Description('Sync IMDb titles: re-download the title.basics dataset and refresh the basics columns on every matching catalog title')]
 #[Signature('catalog:sync-titles {--batch=} {--force}')]
-class SyncImdbTitles extends ImdbSyncCommand
+final class SyncImdbTitles extends ImdbSyncCommand
 {
     /**
      * Bound on both the pre-filter's id probe and the write buffer; --batch overrides it.

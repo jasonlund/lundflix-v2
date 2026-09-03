@@ -63,6 +63,30 @@ app/Domains/
   and `routes/web.php` points at them. Keep them thin — guard, call an Action or
   Service, respond.
 
+### Class modifiers
+
+Two mechanical rules, no per-file judgment, enforced by `tests/Unit/ArchTest.php`
+over everything the repo owns (`app/`, the PSR-4 halves of `database/`, the
+helper classes under `tests/`):
+
+- **Every non-abstract class is `final`.** Inheritance is opt-in, and opting in is
+  spelled `abstract` — a shared base (`PlexLibraryCommand`, `TmdbSyncCommand`)
+  declares itself abstract and is named in the arch test's `->ignoring()` list,
+  which a staleness guard pins as genuinely abstract.
+- **A class with no parent is additionally `readonly`** — `final readonly class`.
+  This holds for stateless and static-only helpers too; the point is that the
+  shape is predictable, not that each class earns it individually.
+
+The second rule stops at the parent because **PHP forbids a `readonly class` from
+extending a non-readonly one** (a fatal, not a warning). So everything extending a
+framework base — Models, Commands, Factories, Exceptions, spatie `Data`,
+Providers, Middleware, Filament pages — can only ever take `final`. Enums, traits
+and interfaces are outside both rules; enums are implicitly final and can never be
+readonly.
+
+Anonymous migration classes are the one structural exclusion — they can't be named,
+and the arch targets (`Database\Factories`, `Database\Seeders`) don't reach them.
+
 ### Action classes
 
 Single-purpose actions live in `App\Domains\{Domain}\Actions`.
@@ -562,13 +586,23 @@ LaborForest + Solo is the current path for new work.
   construction. Route it through an artisan command and test that at `artisan()`:
   `lf:workspace-env` derives a workspace's site/database/URL. A step should be one
   line.
-- **The workflows never touch Solo.** Solo owns its own project registry; worktrees
-  are added and removed in its UI. `up` creates no Solo state, so `down` has none to
-  reverse, and the boundary stays where the two tools already draw it — LaborForest
-  orchestrates worktrees, Solo runs processes inside one. Reaching across it means
-  either Solo's CLI (gated behind a per-machine "local CLI access" setting nothing in
-  the repo can enforce — it *silently no-ops* when off, which is worse than failing)
-  or a JSON-RPC socket client. Neither belongs in a `shell` step.
+- **The workflows never touch Solo — but the agent driving them may.** `up` creates no
+  Solo state, so `down` has none to reverse, and the boundary stays where the two tools
+  already draw it: LaborForest orchestrates worktrees, Solo runs processes inside one.
+  A `shell` step reaching across it means either Solo's CLI (gated behind a per-machine
+  "local CLI access" setting nothing in the repo can enforce — it *silently no-ops*
+  when off, which is worse than failing) or a JSON-RPC socket client. Neither belongs
+  in a workflow. **The constraint is on the workflow, not on Solo.** `mcp__solo__create_project`
+  registers a worktree with no UI and none of the CLI's fragility, so an agent
+  provisioning a workspace should register it there too — the committed `solo.yml`
+  processes sync in on their own.
+- **Trusting those processes stays human-only, by design.** Every Solo start/restart
+  tool is scoped to *trusted* commands and the API exposes no trust/approve tool, so a
+  freshly registered project starts with every process stopped; `npm:dev` is the one
+  the gate actually changes, its `auto_start: true` notwithstanding. That gate is what
+  stops a committed `solo.yml` from auto-running arbitrary commands in any checkout
+  that clones it. Never document or script around it; leave the one click to the
+  operator.
 - **`solo.yml` is repo-controlled, with limits worth knowing.** Solo syncs it into
   local state, but **only `command` processes are YAML-backed** — terminals and
   agents are not stored there at all, so they stay per-machine. New or changed YAML
@@ -782,8 +816,7 @@ when you've forgotten what exists.
 Several native skills adapt practice from the AI Hero plugin rather than calling it,
 each borrowed section closing with a `**Source:**` line naming the upstream skill.
 Two reasons. **20 of the 35 upstream skills set `disable-model-invocation: true`**,
-so nothing here *can* call them — including the two inlined most directly:
-`wait-what` (Source of review-pipeline's Simplified Technical English section) and
+so nothing here *can* call them — including the one inlined most directly,
 `ask-matt` (Source of `/map`). The rest are callable — `code-review`'s smell
 baseline, `writing-for-agents` — and are inlined anyway, because the practice has to
 be in context *before* the work starts: one Skill call per reviewer costs more than
@@ -912,8 +945,10 @@ Before relying on a package's API, confirm its installed version:
 
 # Test Enforcement
 
-- Every change must be programmatically tested. Write a new test or update an existing test, then run the affected tests to make sure they pass.
-- Run the minimum number of tests needed to ensure code quality and speed. Use `php artisan test --compact` with a specific filename or filter.
+- Test every code change by adding or updating a test.
+- Run the affected tests and ensure they pass.
+- Test the changed behavior and its important failure modes, but do not add tests beyond them.
+- Read the `testing-best-practices` skill before writing tests.
 
 === inertia-laravel/core rules ===
 
@@ -977,12 +1012,19 @@ Before relying on a package's API, confirm its installed version:
 
 === pest/core rules ===
 
-## Pest
+# Pest
 
-- This project uses Pest for testing. Create tests: `php artisan make:test --pest {name}`.
-- The `{name}` argument should not include the test suite directory. Use `php artisan make:test --pest SomeFeatureTest` instead of `php artisan make:test --pest Feature/SomeFeatureTest`.
-- Run tests: `php artisan test --compact` or filter: `php artisan test --compact --filter=testName`.
-- Do NOT delete tests without approval.
+- This project uses Pest. Create tests with `php artisan make:test --pest {name}`.
+- Do not include the test suite directory in `{name}`. Use `SomeFeatureTest`, not `Feature/SomeFeatureTest`.
+- Read the `testing-best-practices` skill for guidance on coverage, naming, structure, dependency isolation, and review.
+- Do not delete tests or test files without approval. They are part of the application.
+
+## Running Tests
+
+- Run the narrowest set of tests that covers the change. Pass a file path or `--filter=testName` to `php artisan test --compact`.
+- Rerun a test after each change to it.
+- Run `vendor/bin/pest` to call the test runner directly. It accepts the same file path and `--filter=testName` arguments.
+- After the feature tests pass, ask the user to run the complete suite with `php artisan test --compact`.
 
 === inertia-react/core rules ===
 

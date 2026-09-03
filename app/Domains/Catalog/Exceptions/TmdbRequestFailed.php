@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Exceptions;
 
 use Exception;
 
-class TmdbRequestFailed extends Exception
+final class TmdbRequestFailed extends Exception
 {
     public static function for(string $url): self
     {

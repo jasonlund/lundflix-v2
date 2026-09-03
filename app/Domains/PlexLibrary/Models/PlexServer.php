@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class PlexServer extends Model
+final class PlexServer extends Model
 {
     /** @use HasFactory<PlexServerFactory> */
     use HasFactory;

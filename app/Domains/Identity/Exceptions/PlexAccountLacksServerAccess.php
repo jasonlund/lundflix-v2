@@ -7,7 +7,7 @@ namespace App\Domains\Identity\Exceptions;
 use App\Domains\Common\Data\PlexAccount;
 use Exception;
 
-class PlexAccountLacksServerAccess extends Exception
+final class PlexAccountLacksServerAccess extends Exception
 {
     public static function for(PlexAccount $account): self
     {

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Support;
 
-final class RawSourceColumns
+final readonly class RawSourceColumns
 {
     /**
      * Map a raw third-party payload onto source-prefixed columns: each key

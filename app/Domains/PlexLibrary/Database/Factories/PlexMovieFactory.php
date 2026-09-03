@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 /**
  * @extends Factory<PlexMovie>
  */
-class PlexMovieFactory extends Factory
+final class PlexMovieFactory extends Factory
 {
     protected $model = PlexMovie::class;
 

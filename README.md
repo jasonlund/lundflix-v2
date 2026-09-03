@@ -125,8 +125,8 @@ Worktrees land beside the primary checkout as `~/Sites/lundflix-v2-<branch-slug>
   secured Herd site (`https://lf-<branch>.test`), migrate, then reseed via
   `refresh`. Each workspace is isolated, so one branch's migrations never touch
   another's schema.
-- **Run** → open the worktree in Solo; `solo.yml` declares `npm:dev` (auto-starts),
-  `Horizon`, `Queue`, and `Pint`.
+- **Run** → open the worktree in Solo; `solo.yml` declares `npm:dev` (auto-starts once
+  trusted), `Horizon`, `Queue`, and `Pint`.
 - **Reset** → `lf run refresh`: `migrate:fresh` → `db:seed` → `db:import`, which
   restores the committed catalog dumps when `database/dumps/` holds any. Re-runnable
   against a working workspace. **That directory is currently empty**, and `db:import`
@@ -171,7 +171,17 @@ The tools arrive prefixed `mcp__laborforest__`, and the four that matter are:
 So the whole provision is one instruction to an agent: *"cut a worktree for branch X
 off main and bring it up."* It calls `add-workspace`, then `run-workflow up`, then
 reads `.laborforest/ignored/logs/` for the per-step result — `run-workflow` only
-dispatches, so the log is where success or failure actually shows up.
+dispatches, so the log is where success or failure actually shows up. It can finish
+the job with `mcp__solo__create_project` (see [Adding a worktree to
+Solo](#adding-a-worktree-to-solo)), which leaves you one trust click from a running
+workspace.
+
+**A branch cut before the LaborForest work landed cannot be brought up as-is.** `up`
+calls `php artisan lf:workspace-env`, which arrived with that same change, and step 2
+deliberately does *not* fast-forward a branch carrying its own commits — so the run
+aborts with `There are no commands defined in the "lf" namespace` and every later step
+reports `skip_reason: aborted`. Merge `main` into the branch first, then clear the
+`error` status and re-run.
 
 **Two limits.** There is **no `remove-workspace` tool** — `remove-project` removes a
 whole project, not one workspace — so final removal stays a GUI action after `down`.
@@ -209,18 +219,25 @@ to creating a workspace or clearing a status, which is why those two rows say GU
 
 #### Adding a worktree to Solo
 
-**Solo's project list is managed in Solo, not by the workflows.** After `up`, add the
-worktree as a project in Solo's UI; remove it there when you're done with it.
-Nothing in `up`/`down` touches Solo's registry, so there is no Solo state for
-teardown to reverse.
+**Solo's project list is managed in Solo, not by the workflows** — nothing in
+`up`/`down` touches Solo's registry, so there is no Solo state for teardown to
+reverse. That constraint is on the *workflows*, though, not on you: registering the
+worktree is one MCP call, and only trusting its processes needs a human.
 
-Two things to know once it's added:
-
+- **Registering — an agent can do this.** `mcp__solo__create_project` with the
+  worktree path registers it without opening Solo's onboarding UI, so "cut a worktree
+  for branch X and bring it up" can end with the project already in Solo. By hand it's
+  **Add project** in Solo's UI. Remove it there when you're done either way.
+- **Trusting — only you can do this.** New or changed YAML commands start
+  **untrusted**, and every Solo start/restart tool is scoped to trusted commands, so a
+  freshly registered project sits with all four processes stopped — `npm:dev` included,
+  despite its `auto_start: true`. Trust them in the Solo UI or they will not run —
+  otherwise a registered worktree would run its `solo.yml` commands unreviewed.
+  The gate is deliberate — see "Local worktree tooling: LaborForest + Solo" in
+  `.ai/guidelines/project.md` for why it stays a manual click.
 - Solo reads the worktree's committed `solo.yml` and syncs those processes in. Only
   **command** processes are YAML-backed — terminals and agents are not stored in
   `solo.yml`, so those stay per-machine.
-- **New or changed YAML commands start untrusted.** Trust them in the Solo UI or
-  they will not run, and `npm:dev` will not auto-start.
 
 Optionally point LaborForest's terminal launcher at Solo in
 `~/.laborforest/settings.yaml` (`command_launch_terminal`) — a machine-local setting,
@@ -292,8 +309,11 @@ restart the session for the Boost tools to connect.
 Only servers whose command resolves on *every* checkout belong in this file;
 `php artisan boost:mcp` is repo-relative and does. **Solo's MCP server is not
 registered here** — it lives inside the Solo app bundle, so committing its path
-would bake one machine's layout into shared config. Register it per-user instead if
-you want its tools (process output, bound-port waits, locks, todos, scratchpads).
+would bake one machine's layout into shared config. Register it per-user instead —
+that is what gives an agent `create_project` and the rest of Solo's tools (process
+output, bound-port waits, locks, todos, scratchpads). Without it the agent
+registration path under [Adding a worktree to Solo](#adding-a-worktree-to-solo) is
+unavailable and every worktree has to be added through Solo's UI by hand.
 
 ### Running locally
 
@@ -305,8 +325,10 @@ Starts the PHP server, queue worker, log tailer (Pail), and Vite dev server
 together. Visit the app at the URL printed by `php artisan serve`.
 
 In a worktree, Herd serves the PHP app and only Vite needs starting:
-`https://lf-<branch>.test` under LaborForest (Solo's `npm:dev` process auto-starts
-it), or `https://<workspace>.test` in a Conductor workspace (the Run button).
+`https://lf-<branch>.test` under LaborForest (Solo's `npm:dev` process auto-starts it,
+but only once you've trusted the project's commands — see [Adding a worktree to
+Solo](#adding-a-worktree-to-solo) if Vite isn't running), or
+`https://<workspace>.test` in a Conductor workspace (the Run button).
 
 ### Running tests
 

@@ -12,7 +12,7 @@ use App\Domains\Download\Enums\SyncChannel;
 use App\Domains\Download\Models\Download;
 use Illuminate\Support\Collection;
 
-class UpsertDownloads
+final readonly class UpsertDownloads
 {
     public function handle(DownloadResult $result, Category $category, SyncChannel $channel): Download
     {

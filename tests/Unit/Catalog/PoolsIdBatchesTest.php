@@ -2,16 +2,12 @@
 
 declare(strict_types=1);
 
-use App\Domains\Catalog\Data\PooledResult;
-use App\Domains\Catalog\Exceptions\PooledIdFailed;
-use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
+use Tests\Support\PoolsIdBatchesTestHost;
 use Tests\TestCase;
 
 /*
@@ -20,16 +16,11 @@ use Tests\TestCase;
 |--------------------------------------------------------------------------
 | The trait's dedupe/chunk/order/aggregate-failure invariants are otherwise
 | only pinned transitively through the TMDB and TVDB service Feature tests.
-| This file pins the contract directly on a throwaway host that `use`s the
-| trait and implements its abstract hooks (configure / poolConcurrency /
-| resolvePooled / pooledFailure) with the minimal real-service semantics:
-| a 404 decodes to null, a non-404 failed response signals a per-id
-| PooledIdFailed, and a decodable 200 returns its raw body.
-|
-| The host binds an isolated base URL (a fixed const, not TMDB/TVDB) so its
-| pooled requests can't collide with a real service pattern, and its
-| aggregate failure is a plain RuntimeException naming the failed ids — the
-| trait only needs *a* Throwable, so no service exception is imported.
+| This file pins the contract directly on Tests\Support\PoolsIdBatchesTestHost,
+| a throwaway host that `use`s the trait and implements its abstract hooks
+| (configure / poolConcurrency / resolvePooled / pooledFailure) with the minimal
+| real-service semantics: a 404 decodes to null, a non-404 failed response
+| signals a per-id PooledIdFailed, and a decodable 200 returns its raw body.
 |
 | This Unit file boots the framework (Http facade) via TestCase and fakes
 | every external call; Http::preventStrayRequests() is set locally since the
@@ -41,64 +32,6 @@ use Tests\TestCase;
 uses(TestCase::class)->beforeEach(function (): void {
     Http::preventStrayRequests();
 });
-
-/**
- * Throwaway host exercising the PoolsIdBatches contract in isolation. Mirrors
- * the real services' hooks minimally: 404 → null, non-404 failure → per-id
- * PooledIdFailed, decodable 200 → raw body. `pooled()` is private on the trait,
- * so `fetch()` exposes it for the test to call.
- */
-final readonly class PoolsIdBatchesTestHost
-{
-    use PoolsIdBatches;
-
-    private const string BASE_URL = 'https://pooled-host.test';
-
-    public function __construct(private int $concurrency = 10) {}
-
-    /**
-     * @param  array<int, int|string>  $ids
-     */
-    public function fetch(array $ids): PooledResult
-    {
-        return $this->pooled($ids, fn (PendingRequest $request, int|string $id) => $request
-            ->get("/item/{$id}"));
-    }
-
-    private function poolConcurrency(): int
-    {
-        return $this->concurrency;
-    }
-
-    private function configure(PendingRequest $request): PendingRequest
-    {
-        return $request->baseUrl(self::BASE_URL)->acceptJson();
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    private function resolvePooled(Response $response): ?array
-    {
-        if ($response->notFound()) {
-            return null;
-        }
-
-        if ($response->failed()) {
-            throw new PooledIdFailed;
-        }
-
-        return $response->json();
-    }
-
-    /**
-     * @param  array<int, int|string>  $failedIds
-     */
-    private function pooledFailure(array $failedIds): Throwable
-    {
-        return new RuntimeException('failed ids: '.implode(',', $failedIds));
-    }
-}
 
 describe('pooled() fan-out and ordering', function (): void {
     it('dedupes duplicate ids before fanning out, firing one request per unique id', function (): void {

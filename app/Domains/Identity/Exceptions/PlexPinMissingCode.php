@@ -6,7 +6,7 @@ namespace App\Domains\Identity\Exceptions;
 
 use Exception;
 
-class PlexPinMissingCode extends Exception
+final class PlexPinMissingCode extends Exception
 {
     public static function onStart(int|string|null $pinId): self
     {

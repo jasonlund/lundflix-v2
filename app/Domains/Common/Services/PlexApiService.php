@@ -17,7 +17,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
-final class PlexApiService
+final readonly class PlexApiService
 {
     private const string CLIENTS_HOST = 'https://clients.plex.tv/api/v2';
 

@@ -9,7 +9,7 @@ use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TmdbApiService;
 use Illuminate\Support\Collection;
 
-class ReconcileImdbOnlyShows
+final readonly class ReconcileImdbOnlyShows
 {
     /**
      * Resolve tmdb ids for the chunk's imdb-only rows through /find, stamping each

@@ -6,7 +6,7 @@ namespace App\Domains\Common\Exceptions;
 
 use Exception;
 
-class PlexRequestFailed extends Exception
+final class PlexRequestFailed extends Exception
 {
     public static function for(string $url): self
     {

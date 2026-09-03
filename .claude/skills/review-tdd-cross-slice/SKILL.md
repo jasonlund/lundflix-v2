@@ -82,7 +82,8 @@ content.** Concretely:
 - **Not a reviewer of duplicated comment prose.** Being green-gated and
   behavior-preserving, this sweep can only move code; rewriting a duplicated
   rationale comment changes no test, so it falls outside the gate that makes this
-  pass safe. `duplication-reviewer` in `/review:claude` Phase 3 owns that.
+  pass safe. The Smell Baseline's **Duplicated Code** entry covers it, and
+  `/review:claude`'s `review-compliance` reviewers grade against that.
 
 ## Reference
 
