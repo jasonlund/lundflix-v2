@@ -585,9 +585,6 @@ describe('catalog:sync-episodes-tvdb failed-show run outcome', function (): void
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
         fakeTvdbEpisodesWithFailingShowFetch();
 
-        // The summary is deliberately unindented: the two-space indent belongs to the
-        // `  [tag value]` heartbeat vocabulary, and a run-level consequence is not one
-        // more running count.
         // Act
         $this->artisan('catalog:sync-episodes-tvdb')
             ->expectsOutputToContain('1 shows failed; marker not advanced.')

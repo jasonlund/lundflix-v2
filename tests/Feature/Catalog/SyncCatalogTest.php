@@ -240,7 +240,7 @@ describe('catalog:sync exit codes and failure handling', function (): void {
         expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
     });
 
-    it('names the failed leg on the console and closes with a summary', function (): void {
+    it('names the failed leg on the console and lists it under Failed commands', function (): void {
         // Arrange
         Sleep::fake();
         Exceptions::fake();
@@ -257,7 +257,7 @@ describe('catalog:sync exit codes and failure handling', function (): void {
         $this->artisan('catalog:sync')
             ->expectsOutputToContain('Downloading movie-ids export… failed after')
             ->expectsOutputToContain('catalog:sync-movies failed:')
-            ->expectsOutputToContain('Completed with 1 failed leg: catalog:sync-movies')
+            ->expectsOutputToContain('Failed commands: catalog:sync-movies')
             ->assertExitCode(Command::FAILURE);
     });
 
@@ -409,7 +409,27 @@ describe('catalog:sync progress output', function (): void {
         // Assert
         // A run that keeps dispatching past a dead child otherwise names the guilty
         // one only by accident, buried in the interleaved wall of child output.
-        expect($output)->toContain("Completed with 1 failed leg: catalog:sync-movies\n");
+        expect($output)->toContain("Failed commands: catalog:sync-movies\n");
+    });
+
+    it('closes a run that lost a child with its own Done. too', function (): void {
+        // Arrange
+        Sleep::fake();
+        Exceptions::fake();
+        // Http::fake merges stubs and the first registered match wins, so this 500
+        // registered ahead of the happy-path helper overrides only the ids export.
+        Http::fake(['*movie_ids*' => Http::response('', 500)]);
+        fakeCatalogSync();
+
+        // Act
+        $output = catalogSyncOutput();
+
+        // Assert
+        // Only the movies leg dies, so the surviving children still sign off with their
+        // own `Done.` — containment would pass on theirs alone. The ordered pair pinned
+        // to the very end is what proves the orchestrator closed a losing run itself
+        // instead of returning FAILURE straight off the failure line.
+        expect($output)->toEndWith("Failed commands: catalog:sync-movies\nDone.\n");
     });
 
     it('closes the run with its own Done.', function (): void {

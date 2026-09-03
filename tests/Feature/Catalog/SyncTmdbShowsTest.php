@@ -523,9 +523,6 @@ describe('catalog:sync-shows-tmdb changes-feed failure handling', function (): v
                 : Http::response('', 404),
         ]);
 
-        // The summary is deliberately unindented: the two-space indent belongs to the
-        // `  [tag value]` heartbeat vocabulary, and a run-level consequence is not one
-        // more running count.
         // Act & Assert
         $this->artisan('catalog:sync-shows-tmdb')
             ->expectsOutputToContain('1 shows failed; marker not advanced.')

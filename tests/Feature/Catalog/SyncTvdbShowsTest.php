@@ -233,9 +233,6 @@ describe('catalog:sync-shows-tvdb run-closing output', function (): void {
                 : Http::response(fixtureBytes('Catalog/tvdb/updates.json')),
         ]);
 
-        // The summary is deliberately unindented: the two-space indent belongs to the
-        // `  [tag value]` heartbeat vocabulary, and a run-level consequence is not one
-        // more running count.
         // Act & Assert
         $this->artisan('catalog:sync-shows-tvdb')
             ->expectsOutputToContain('1 shows failed; marker not advanced.')

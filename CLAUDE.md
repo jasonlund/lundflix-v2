@@ -415,8 +415,12 @@ beat already printed.
   **not** a failure — it stays present-as-null, or every deleted upstream title
   would alert on every run.
 - **An orchestrator names what it lost rather than counting it** — `catalog:sync`
-  closes with `Completed with 1 failed leg: catalog:sync-movies`, because a
-  re-runnable command name is more use to an operator than a number.
+  closes with `Failed commands: catalog:sync-movies`, because a re-runnable command
+  name is more use to an operator than a number. That is why it does **not** go
+  through `failureSummary()`: a count would say "1 command failed" of a run whose
+  whole point is that it kept going, leaving the operator to find which one in the
+  interleaved wall of child output. `Done.` still follows it — losing a leg does not
+  exempt a run from closing.
 
 ## Persistence: third-party API columns (raw-source prefix)
 
