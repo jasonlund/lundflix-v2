@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
  * Static scan of a Pest test file's SOURCE STRING, used by the guard that
  * enforces the suite's test-organization standard.
  */
-final class TestOrganizationScanner
+final readonly class TestOrganizationScanner
 {
     /**
      * Constructs that only count at column 0 — indenting one puts it inside

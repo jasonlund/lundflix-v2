@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Exceptions;
 
 use Exception;
 
-class TmdbAuthenticationFailed extends Exception
+final class TmdbAuthenticationFailed extends Exception
 {
     public static function invalidToken(): self
     {

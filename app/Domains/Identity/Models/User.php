@@ -14,7 +14,7 @@ use Illuminate\Notifications\Notifiable;
 
 #[Hidden(['password', 'remember_token', '_plex_token'])]
 #[UseFactory(UserFactory::class)]
-class User extends Authenticatable
+final class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;

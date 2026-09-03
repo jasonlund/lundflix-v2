@@ -7,7 +7,7 @@ namespace App\Domains\Common\Support;
 use Illuminate\Support\Str;
 use Stringable;
 
-final class SourceId
+final readonly class SourceId
 {
     /**
      * Validate an IMDb title crosswalk id (`tt\d+`), trimmed; malformed to null.

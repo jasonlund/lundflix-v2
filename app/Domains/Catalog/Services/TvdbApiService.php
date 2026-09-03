@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
-final class TvdbApiService
+final readonly class TvdbApiService
 {
     use PoolsIdBatches;
 

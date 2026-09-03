@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 /**
  * @extends Factory<PlexEpisode>
  */
-class PlexEpisodeFactory extends Factory
+final class PlexEpisodeFactory extends Factory
 {
     protected $model = PlexEpisode::class;
 

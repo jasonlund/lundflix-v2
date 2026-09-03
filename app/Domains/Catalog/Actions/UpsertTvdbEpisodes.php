@@ -8,7 +8,7 @@ use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
 use App\Domains\Common\Support\SourceId;
 
-final class UpsertTvdbEpisodes
+final readonly class UpsertTvdbEpisodes
 {
     /**
      * Raw TVDB episode keys mapped 1:1 onto `_tvdb_*` columns, value taken raw.

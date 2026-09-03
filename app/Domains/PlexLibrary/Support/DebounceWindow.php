@@ -6,7 +6,7 @@ namespace App\Domains\PlexLibrary\Support;
 
 use Carbon\CarbonInterface;
 
-final class DebounceWindow
+final readonly class DebounceWindow
 {
     /**
      * Window lengths stay parameters, never config reads, so each caller owns the

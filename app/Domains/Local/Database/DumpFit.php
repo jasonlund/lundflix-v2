@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Local\Database;
 
-final class DumpFit
+final readonly class DumpFit
 {
     /**
      * Largest row count in [0, $totalRows] whose measured dump stays at or under $cap.

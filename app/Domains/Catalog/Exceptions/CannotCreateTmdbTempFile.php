@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Exceptions;
 
 use Exception;
 
-class CannotCreateTmdbTempFile extends Exception
+final class CannotCreateTmdbTempFile extends Exception
 {
     public static function inTempDir(string $dir): self
     {

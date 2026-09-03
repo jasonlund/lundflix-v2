@@ -13,7 +13,7 @@ use Illuminate\Console\Attributes\Signature;
 
 #[Description('Sync IMDb ratings: re-download the title.ratings dataset and refresh votes/rating on every matching catalog title')]
 #[Signature('catalog:sync-ratings {--batch=} {--force}')]
-class SyncImdbRatings extends ImdbSyncCommand
+final class SyncImdbRatings extends ImdbSyncCommand
 {
     /**
      * Bound on both the pre-filter's id probe and the write buffer; --batch

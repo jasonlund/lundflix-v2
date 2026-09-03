@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
-class RegisterPlexUser
+final readonly class RegisterPlexUser
 {
     use PasswordValidationRules;
 

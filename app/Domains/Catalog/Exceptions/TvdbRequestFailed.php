@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Exceptions;
 
 use Exception;
 
-class TvdbRequestFailed extends Exception
+final class TvdbRequestFailed extends Exception
 {
     public static function for(string $url): self
     {

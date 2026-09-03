@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 /**
  * @extends Factory<PlexServer>
  */
-class PlexServerFactory extends Factory
+final class PlexServerFactory extends Factory
 {
     protected $model = PlexServer::class;
 

@@ -7,7 +7,7 @@ namespace App\Domains\Local\Database;
 use App\Domains\Local\Exceptions\ColumnOrderMismatch;
 use Illuminate\Support\Str;
 
-final class ColumnOrder
+final readonly class ColumnOrder
 {
     /**
      * Single `ALTER TABLE` that walks $targetOrder, anchoring each column after the

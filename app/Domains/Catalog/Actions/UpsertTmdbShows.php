@@ -9,7 +9,7 @@ use App\Domains\Catalog\Support\RawSourceColumns;
 use App\Domains\Common\Support\SourceId;
 use Illuminate\Support\Carbon;
 
-final class UpsertTmdbShows
+final readonly class UpsertTmdbShows
 {
     private const string SOURCE = 'tmdb';
 

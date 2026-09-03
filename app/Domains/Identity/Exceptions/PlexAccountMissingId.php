@@ -6,7 +6,7 @@ namespace App\Domains\Identity\Exceptions;
 
 use Exception;
 
-class PlexAccountMissingId extends Exception
+final class PlexAccountMissingId extends Exception
 {
     public static function for(int $pinId): self
     {

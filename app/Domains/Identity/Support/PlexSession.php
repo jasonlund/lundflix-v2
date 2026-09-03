@@ -23,7 +23,7 @@ use App\Domains\Identity\Data\VerifiedPlexIdentity;
  * Marshalling on the way in leaves the payload as the only shape the key ever
  * holds, so the read has a single form to hydrate.
  */
-final class PlexSession
+final readonly class PlexSession
 {
     private const string PIN_ID = 'plex_pin_id';
 

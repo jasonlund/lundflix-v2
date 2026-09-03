@@ -11,7 +11,7 @@ use App\Domains\PlexLibrary\Support\DebounceWindow;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
-final class SelectRipeAnnouncements
+final readonly class SelectRipeAnnouncements
 {
     public function handle(): RipeAnnouncements
     {

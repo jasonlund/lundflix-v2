@@ -7,7 +7,7 @@ namespace App\Domains\Download\Data;
 use Illuminate\Support\Collection;
 use Spatie\LaravelData\Data;
 
-class DownloadPage extends Data
+final class DownloadPage extends Data
 {
     /**
      * @param  Collection<int, DownloadResult>  $results

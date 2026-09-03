@@ -13,7 +13,7 @@ use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
 use Throwable;
 
-final class TmdbExportService
+final readonly class TmdbExportService
 {
     private const string BASE_URL = 'https://files.tmdb.org/p/exports';
 
