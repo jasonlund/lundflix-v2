@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domains\Catalog\Enums\SyncFeed;
+use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Exceptions\TmdbShowCrosswalkCollision;
 use App\Domains\Catalog\Models\Show;
@@ -127,6 +128,23 @@ function fakeTmdbShowMidStreamChangesFailure(): void
                 : Http::response(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'));
         },
         '*api.themoviedb.org*' => Http::response('', 404),
+    ]);
+}
+
+/*
+| The insert-phase THROW, as distinct from every other failure this file fakes.
+| A 401 is fatal for a whole pooled batch — TmdbApiService raises
+| TmdbAuthenticationFailed out of the pool rather than aggregating it per id — so
+| the exception escapes the insert phase's hydrate and is swallowed by the leg's
+| own catch, which names no entity and so increments no counter. The changes feed
+| answers 200-empty, keeping the update phase on its success path: whatever the run
+| reports can then only have come from the insert phase.
+*/
+function fakeTmdbShowInsertPhaseThrow(): void
+{
+    Http::fake([
+        '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*api.themoviedb.org*' => Http::response('', 401),
     ]);
 }
 
@@ -554,6 +572,50 @@ describe('catalog:sync-shows-tmdb changes-feed failure handling', function (): v
         Exceptions::fake();
         Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
         fakeTmdbShowMidStreamChangesFailure();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
+    });
+});
+
+describe('catalog:sync-shows-tmdb insert-phase failure handling', function (): void {
+    it('exits FAILURE when the insert phase throws', function (): void {
+        // Arrange
+        Exceptions::fake();
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+        fakeTmdbShowInsertPhaseThrow();
+
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tmdb')->assertExitCode(Command::FAILURE);
+
+        // Assert
+        Exceptions::assertReported(TmdbAuthenticationFailed::class);
+    });
+
+    it('names the marker consequence when the failure counts no entity', function (): void {
+        // Arrange
+        Exceptions::fake();
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+        fakeTmdbShowInsertPhaseThrow();
+
+        // The throw names neither an entity nor a feed window, so the run has no count
+        // to report — but the consequence is the half that matters, and a bare `Done.`
+        // is exactly the invisible failure the closing line exists to prevent.
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tmdb')
+            ->expectsOutputToContain('Shows sync failed; marker not advanced.')
+            ->doesntExpectOutputToContain('  Shows sync failed');
+    });
+
+    it('does not advance the shows marker when the insert phase throws', function (): void {
+        // Arrange
+        Cache::flush();
+        Exceptions::fake();
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+        fakeTmdbShowInsertPhaseThrow();
 
         // Act
         $this->artisan('catalog:sync-shows-tmdb');

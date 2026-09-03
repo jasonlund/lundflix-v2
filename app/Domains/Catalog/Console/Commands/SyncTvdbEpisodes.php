@@ -13,6 +13,7 @@ use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TvdbApiService;
 use App\Domains\Catalog\Support\SyncMarker;
 use App\Domains\Common\Console\Concerns\EmitsHeartbeat;
+use App\Domains\Common\Support\SourceId;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -94,6 +95,15 @@ final class SyncTvdbEpisodes extends Command
      * Accumulated as an int set keyed by id — the key dedupes for free and holds
      * only ints, so the whole feed never sits in memory as records.
      *
+     * Each candidate routes through `SourceId::positiveInt`, so a decimal
+     * ("70327.5"), exponential ("1e5"), signed, overflow, or slug-appended value is
+     * dropped rather than truncated into a plausible but unrelated series id — the
+     * ids collected here key the `whereIn('_tvdb_id', …)` lookup below, so a
+     * truncated one would crawl the wrong show.
+     *
+     * The beat counts records read from the feed, not ids accepted, so it fires for
+     * a rejected record too.
+     *
      * @return list<int> every distinct series id the feed reported
      */
     private function drainFeed(TvdbApiService $api, int $since): array
@@ -102,10 +112,10 @@ final class SyncTvdbEpisodes extends Command
         $records = 0;
 
         foreach ($api->updates($since, 'episodes') as $record) {
-            $seriesId = $record['seriesId'] ?? null;
+            $seriesId = SourceId::positiveInt($record['seriesId'] ?? null);
 
-            if (is_numeric($seriesId)) {
-                $seen[(int) $seriesId] = true;
+            if ($seriesId !== null) {
+                $seen[$seriesId] = true;
             }
 
             $this->beat(self::FEED_HEARTBEAT_TAG, ++$records, 10_000);

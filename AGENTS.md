@@ -369,6 +369,11 @@ unsure anything happened (the `plex:seed` regression) — that is a defect.
   a different thing in Plex.
 - **Local tooling has no third-party source, so the tag names the work instead** —
   `[dump movies 240]`, `[import movies]`. Don't invent a prefix for it.
+- **`[elapsed …]` is the one unprefixed exception**, and it predates this rule —
+  `SyncImdbCatalog` emits `[elapsed {dataset} 12.4s]` and `ImdbSyncCommand`
+  `[elapsed 12.4s]`. It measures the leg rather than naming what the leg read, so
+  there is no source to put first. Don't prefix it, and don't copy the shape for a
+  tag that does count a source's work.
 - **The value need not be a count.** `[download index Movies p10]` is a walk
   position and `[elapsed titles 12.4s]` a leg duration; a reader tells them apart
   by the value. Only *running totals* go through the emitter below — a position or

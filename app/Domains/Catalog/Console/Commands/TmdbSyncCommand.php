@@ -21,6 +21,7 @@ use DateTimeInterface;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * The frame both TMDB syncs run inside: the leg pipeline (watermark → insert →
@@ -160,22 +161,26 @@ abstract class TmdbSyncCommand extends Command
         // overlap window rather than falling in the gap.
         $startedAt = CarbonImmutable::now();
 
-        $this->withoutIndexing(function () use ($marker, $insertNew, $startedAt): void {
+        $phaseFailed = false;
+
+        $this->withoutIndexing(function () use ($marker, $insertNew, $startedAt, &$phaseFailed): void {
             $insertFailed = $insertNew();
 
             // --fresh already re-hydrated every candidate, so a changes pass is redundant.
             $changesFailed = $this->option('fresh') ? false : $this->updateChanged($marker);
 
+            $phaseFailed = $insertFailed || $changesFailed;
+
             // A failure means the window wasn't fully covered — the marker must not move
             // past a span still owed to the next run.
-            if (! $insertFailed && ! $changesFailed) {
+            if (! $phaseFailed) {
                 $marker->advance($this->feed(), $startedAt);
             }
         });
 
         $this->reindexTouched($startedAt);
 
-        return $this->closeRun();
+        return $this->closeRun($phaseFailed);
     }
 
     /**
@@ -185,8 +190,14 @@ abstract class TmdbSyncCommand extends Command
      * Reported at the end rather than raised at the failure site, because the
      * rows a failing run did write are committed and indexed either way — the
      * non-zero exit is what tells a scheduler the window was only part covered.
+     *
+     * Takes the phases' own verdict rather than re-deriving one from the
+     * counters: the counters are a subset of what holds the marker back. A leg's
+     * own catch (SyncTmdbShows::hydrateChunkSafely) and an upsert QueryException
+     * both name no entity, so a run can skip its marker advance with both
+     * counters at zero — which used to close on a bare `Done.` and exit SUCCESS.
      */
-    private function closeRun(): int
+    private function closeRun(bool $phaseFailed): int
     {
         $tag = $this->heartbeatTag();
 
@@ -195,9 +206,18 @@ abstract class TmdbSyncCommand extends Command
         $this->failureSummary($this->failedEntities, $this->entityLabel(), 'marker not advanced');
         $this->failureSummary($this->failedChangesWindows, 'changes-feed window', 'marker not advanced');
 
+        // Counter-driven lines above, consequence-only line here: with nothing to
+        // count, the consequence is still the half an operator acts on, and a
+        // fabricated "1 shows failed" would name a scope the run never measured.
+        // Unindented and suppressed once a counted line already said it, so the run
+        // states the held-back marker exactly once.
+        if ($phaseFailed && $this->failedEntities === 0 && $this->failedChangesWindows === 0) {
+            $this->output->writeln(Str::ucfirst($this->entityLabel()).' sync failed; marker not advanced.');
+        }
+
         $this->output->writeln('Done.');
 
-        return $this->failedEntities > 0 || $this->failedChangesWindows > 0
+        return $phaseFailed || $this->failedEntities > 0 || $this->failedChangesWindows > 0
             ? self::FAILURE
             : self::SUCCESS;
     }
