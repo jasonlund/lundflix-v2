@@ -136,14 +136,17 @@ describe('download() daily export fetch', function (): void {
 | 603 The Matrix appended for the ingestor slice):
 |   ids 3924, 8773, 25449, 31975, 2, 3, 5, 6, 603  (id 31975 has "video":true).
 |
-| 2 SYNTHETIC injected lines that rows() must SKIP:
+| 2 SYNTHETIC injected lines that rows() must still YIELD:
 |   - id 9999990: "adult":true
 |   - id 9999991: "adult":false plus an extra "softcore":true key.
 | The real movie_ids export contains zero adult:true rows and has no "softcore"
-| key at all, so these two lines are hand-injected — the skip behavior cannot be
-| proven from byte-exact real data, which is the one sanctioned synthetic case.
+| key at all, so these two lines are hand-injected — the refused-row behavior
+| cannot be proven from byte-exact real data, which is the one sanctioned
+| synthetic case.
 |
-| So rows() yields exactly 9 kept rows; ids 9999990 and 9999991 are dropped.
+| A refused row dropped at ingest gets no row and so no tmdb_synced_at, which
+| leaves the membership probe re-fetching it forever (ADR-0004) — refused titles
+| are stored and filtered at read. So rows() yields all 11 data lines.
 */
 
 describe('rows() JSONL streaming', function (): void {
@@ -154,22 +157,24 @@ describe('rows() JSONL streaming', function (): void {
 
         $rows = $service->rows($path)->all();
 
-        expect($rows)->toHaveCount(9);
+        expect($rows)->toHaveCount(11);
         expect(collect($rows)->pluck('id')->all())->toContain(3924, 2);
         expect($rows[0])->toHaveKeys(['id', 'original_title', 'popularity', 'video']);
 
         @unlink($path);
     });
 
-    it('skips adult and softcore rows', function (): void {
+    it('yields adult and softcore rows', function (): void {
         Http::fake(['*files.tmdb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz'))]);
         $service = resolve(TmdbExportService::class);
         $path = $service->download('movie_ids');
 
         $ids = collect($service->rows($path)->all())->pluck('id')->all();
 
-        expect($ids)->not->toContain(9999990);
-        expect($ids)->not->toContain(9999991);
+        // The refused ids stream out alongside the ordinary one, so downstream can
+        // give them a row and a synced stamp instead of re-fetching them forever.
+        expect($ids)->toContain(9999990);
+        expect($ids)->toContain(9999991);
         expect($ids)->toContain(3924);
 
         @unlink($path);
@@ -258,17 +263,18 @@ describe('rows() JSONL streaming', function (): void {
 });
 
 describe('count() kept-row tally', function (): void {
-    it('counts only the kept (non-adult/non-softcore) data lines', function (): void {
-        // The fixture has 11 JSONL lines; the synthetic adult (9999990) and softcore
-        // (9999991) lines are dropped, leaving 9. count() must apply the SAME skip as
-        // rows() so the progress total equals the number of rows actually yielded.
+    it('counts every data line, including the adult and softcore ones', function (): void {
+        // The fixture has 11 JSONL lines, and no line is dropped any more — the
+        // synthetic adult (9999990) and softcore (9999991) rows are counted with the
+        // other 9. count() must stay in step with rows() so a progress total equals
+        // the number of rows actually yielded.
         Http::fake(['*files.tmdb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz'))]);
         $service = resolve(TmdbExportService::class);
         $path = $service->download('movie_ids');
 
         $count = $service->count($path);
 
-        expect($count)->toBe(9);
+        expect($count)->toBe(11);
 
         @unlink($path);
     });

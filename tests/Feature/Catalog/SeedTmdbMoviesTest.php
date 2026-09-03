@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
+use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -41,6 +42,10 @@ uses(RefreshDatabase::class);
 | — the empty `/movie/changes` results page. This command must never read the
 |   changes feed, so the stub exists ONLY so a leg that wrongly requests it fails
 |   on the "no changes feed" assertion rather than dying as a stray request.
+| — the `video:true` detail body served by fakeTmdbSeedPromoExport() — the same
+|   minimal `{"id":N,"title":"Movie N"}` shape with TMDB's promo flag set, for an
+|   export whose ids are chosen per test; no committed capture pairs a promo record
+|   with an arbitrary exported id.
 */
 
 /**
@@ -86,6 +91,40 @@ function fakeTmdbSeedIdsExport(array $ids, ?Closure $onDetail = null): void
             }
 
             return Http::response(json_encode(['id' => $id, 'title' => "Movie {$id}"]));
+        },
+    ]);
+}
+
+/**
+ * Fakes an export of exactly the given ids, serving TMDB's `video:true` promo flag
+ * on $promoId's detail and an ordinary film body for every other id. $onDetail
+ * observes every detail request, so a caller can count them across runs.
+ *
+ * @param  list<int>  $ids
+ */
+function fakeTmdbSeedPromoExport(array $ids, int $promoId, ?Closure $onDetail = null): void
+{
+    $lines = array_map(fn (int $id): string => json_encode(['id' => $id]), $ids);
+
+    Http::fake([
+        // A closure, not a prepared response: a single Http::response holds one stream,
+        // which the first run's sink drains — the second run would then download an
+        // empty body and die as a corrupt archive.
+        '*movie_ids*' => fn (): PromiseInterface => Http::response(gzencode(implode("\n", $lines))),
+        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        '*api.themoviedb.org*' => function (Request $request) use ($promoId, $onDetail) {
+            preg_match('#/movie/(\d+)#', (string) $request->url(), $matches);
+            $id = (int) ($matches[1] ?? 0);
+
+            if ($onDetail instanceof Closure) {
+                $onDetail($id);
+            }
+
+            return Http::response(json_encode([
+                'id' => $id,
+                'title' => "Movie {$id}",
+                'video' => $id === $promoId,
+            ]));
         },
     ]);
 }
@@ -295,6 +334,47 @@ describe('catalog:seed-movies export probing and batching', function (): void {
         // that phase's whereNotNull('tmdb_synced_at') intersection probes the same
         // column, and would make this mean something weaker.
         expect(loggedSyncedProbes()->pluck('query')->all())->toBe([]);
+    });
+});
+
+describe('catalog:seed-movies promo-flagged details', function (): void {
+    it('hydrates and stamps an exported id whose detail is flagged video true', function (): void {
+        // Arrange
+        fakeTmdbSeedPromoExport([8100], 8100);
+
+        // Act
+        $this->artisan('catalog:seed-movies');
+
+        // Assert
+        // The stamp is the load-bearing half: a promo that gets no tmdb_synced_at is
+        // exactly what makes the membership probe report it missing on every later run.
+        $promo = Movie::where('_tmdb_id', 8100)->first();
+        expect($promo)->not->toBeNull();
+        expect($promo->_tmdb_video)->toBeTrue();
+        expect($promo->tmdb_synced_at)->not->toBeNull();
+    });
+
+    it('never re-requests a promo id it already holds', function (): void {
+        // The residue a dropped promo leaves: with no row it gets no tmdb_synced_at,
+        // so the probe reports it missing and the NEXT run pays for its detail again,
+        // forever. The first seed is deliberately Arrange — the run under test is the
+        // second one, and the counter spans both so "exactly once" covers the pair.
+        // `run()` is explicit rather than left to PendingCommand's destructor, so the
+        // two runs cannot interleave.
+        // Arrange
+        $detailRequests = 0;
+        fakeTmdbSeedPromoExport([8101], 8101, function (int $id) use (&$detailRequests): void {
+            if ($id === 8101) {
+                $detailRequests++;
+            }
+        });
+        $this->artisan('catalog:seed-movies')->run();
+
+        // Act
+        $this->artisan('catalog:seed-movies')->run();
+
+        // Assert
+        expect($detailRequests)->toBe(1);
     });
 });
 

@@ -710,7 +710,7 @@ describe('changedMovieIds() paged change feed', function (): void {
         expect($result)->toBe([345, 1648226]);
     });
 
-    it('drops a result flagged adult', function (): void {
+    it('yields a result flagged adult', function (): void {
         config(['services.tmdb.token' => 'test-token']);
         Http::fake(['*api.themoviedb.org*' => Http::response(json_encode([
             'results' => [
@@ -724,11 +724,13 @@ describe('changedMovieIds() paged change feed', function (): void {
 
         $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
 
-        expect($result)->not->toContain(999999)
-            ->and($result)->toBe([345]);
+        // A refused id dropped here never reaches the upsert, so it gets no row and
+        // no tmdb_synced_at, and the membership probe re-fetches it forever
+        // (ADR-0004). The feed yields it; the read paths filter it.
+        expect($result)->toBe([345, 999999]);
     });
 
-    it('drops a result flagged softcore', function (): void {
+    it('yields a result flagged softcore', function (): void {
         config(['services.tmdb.token' => 'test-token']);
         Http::fake(['*api.themoviedb.org*' => Http::response(json_encode([
             'results' => [
@@ -742,8 +744,7 @@ describe('changedMovieIds() paged change feed', function (): void {
 
         $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
 
-        expect($result)->not->toContain(999998)
-            ->and($result)->toBe([345]);
+        expect($result)->toBe([345, 999998]);
     });
 
     it('surfaces a 404 page as TmdbRequestFailed on first iteration', function (): void {
@@ -819,10 +820,10 @@ describe('changedTvIds() paged change feed', function (): void {
             ->and($result)->toHaveCount(4);
     });
 
-    it('drops an adult result from the tv feed too', function (): void {
+    it('yields an adult result from the tv feed too', function (): void {
         config(['services.tmdb.token' => 'test-token']);
-        // Both public methods return the same private generator, so the filter
-        // has to live there rather than on the movie path alone.
+        // Both public methods return the same private generator, so the tv feed
+        // proves the drop is gone from the shared path, not just the movie one.
         Http::fake(['*api.themoviedb.org*' => Http::response(json_encode([
             'results' => [
                 ['id' => 23310, 'adult' => false, 'softcore' => false],
@@ -835,7 +836,6 @@ describe('changedTvIds() paged change feed', function (): void {
 
         $result = iterator_to_array(resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14'), false);
 
-        expect($result)->not->toContain(999997)
-            ->and($result)->toBe([23310]);
+        expect($result)->toBe([23310, 999997]);
     });
 });

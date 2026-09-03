@@ -91,12 +91,14 @@ describe('_imdb column schema', function (): void {
         expect($missing)->toBe([]);
     });
 
-    it('has no _imdb_isAdult column on movies', function (): void {
+    // Was asserted absent while adult rows were dropped pre-upsert; ADR-0004
+    // reversed that, so the flag is now stored and filtered at read.
+    it('has the _imdb_isAdult refusal column on movies', function (): void {
         // Arrange & Act
         $hasIsAdult = Schema::hasColumn('movies', '_imdb_isAdult');
 
         // Assert
-        expect($hasIsAdult)->toBeFalse();
+        expect($hasIsAdult)->toBeTrue();
     });
 });
 

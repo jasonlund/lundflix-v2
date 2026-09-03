@@ -18,6 +18,29 @@ Malformed upstream → null. `Support\TvdbCrosswalk::normalize()` is the shared
 remoteIds → `{_imdb_id, _tmdb_id}` derivation used by `UpsertTvdbShows`. See the
 raw-source-prefix note in `.ai/guidelines/project.md` for the full rule.
 
+## Refused titles (`Models\Concerns\Refusable`)
+
+A **refused title** (`CONTEXT.md`) — adult, softcore, or promo — is stored and
+filtered at read, never dropped at ingest (ADR-0004). The trade has two halves and
+the second is the one that rots:
+
+- **No ingest leg filters.** Every source's refusal flags are ordinary raw-source
+  columns (`_imdb_isAdult`, `_tmdb_adult`, `_tmdb_softcore`, and movies-only
+  `_tmdb_video` — TMDB `/tv` carries no `video` key). They upsert like any other
+  column, so a refused record gets its `*_synced_at` stamp and the membership probe
+  stops re-fetching it. Do not re-add a drop anywhere; the five that used to exist
+  are what made ~94% of the movies export sweep unpersistable.
+- **Every read path carries the filter, and that is not optional.** `Refusable`
+  gives `Movie` and `Show` an `isRefused()` and a `notRefused()` query scope, and
+  overrides Scout's `shouldBeSearchable()` (resolved `insteadof Searchable` in each
+  model). A new listing, API surface, or export **must** apply `notRefused()` —
+  nothing enforces it but this line, because the rows are really there.
+- **A row that becomes refused must leave the index, not merely stop entering it.**
+  `ReindexTouchedRows` partitions each chunk and calls `unsearchable()` on the
+  refused share; Scout's *Collection* `searchable()` macro does no
+  `shouldBeSearchable()` filtering of its own (only its *builder* macro does), so
+  the partition is load-bearing rather than belt-and-braces.
+
 ## IMDb dataset streaming (`ImdbDatasetService`)
 
 - **`ImdbDataset` (enum) owns each dataset's filename and cast map**; the service
@@ -55,9 +78,12 @@ seconds. TMDB/TVDB still create the rows; IMDb enriches them.
   groups instead of ~265k, because title.akas covers far more titles than the catalog
   holds. The cheap id probe keeps the CASE batches dense and the encode work
   proportional to matches, at the cost of two extra bounded queries per flush.
-- **`isAdult=1` basics rows are dropped entirely** — no `_imdb_isAdult` column
-  exists. TMDB's export already filters adult/softcore, but the TVDB show path
-  has no adult filter, so the skip count is reported to measure what gets through.
+- **`isAdult` is persisted like any other basics column**, and refusal is filtered
+  at read via `Models\Concerns\Refusable` (`isRefused()` / the `notRefused()` scope)
+  — ADR-0004. The leg withholds nothing, so it has no skip tally to report; a
+  dropped row would never get its `*_synced_at` stamp and would be re-fetched every
+  run. The TMDB legs no longer filter adult/softcore either, so no source-side
+  filter is left for this one to compensate for.
 - **akas group per title** — the file is sorted contiguously by `titleId`, so
   rows accumulate until it changes. The last group never sees a change: closing
   it after the loop only *buffers* it, so the trailing `flush()` is what writes
@@ -67,7 +93,11 @@ seconds. TMDB/TVDB still create the rows; IMDb enriches them.
   re-narrows to the probed ids before building any CASE, so the write side only ever
   sees the catalog's share of a batch. Titles' 2000 still respects the placeholder
   ceiling it was picked for (2 bindings per column per row plus the `WHERE IN` id =
-  15/row over 7 columns, against MySQL's 65,535 cap ≈ 4369 rows). Akas' 1000 is now a
+  17/row over 8 columns, against MySQL's 65,535 cap less the per-statement
+  `updated_at` binding = 3854 rows) — and because that is now below the shared
+  `MAX_BATCH_SIZE` of 4000, **titles carries its own lower `--batch` ceiling** of
+  3500 via `maxBatchSize()`; the shared constant still fits ratings (2 columns) and
+  akas (1) with room to spare. Akas' 1000 is now a
   **memory** bound: one entry is a whole title's aka group and a popular title carries
   100+ rows, so raising it is the risk, not lowering it. Both commands take `--batch=`
   to override.
@@ -125,12 +155,13 @@ schedule, a full-dataset leg only an operator runs.
   the feed against the live API: `/movie/changes` reported 465/465 of the ids added
   between two daily export snapshots and 112/112 of those removed, so the export
   contributed **no unique discovery**. Of the ~66k ids it re-hydrated every run, ~94%
-  were `video:true` promo records that `payloads()` drops pre-upsert — never stamped
-  `tmdb_synced_at`, so the probe reports them missing forever.
-- **A blind reconciliation sweep is deliberately NOT scheduled.** Re-paying ~62k
-  unpersistable hydrations weekly to cover a condition that should not occur would
-  also mask the marker-stall bug that caused FLIX-289. The capped-window guard below
-  is the alarm instead.
+  were `video:true` promo records that `payloads()` then dropped pre-upsert — never
+  stamped `tmdb_synced_at`, so the probe reported them missing forever. FLIX-290
+  removed that drop: a promo record now persists and stamps like any other, so the
+  export sweep converges instead of re-paying those hydrations every run.
+- **A blind reconciliation sweep is deliberately NOT scheduled.** It would mask the
+  marker-stall bug that caused FLIX-289, and the capped-window guard below is the
+  cheaper alarm.
 
 ### Feed-driven insert is opt-in (`insertHeartbeatTag()`)
 
@@ -249,15 +280,19 @@ Applying it needs two questions, not one:
   incremental endpoint already reports?** Prefer the incremental endpoint. But
   verify the endpoint is complete before trusting it, and check what the full
   dataset was *filtering* — TMDB's `movie_ids` export carries no adult rows at
-  all, so `TmdbExportService::isExcluded()` had never fired in production; the
+  all, so the export reader's adult screen had never fired in production; the
   changes feed is unfiltered, and ~10% of its ids are absent from the export,
-  mostly adult.
+  mostly adult. Discovering from the feed therefore widens what reaches the
+  catalog, which is why FLIX-290 had to give refusal a column before FLIX-289's
+  feed-driven discovery could be trusted.
 - **Does a record the leg refuses to persist come back every run?** A refused
   title (see `CONTEXT.md`) that is dropped pre-upsert never gets its
   `*_synced_at` stamp, so the membership probe reports it missing forever. Store
-  the row and filter at read — `ADR-0004`. This residue is invisible in the
-  heartbeats: the scan beat counts rows read, so a leg re-fetching tens of
-  thousands of unpersistable ids looks identical to one making progress.
+  the row and filter at read — `ADR-0004`, implemented in FLIX-290: no ingest leg
+  drops a refused record any more, and the read side carries the filter
+  (`Models\Concerns\Refusable`). This residue is invisible in the heartbeats: the
+  scan beat counts rows read, so a leg re-fetching tens of thousands of
+  unpersistable ids looks identical to one making progress.
 
 Audited 2026-08-27. Clean: `catalog:sync-shows-tvdb` (`/updates` since marker —
 **the reference pattern**), `catalog:seed-shows-tvdb` (full crawl, but manual
@@ -266,12 +301,12 @@ bootstrap, never scheduled), the three IMDb legs (a `Http::head()`
 change is inherent, since IMDb publishes only full dumps), `download:sync-index`
 (stops at the first fully-seen page) and `download:sync-rss` (constant).
 
-**Fixed (FLIX-289):** `catalog:sync-movies` was the first offender — its export scan
-re-hydrated ~66k ids per run, 94% of them unpersistable. It now reads only the
-changes feed, and the export lives in the unscheduled `catalog:seed-movies` (see
-**TMDB movies sync/seed split**). The `video:true` residue underneath it survives but
-is bounded by change volume now that the export is off the schedule; persisting
-refused titles instead of dropping them is FLIX-290.
+**Fixed (FLIX-289 + FLIX-290):** `catalog:sync-movies` was the first offender — its
+export scan re-hydrated ~66k ids per run, 94% of them unpersistable. FLIX-289 made it
+read only the changes feed and moved the export to the unscheduled
+`catalog:seed-movies` (see **TMDB movies sync/seed split**). FLIX-290 then removed the
+residue itself: a refused title persists and stamps, so no leg re-fetches one it
+already holds, and the export sweep converges.
 
 Offenders still open, each with its own ticket: `catalog:sync-shows-tmdb`, where a
 `/find` miss or `_tmdb_id` collision is re-walked every run — 95,340 rows on
