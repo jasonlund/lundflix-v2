@@ -9,6 +9,7 @@ use App\Domains\Catalog\Enums\ArtworkType;
 use App\Domains\PlexLibrary\Console\Commands\PlexLibraryCommand;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 use Tests\TestCase;
@@ -28,8 +29,8 @@ use Tests\TestCase;
 | target would fail on enums, interfaces and traits instead of on real
 | non-final classes.
 |
-| Second half of the convention, scoped to app/: a class with NO parent is also
-| `readonly`, so a parentless class reads `final readonly class X` —
+| Second half of the convention, over the same three roots: a class with NO
+| parent is also `readonly`, so a parentless class reads `final readonly class X` —
 | mechanically, including stateless and static-only helpers. A class that
 | extends something is outside the rule by language constraint: PHP rejects a
 | readonly class extending a non-readonly one ("Readonly class C cannot extend
@@ -69,31 +70,51 @@ $testsAbstractBases = [
 ];
 
 /**
- * Every concrete, parentless class under app/ — the target set of the `readonly` rule.
+ * Every concrete, parentless class the repo owns — the target set of the
+ * `readonly` rule, over the same three roots as the `final` rule.
  *
  * A reflection scan rather than an arch expectation: no `expect()` chain can
  * express "has no parent", and `toBeReadonly()`'s predicate reports every enum
  * as a violation. Classes are resolved from each file's `namespace` line plus
- * its basename, and skipped when `class_exists()` is false — which already
- * drops interfaces and traits; enums and abstract classes are rejected
- * explicitly.
+ * its basename, and skipped when the file declares no class of that name or
+ * `class_exists()` is false — which between them drop interfaces, traits and
+ * migrations. Abstract classes clear both and are rejected explicitly; the enum
+ * reject is the backstop that keeps enums — implicitly final, never readonly-able,
+ * and true to `class_exists()` — out if that declaration filter is ever loosened.
  *
  * @return Collection<int, class-string>
  */
 $scanParentlessClasses = function (): Collection {
-    // The Unit suite boots no framework, so resolve app/ from this file's
-    // location rather than app_path().
-    $files = Finder::create()->files()->in(dirname(__DIR__, 2).'/app')->name('*.php');
+    // The Unit suite boots no framework, so resolve the roots from this file's
+    // location rather than app_path()/database_path(). database/ contributes only
+    // its two PSR-4-mapped halves: no other path under it is autoloadable.
+    $root = dirname(__DIR__, 2);
+
+    $files = Finder::create()->files()->name('*.php')->in([
+        $root.'/app',
+        $root.'/database/factories',
+        $root.'/database/seeders',
+        $root.'/tests',
+    ]);
 
     return collect($files)
         ->map(function (SplFileInfo $file): ?string {
-            $matched = preg_match('/^namespace\s+([^;]+);/m', $file->getContents(), $matches) === 1;
+            $basename = $file->getBasename('.php');
+            $contents = $file->getContents();
 
-            return $matched ? $matches[1].'\\'.$file->getBasename('.php') : null;
+            // The namespace line alone would name a class for any file, and
+            // class_exists() AUTOLOADS what it is handed. Under tests/ — where
+            // `Tests\` maps to the whole tree — that would include a namespaced
+            // Pest file and run its it()/describe() calls outside a Pest context,
+            // so a matching class declaration is required before the name resolves.
+            $declaresClass = preg_match('/^namespace\s+([^;]+);/m', $contents, $matches) === 1
+                && preg_match('/\bclass\s+'.preg_quote($basename, '/').'\b/', $contents) === 1;
+
+            return $declaresClass ? $matches[1].'\\'.$basename : null;
         })
         ->filter(fn (?string $class): bool => $class !== null && class_exists($class))
         ->map(fn (string $class): ReflectionClass => new ReflectionClass($class))
-        ->reject(fn (ReflectionClass $class): bool => $class->isEnum() || $class->isInterface() || $class->isTrait() || $class->isAbstract())
+        ->reject(fn (ReflectionClass $class): bool => $class->isEnum() || $class->isAbstract())
         ->filter(fn (ReflectionClass $class): bool => $class->getParentClass() === false)
         ->map(fn (ReflectionClass $class): string => $class->getName())
         ->sort()
@@ -101,36 +122,19 @@ $scanParentlessClasses = function (): Collection {
 };
 
 describe('the final rule', function () use ($domainAbstractBases, $httpAbstractBases, $testsAbstractBases): void {
-    it('declares every class in App\Domains final', function () use ($domainAbstractBases): void {
+    it('declares every class in App final', function () use ($domainAbstractBases, $httpAbstractBases): void {
         // Arrange
         // no state to set up — the namespace tree is the subject
 
+        // The root namespace, not its sub-namespaces one by one: composer maps
+        // `App\` to the whole of app/, so an enumeration goes silently incomplete
+        // the moment a `make:job`/`make:policy`/`make:command` writes a top-level
+        // folder nobody thought to name here.
         // Act & Assert
-        expect('App\Domains')
+        expect('App')
             ->classes()
             ->toBeFinal()
-            ->ignoring($domainAbstractBases);
-    });
-
-    it('declares every class in App\Http final', function () use ($httpAbstractBases): void {
-        // Arrange
-        // no state to set up — the namespace tree is the subject
-
-        // Act & Assert
-        expect('App\Http')
-            ->classes()
-            ->toBeFinal()
-            ->ignoring($httpAbstractBases);
-    });
-
-    it('declares every class in App\Providers and App\Filament final', function (): void {
-        // Arrange
-        // no state to set up — the namespace trees are the subject
-
-        // Act & Assert
-        expect(['App\Providers', 'App\Filament'])
-            ->classes()
-            ->toBeFinal();
+            ->ignoring([...$domainAbstractBases, ...$httpAbstractBases]);
     });
 
     it('declares every class in Database\Seeders and Database\Factories final', function (): void {
@@ -151,9 +155,11 @@ describe('the final rule', function () use ($domainAbstractBases, $httpAbstractB
         // Arrange
         // no state to set up — the namespace tree is the subject
 
-        // A Pest test file declares no class, so this targets only the helper
-        // classes tests declare for themselves — notifications, command hosts, and
-        // the one remaining PHPUnit-style test case.
+        // An arch layer is filtered by fully-qualified NAME prefix, not by path, so
+        // this reaches a test helper only while it is declared under `Tests\` —
+        // a class declared in the global namespace inside a Pest file is invisible
+        // here. That is why every helper class lives in tests/Support/ under
+        // `Tests\Support\`, one per file, imported by the tests that use it.
         // Act & Assert
         expect('Tests')
             ->classes()
@@ -177,7 +183,7 @@ describe('the final rule', function () use ($domainAbstractBases, $httpAbstractB
 });
 
 describe('the readonly rule', function () use ($scanParentlessClasses): void {
-    it('declares every parentless class under app/ readonly', function () use ($scanParentlessClasses): void {
+    it('declares every parentless class the repo owns readonly', function () use ($scanParentlessClasses): void {
         // Arrange
         $targets = $scanParentlessClasses();
 
@@ -195,7 +201,23 @@ describe('the readonly rule', function () use ($scanParentlessClasses): void {
         ));
     });
 
-    it('applies the readonly rule to no enum, trait, interface or abstract class', function () use ($scanParentlessClasses): void {
+    it('actually scans the three roots rather than silently finding nothing', function () use ($scanParentlessClasses): void {
+        // A guard that scans an empty set passes forever. A bad path fails loudly
+        // (Finder::in() throws), but a regressed namespace regex or basename join
+        // degrades every entry to null in silence — pin a floor so that fails here.
+        // Arrange
+        $targets = $scanParentlessClasses();
+
+        // Act
+        $roots = $targets->map(fn (string $class): string => Str::before($class, '\\'))->unique();
+
+        // Assert
+        expect($targets)->not->toBeEmpty()
+            ->and($targets->count())->toBeGreaterThan(50)
+            ->and($roots->all())->toContain('App', 'Tests');
+    });
+
+    it('applies the readonly rule to no enum or abstract class', function () use ($scanParentlessClasses): void {
         // Arrange
         $outsideTheRule = [ArtworkType::class, PlexLibraryCommand::class];
 
