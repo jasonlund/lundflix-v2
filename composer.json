@@ -37,7 +37,8 @@
         "pestphp/pest-plugin-drift": "^4.1",
         "pestphp/pest-plugin-laravel": "^4.1",
         "rector/rector": "^2.4",
-        "spatie/laravel-typescript-transformer": "^3.2"
+        "spatie/laravel-typescript-transformer": "^3.2",
+        "symfony/yaml": "^8.1"
     },
     "autoload": {
         "psr-4": {
