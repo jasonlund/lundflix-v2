@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Tests\Support\ToolkitFiles;
 
 /**
  * Structure guard for `.claude/commands/review/claude.md`.
@@ -23,6 +24,9 @@ use Illuminate\Support\Str;
  * `.claude/commands/review/add.md` parses to build the PR review payload, so
  * dropping one silently empties a posted review.
  *
+ * File reading, line counting and the named-pattern check come from
+ * `Tests\Support\ToolkitFiles`, shared with the other toolkit guards.
+ *
  * NB: every test carries a non-vacuous floor — the file was really read and is
  * really substantial — because a mistyped path yields an empty string, and an
  * empty string reads identically to a clean scan on several of these checks.
@@ -31,20 +35,7 @@ use Illuminate\Support\Str;
 /**
  * The committed command file, read from disk.
  */
-$commandSource = fn (): string => (string) file_get_contents(
-    // The Unit suite doesn't boot the app container, so resolve the repo root
-    // from this file's location rather than base_path().
-    dirname(__DIR__, 2).'/.claude/commands/review/claude.md',
-);
-
-/**
- * How many lines the command runs to, for the non-vacuous floor.
- *
- * Split on real newlines only, NOT `\R` — see the note in
- * `tests/Unit/AgentModelPolicyTest.php` for why that miscounts a file carrying
- * multi-byte characters.
- */
-$lineCount = fn (string $source): int => count(preg_split('/\r\n|\n|\r/', $source) ?: []);
+$commandSource = fn (): string => ToolkitFiles::read('.claude/commands/review/claude.md');
 
 /**
  * Every `review-*` agent the command names, paired with the byte offset of that
@@ -71,24 +62,8 @@ $agentMentions = function (string $source): array {
     );
 };
 
-/**
- * The required commitments whose pattern finds no match, named the way a reader
- * states them rather than as the regex that looks for them.
- *
- * Every scan below reports its offenders this way on purpose: a bare
- * `expect($matched)->toBeTrue()` names nothing, so a failure says a check failed
- * without saying which commitment left the file.
- *
- * @param  array<string, string>  $required  human description => pattern
- * @return list<string>
- */
-$missingPatterns = fn (string $source, array $required): array => collect($required)
-    ->reject(fn (string $pattern): bool => preg_match($pattern, $source) === 1)
-    ->keys()
-    ->all();
-
-describe('/review:claude deterministic gates', function () use ($commandSource, $lineCount): void {
-    it('names every deterministic gate the pipeline runs', function () use ($commandSource, $lineCount): void {
+describe('/review:claude deterministic gates', function () use ($commandSource): void {
+    it('names every deterministic gate the pipeline runs', function () use ($commandSource): void {
         // The five gates produce facts rather than judgement, so a dropped one is
         // a whole class of defect the review stops catching at all.
         // Arrange
@@ -104,12 +79,12 @@ describe('/review:claude deterministic gates', function () use ($commandSource, 
         // Assert
         expect($missing)->toBe([])
             ->and($source)->not->toBeEmpty()
-            ->and($lineCount($source))->toBeGreaterThan(50);
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(50);
     });
 });
 
-describe('/review:claude agent dispatch', function () use ($commandSource, $agentMentions, $lineCount): void {
-    it('runs the skip gate before it dispatches any reviewer', function () use ($commandSource, $agentMentions, $lineCount): void {
+describe('/review:claude agent dispatch', function () use ($commandSource, $agentMentions): void {
+    it('runs the skip gate before it dispatches any reviewer', function () use ($commandSource, $agentMentions): void {
         // The skip gate only saves anything if it runs first — a closed, draft or
         // already-reviewed PR must stop the pipeline before four reviewers are
         // paid for. Ordering is judged by content position, never by line number,
@@ -127,10 +102,10 @@ describe('/review:claude agent dispatch', function () use ($commandSource, $agen
         expect($skipGateAt)->toBeInt()
             ->and($firstReviewerAt)->toBeInt()
             ->and($skipGateAt)->toBeLessThan($firstReviewerAt)
-            ->and($lineCount($source))->toBeGreaterThan(50);
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(50);
     });
 
-    it('dispatches only agents that exist under .claude/agents', function () use ($commandSource, $agentMentions, $lineCount): void {
+    it('dispatches only agents that exist under .claude/agents', function () use ($commandSource, $agentMentions): void {
         // A dispatch to a missing agent is silent: the harness has nothing to run,
         // that phase produces no findings, and the report still renders.
         // The mention floor is the non-vacuous half — a command naming no agents
@@ -138,7 +113,7 @@ describe('/review:claude agent dispatch', function () use ($commandSource, $agen
         // roster.
         // Arrange
         $source = $commandSource();
-        $agentDirectory = dirname(__DIR__, 2).'/.claude/agents/';
+        $agentDirectory = ToolkitFiles::path('.claude/agents').'/';
 
         // Act
         $dispatched = collect($agentMentions($source))->pluck('name')->unique()->values();
@@ -150,12 +125,12 @@ describe('/review:claude agent dispatch', function () use ($commandSource, $agen
             ->values()
             ->all())->toBe([])
             ->and($dispatched->all())->not->toBeEmpty()
-            ->and($lineCount($source))->toBeGreaterThan(50);
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(50);
     });
 });
 
-describe('/review:claude report contract', function () use ($commandSource, $missingPatterns, $lineCount): void {
-    it('states the 400-word reviewer cap — presence of the instruction, not obedience to it', function () use ($commandSource, $missingPatterns, $lineCount): void {
+describe('/review:claude report contract', function () use ($commandSource): void {
+    it('states the 400-word reviewer cap — presence of the instruction, not obedience to it', function () use ($commandSource): void {
         // A static scan cannot count the words a model actually writes; all it can
         // prove is that the cap was not deleted from the instructions.
         // Arrange
@@ -163,14 +138,14 @@ describe('/review:claude report contract', function () use ($commandSource, $mis
         $required = ['a 400-word cap on each reviewer' => '#\b400[\s-]words?\b#i'];
 
         // Act
-        $missing = $missingPatterns($source, $required);
+        $missing = ToolkitFiles::missingPatterns($source, $required);
 
         // Assert
         expect($missing)->toBe([])
-            ->and($lineCount($source))->toBeGreaterThan(50);
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(50);
     });
 
-    it('states the fail-closed drop of unvalidated findings — presence of the instruction, not obedience to it', function () use ($commandSource, $missingPatterns, $lineCount): void {
+    it('states the fail-closed drop of unvalidated findings — presence of the instruction, not obedience to it', function () use ($commandSource): void {
         // Same limit as the cap above: presence only. The proximity pattern spans
         // newlines so the rule may wrap across the file's ~80-column prose, but
         // stops at a sentence end so an unrelated "drop" cannot pair with an
@@ -183,14 +158,14 @@ describe('/review:claude report contract', function () use ($commandSource, $mis
         ];
 
         // Act
-        $missing = $missingPatterns($source, $required);
+        $missing = ToolkitFiles::missingPatterns($source, $required);
 
         // Assert
         expect($missing)->toBe([])
-            ->and($lineCount($source))->toBeGreaterThan(50);
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(50);
     });
 
-    it('keeps every report section and finding field that /review:add parses', function () use ($commandSource, $missingPatterns, $lineCount): void {
+    it('keeps every report section and finding field that /review:add parses', function () use ($commandSource): void {
         // Cross-file contract, verified against `.claude/commands/review/add.md`
         // (Phase 1 step 4 names the sections; the Phase 3 review-body template
         // names the fields). `/review:add` reads this report to build the PR
@@ -217,10 +192,10 @@ describe('/review:claude report contract', function () use ($commandSource, $mis
         ];
 
         // Act
-        $missing = $missingPatterns($source, $required);
+        $missing = ToolkitFiles::missingPatterns($source, $required);
 
         // Assert
         expect($missing)->toBe([])
-            ->and($lineCount($source))->toBeGreaterThan(50);
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(50);
     });
 });

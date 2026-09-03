@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 use Illuminate\Support\Str;
 use Symfony\Component\Finder\Finder;
-use Symfony\Component\Finder\SplFileInfo;
+use Tests\Support\ToolkitFiles;
 
 /**
  * Drift guard for the `.claude/` agent toolkit: the commit trailer it instructs
  * agents to write carries no model version stamp, and every review/hunter agent
  * pins the model its review phase is meant to run on.
+ *
+ * File reading, line splitting and the agent-roster sweep come from
+ * `Tests\Support\ToolkitFiles`, shared with the other toolkit guards.
  *
  * NB: the offending trailer shape lives in a PHP string literal (never in a `//`
  * comment) so widening the scan can never make this file its own offender; the
@@ -17,46 +20,10 @@ use Symfony\Component\Finder\SplFileInfo;
  */
 
 /**
- * Every line of every markdown file in the `.claude/` toolkit.
- *
- * @return list<array{file: string, line: int, text: string}>
- */
-$scanToolkitLines = function (): array {
-    // The Unit suite doesn't boot the app container, so resolve the repo root
-    // from this file's location rather than base_path().
-    $root = dirname(__DIR__, 2);
-
-    $finder = (new Finder)->files()->in($root.'/.claude')->name('*.md');
-
-    $lines = [];
-
-    foreach ($finder as $file) {
-        $relative = Str::replace($root.DIRECTORY_SEPARATOR, '', $file->getRealPath());
-        // Split on real newlines only, NOT `\R`: without the `u` modifier PCRE
-        // treats the 0x85 byte as NEL, and 0x85 is a UTF-8 continuation byte of
-        // characters these files contain (e.g. the ✅ in a summary block). `\R`
-        // would break mid-character and shift every later line number by one,
-        // making the reported file:line wrong.
-        $text = preg_split('/\r\n|\n|\r/', (string) file_get_contents($file->getRealPath()));
-
-        foreach ($text as $index => $line) {
-            $lines[] = [
-                'file' => $relative,
-                'line' => $index + 1,
-                'text' => $line,
-            ];
-        }
-    }
-
-    return $lines;
-};
-
-/**
  * The `model:` value an agent declares in its frontmatter, or null when absent.
  */
 $declaredModel = function (string $agent): ?string {
-    $path = dirname(__DIR__, 2).'/.claude/agents/'.$agent.'.md';
-    $lines = preg_split('/\r\n|\n|\r/', (string) file_get_contents($path));
+    $lines = ToolkitFiles::splitLines(ToolkitFiles::read('.claude/agents/'.$agent.'.md'));
 
     foreach ($lines as $index => $text) {
         // The opening fence is line 1; the next fence closes the frontmatter.
@@ -72,17 +39,20 @@ $declaredModel = function (string $agent): ?string {
     return null;
 };
 
-describe('.claude/ toolkit commit trailers', function () use ($scanToolkitLines): void {
-    it('carries no model-stamped co-author trailer anywhere under .claude/', function () use ($scanToolkitLines): void {
+describe('.claude/ toolkit commit trailers', function (): void {
+    it('carries no model-stamped co-author trailer anywhere under .claude/', function (): void {
         // The bare `Co-Authored-By: Claude <noreply@anthropic.com>` is the
         // drift-free form we want; anything wedged between the name and the address
         // is a version stamp that rots the moment the model changes. Matched
         // case-insensitively because history also carries `Co-authored-by`.
         // Arrange
         $stamped = '#co-authored-by:\s*Claude\s+[^<]+<noreply@anthropic\.com>#i';
+        $lines = ToolkitFiles::scanLines(
+            (new Finder)->files()->in(ToolkitFiles::path('.claude'))->name('*.md'),
+        );
 
         // Act
-        $offenders = collect($scanToolkitLines())
+        $offenders = collect($lines)
             ->filter(fn (array $l): bool => preg_match($stamped, $l['text']) === 1)
             ->map(fn (array $l): string => sprintf('%s:%d  %s', $l['file'], $l['line'], Str::trim($l['text'])))
             ->values()
@@ -175,23 +145,15 @@ describe('agent frontmatter model pinning', function () use ($declaredModel): vo
         // agent silently takes the harness default, which is the drift the policy
         // exists to stop, and `inherit` is how a role opts into the session model
         // deliberately.
-        // The sweep is deliberately flat: it reads each agent by basename alone, so
-        // recursing would report a nested file under a path that doesn't exist.
-        // The count floor keeps the sweep honest: a Finder that resolves nothing
+        // The count floor keeps the sweep honest: a roster that resolves nothing
         // reports an empty offender list forever, which reads identically to a clean
         // directory.
         // Arrange
         $permitted = ['haiku', 'sonnet', 'inherit'];
-        $agentFiles = (new Finder)
-            ->files()
-            ->in(dirname(__DIR__, 2).'/.claude/agents')
-            ->name('*.md')
-            ->depth(0)
-            ->sortByName();
+        $agents = ToolkitFiles::agentNames();
 
         // Act
-        $offenders = collect($agentFiles)
-            ->map(fn (SplFileInfo $file): string => $file->getBasename('.md'))
+        $offenders = $agents
             ->reject(fn (string $agent): bool => in_array($declaredModel($agent), $permitted, true))
             ->map(fn (string $agent): string => sprintf(
                 '.claude/agents/%s.md  declares model: %s',
@@ -203,7 +165,7 @@ describe('agent frontmatter model pinning', function () use ($declaredModel): vo
 
         // Assert
         expect($offenders)->toBe([])
-            ->and($agentFiles->count())->toBeGreaterThan(5);
+            ->and($agents->count())->toBeGreaterThan(5);
     });
 
     it('declares no dated model id on any agent file', function () use ($declaredModel): void {
@@ -211,22 +173,16 @@ describe('agent frontmatter model pinning', function () use ($declaredModel): vo
         // is eventually retired, and the failure is silent — the harness just stops
         // dispatching. Only the bare aliases are allowed to appear, so no `model:`
         // value may carry a date suffix.
-        // The floor is two-part on purpose. `toBeGreaterThan(5)` catches a Finder
+        // The floor is two-part on purpose. `toBeGreaterThan(5)` catches a roster
         // that resolved nothing; matching the file count catches the subtler vacuity
         // this particular scan invites — a file with no `model:` key contributes no
         // value to match against, so it would pass the date check by having nothing
         // to check.
         // Arrange
         $dated = '#-\d{8}$#';
+        $agents = ToolkitFiles::agentNames();
 
         // Act
-        $agents = collect((new Finder)
-            ->files()
-            ->in(dirname(__DIR__, 2).'/.claude/agents')
-            ->name('*.md')
-            ->depth(0)
-            ->sortByName())
-            ->map(fn (SplFileInfo $file): string => $file->getBasename('.md'));
         $declared = $agents->mapWithKeys(fn (string $agent): array => [$agent => $declaredModel($agent)])->filter();
 
         // Assert

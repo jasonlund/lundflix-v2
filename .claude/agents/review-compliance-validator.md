@@ -36,8 +36,9 @@ it?** All three, or the finding drops.
   general convention would flag it — globally unguarded Eloquent, models under
   `app/Domains/{Domain}/Models/`, service-constant base URLs, and the rest of that
   list are deliberate here.
-- **A smell is a judgement call.** A Smell Baseline finding confirms at CONSIDER at
-  most. Confirmed as a labelled heuristic, never as a violation.
+- **A smell is a judgement call.** Confirm a Smell Baseline finding at the severity
+  the baseline's "cap follows the basis" rule gives it: a finding resting on the
+  smell name alone caps at CONSIDER.
 
 ## Answer CONFIRMED only when all three hold
 

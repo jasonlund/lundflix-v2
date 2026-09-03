@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
+use Tests\Support\ToolkitFiles;
 
 /**
  * Drift guard for the review engine's written contract: the toolkit must
@@ -27,6 +28,10 @@ use Symfony\Component\Finder\SplFileInfo;
  * never that a model obeyed it. A tier pin and a silence rule are enforced at
  * runtime by the harness and the model; the only thing a static scan can
  * guarantee is that the instruction was written, or that it was removed.
+ *
+ * File reading, line splitting, the agent-roster sweep and the named-pattern
+ * checks come from `Tests\Support\ToolkitFiles`, shared with the other toolkit
+ * guards.
  *
  * NB: the retired agent names live in a PHP array literal in this file, which
  * would make this file its own offender — so the scan excludes itself by
@@ -85,62 +90,21 @@ $survivingAgents = [
  *
  * @return list<array{file: string, line: int, text: string}>
  */
-$scanCommittedLines = function (): array {
-    // The Unit suite doesn't boot the app container, so resolve the repo root
-    // from this file's location rather than base_path().
-    $root = dirname(__DIR__, 2);
-
-    $finders = [
-        (new Finder)->files()->in($root.'/.claude')->name(['*.md', '*.json', '*.sh']),
-        (new Finder)->files()->in($root.'/tests')->name('*.php')->exclude('Fixtures'),
-    ];
-
-    $lines = [];
-
-    foreach ($finders as $finder) {
-        foreach ($finder as $file) {
-            if ($file->getRealPath() === __FILE__) {
-                continue;
-            }
-
-            $relative = Str::replace($root.DIRECTORY_SEPARATOR, '', (string) $file->getRealPath());
-            // Split on real newlines only, NOT `\R`: without the `u` modifier
-            // PCRE treats the 0x85 byte as NEL, and 0x85 is a UTF-8 continuation
-            // byte of characters these files carry (em dashes, ✅), which would
-            // shift every later line number by one and misreport file:line.
-            $text = preg_split('/\r\n|\n|\r/', (string) file_get_contents((string) $file->getRealPath())) ?: [];
-
-            foreach ($text as $index => $line) {
-                $lines[] = [
-                    'file' => $relative,
-                    'line' => $index + 1,
-                    'text' => $line,
-                ];
-            }
-        }
-    }
-
-    return $lines;
-};
+$scanCommittedLines = fn (): array => ToolkitFiles::scanLines(
+    (new Finder)->files()->in(ToolkitFiles::path('.claude'))->name(['*.md', '*.json', '*.sh']),
+    (new Finder)->files()->in(ToolkitFiles::path('tests'))->name('*.php')->exclude('Fixtures')
+        ->filter(fn (SplFileInfo $file): bool => $file->getRealPath() !== __FILE__),
+);
 
 /**
  * The committed shared contract, read from disk.
  */
-$contractSource = fn (): string => (string) file_get_contents(
-    dirname(__DIR__, 2).'/.claude/skills/review-pipeline/SKILL.md',
-);
+$contractSource = fn (): string => ToolkitFiles::read('.claude/skills/review-pipeline/SKILL.md');
 
 /**
  * The committed `/review:claude` command, read from disk.
  */
-$reviewCommandSource = fn (): string => (string) file_get_contents(
-    dirname(__DIR__, 2).'/.claude/commands/review/claude.md',
-);
-
-/**
- * How many lines a source runs to, for the non-vacuous floor.
- */
-$sourceLineCount = fn (string $source): int => count(preg_split('/\r\n|\n|\r/', $source) ?: []);
+$reviewCommandSource = fn (): string => ToolkitFiles::read('.claude/commands/review/claude.md');
 
 /**
  * One `## ` section of a markdown source, from its heading to the next one.
@@ -152,38 +116,10 @@ $contractSection = function (string $source, string $heading): string {
 };
 
 /**
- * The required commitments whose pattern finds no match, named the way a reader
- * states them rather than as the regex that looks for them.
- *
- * A bare `expect($matched)->toBeTrue()` names nothing, so a failure would say a
- * check failed without saying which commitment left the file.
- *
- * @param  array<string, string>  $required  human description => pattern
- * @return list<string>
- */
-$missingPatterns = fn (string $source, array $required): array => collect($required)
-    ->reject(fn (string $pattern): bool => preg_match($pattern, $source) === 1)
-    ->keys()
-    ->all();
-
-/**
- * The forbidden shapes whose pattern still finds a match, named the same way.
- *
- * @param  array<string, string>  $forbidden  human description => pattern
- * @return list<string>
- */
-$survivingPatterns = fn (string $source, array $forbidden): array => collect($forbidden)
-    ->filter(fn (string $pattern): bool => preg_match($pattern, $source) === 1)
-    ->keys()
-    ->all();
-
-/**
  * The committed `map` skill — the router that names every toolkit file — read
  * from disk.
  */
-$mapSource = fn (): string => (string) file_get_contents(
-    dirname(__DIR__, 2).'/.claude/skills/map/SKILL.md',
-);
+$mapSource = fn (): string => ToolkitFiles::read('.claude/skills/map/SKILL.md');
 
 /**
  * The number the map's inventory sentence states before a noun — `33 toolkit
@@ -207,7 +143,7 @@ $statedCount = function (string $source, string $noun): ?int {
  * carrying its own hardcoded 12 is the same staleness one layer down.
  */
 $countToolkitFiles = function (string $directory, string $name, ?string $depth = null): int {
-    $finder = (new Finder)->files()->in(dirname(__DIR__, 2).'/'.$directory)->name($name);
+    $finder = (new Finder)->files()->in(ToolkitFiles::path($directory))->name($name);
 
     if ($depth !== null) {
         $finder->depth($depth);
@@ -233,8 +169,8 @@ describe('review agent roster', function () use ($scanCommittedLines, $retiredAg
 
         // Act
         $offenders = collect($lines)
-            ->filter(fn (array $l): bool => preg_match($retired, (string) $l['text']) === 1)
-            ->map(fn (array $l): string => sprintf('%s:%d  →  %s', $l['file'], $l['line'], Str::trim((string) $l['text'])))
+            ->filter(fn (array $l): bool => preg_match($retired, $l['text']) === 1)
+            ->map(fn (array $l): string => sprintf('%s:%d  →  %s', $l['file'], $l['line'], Str::trim($l['text'])))
             ->values()
             ->all();
 
@@ -246,18 +182,12 @@ describe('review agent roster', function () use ($scanCommittedLines, $retiredAg
     it('holds exactly the agents the engine still runs', function () use ($survivingAgents): void {
         // Equality both ways on purpose: an extra file is a retired agent that
         // outlived its dispatch, and a missing one is a phase that silently
-        // stops running. The sweep is flat, because an agent is loaded by
-        // basename alone — a nested file would be reported under a path the
-        // harness never reads.
+        // stops running.
         // Arrange
-        $directory = dirname(__DIR__, 2).'/.claude/agents';
         $expected = collect($survivingAgents)->sort()->values()->all();
 
         // Act
-        $roster = collect((new Finder)->files()->in($directory)->name('*.md')->depth(0))
-            ->map(fn (SplFileInfo $file): string => $file->getBasename('.md'))
-            ->sort()
-            ->values();
+        $roster = ToolkitFiles::agentNames()->sort()->values();
 
         // Assert
         expect($roster->all())->toBe($expected)
@@ -265,8 +195,8 @@ describe('review agent roster', function () use ($scanCommittedLines, $retiredAg
     });
 });
 
-describe('review-pipeline contract sections', function () use ($contractSource, $sourceLineCount, $missingPatterns, $survivingPatterns): void {
-    it('keeps the contract sections the new engine uses', function () use ($contractSource, $sourceLineCount, $missingPatterns): void {
+describe('review-pipeline contract sections', function () use ($contractSource): void {
+    it('keeps the contract sections the new engine uses', function () use ($contractSource): void {
         // Regression guard: every agent the engine still dispatches is handed
         // these sections by name from `/review:claude`, so deleting one leaves a
         // dispatch pointing at a section that is not there — with no error on
@@ -287,14 +217,14 @@ describe('review-pipeline contract sections', function () use ($contractSource, 
         ];
 
         // Act
-        $missing = $missingPatterns($source, $required);
+        $missing = ToolkitFiles::missingPatterns($source, $required);
 
         // Assert
         expect($missing)->toBe([])
-            ->and($sourceLineCount($source))->toBeGreaterThan(100);
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(100);
     });
 
-    it('drops the contract sections the new engine retired', function () use ($contractSource, $sourceLineCount, $survivingPatterns): void {
+    it('drops the contract sections the new engine retired', function () use ($contractSource): void {
         // Each of these governs machinery the engine no longer has. Consensus
         // and the tiebreaker grade findings by how many of six reviewers agreed;
         // grounding verification gates a routing step that one validator per
@@ -314,16 +244,16 @@ describe('review-pipeline contract sections', function () use ($contractSource, 
         ];
 
         // Act
-        $surviving = $survivingPatterns($source, $forbidden);
+        $surviving = ToolkitFiles::survivingPatterns($source, $forbidden);
 
         // Assert
         expect($surviving)->toBe([])
-            ->and($sourceLineCount($source))->toBeGreaterThan(100);
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(100);
     });
 });
 
-describe('review-pipeline contract rules', function () use ($contractSource, $reviewCommandSource, $contractSection, $missingPatterns): void {
-    it('documents the model tiers it enforces', function () use ($contractSource, $contractSection, $missingPatterns): void {
+describe('review-pipeline contract rules', function () use ($contractSource, $reviewCommandSource, $contractSection): void {
+    it('documents the model tiers it enforces', function () use ($contractSource, $contractSection): void {
         // Model Selection is the written half of a rule `AgentModelPolicyTest`
         // enforces mechanically, so the two must agree: a tier that test pins on
         // disk and this section never mentions is a rule with no stated reason,
@@ -348,7 +278,7 @@ describe('review-pipeline contract rules', function () use ($contractSource, $re
         ];
 
         // Act
-        $missing = $missingPatterns($section, $required);
+        $missing = ToolkitFiles::missingPatterns($section, $required);
 
         // Assert
         expect($missing)->toBe([])
@@ -367,7 +297,7 @@ describe('review-pipeline contract rules', function () use ($contractSource, $re
         // multi-byte characters, and mixing byte offsets with multi-byte string
         // helpers slices mid-character.
         // Arrange
-        $lines = preg_split('/\r\n|\n|\r/', $contractSource()) ?: [];
+        $lines = ToolkitFiles::splitLines($contractSource());
         $severity = '~\b(?:BLOCKING|SHOULD_FIX|CONSIDER|NIT)\b~';
         $permission = '~\b(?:allowed|tagged)\b~i';
 

@@ -36,12 +36,10 @@ suffix" is.
 ## The smell baseline is a judgement call, always
 
 The Fowler smells in the contract's Smell Baseline give you vocabulary for design
-friction — Feature Envy, Primitive Obsession, Shotgun Surgery. Two rules bind them:
-
-- **The repo overrides.** A documented project standard always wins. Where the repo
-  endorses something the baseline would flag, stay silent.
-- **Name it as a judgement call.** A smell is a labelled heuristic ("possible
-  Feature Envy"), never a violation. It caps at CONSIDER.
+friction — Feature Envy, Primitive Obsession, Shotgun Surgery. Its three binding
+rules govern every one: the repo overrides, a smell name is a label rather than
+evidence, and the cap follows the basis. Apply them from the contract — it is the
+single source, and the validator grades your finding against it.
 
 Check the **Convention Override Rule** before flagging. The repo deliberately does
 several things a general reviewer misreads — globally unguarded Eloquent, models
