@@ -171,7 +171,17 @@ The tools arrive prefixed `mcp__laborforest__`, and the four that matter are:
 So the whole provision is one instruction to an agent: *"cut a worktree for branch X
 off main and bring it up."* It calls `add-workspace`, then `run-workflow up`, then
 reads `.laborforest/ignored/logs/` for the per-step result — `run-workflow` only
-dispatches, so the log is where success or failure actually shows up.
+dispatches, so the log is where success or failure actually shows up. It can finish
+the job with `mcp__solo__create_project` (see [Adding a worktree to
+Solo](#adding-a-worktree-to-solo)), which leaves you one trust click from a running
+workspace.
+
+**A branch cut before the LaborForest work landed cannot be brought up as-is.** `up`
+calls `php artisan lf:workspace-env`, which arrived with that same change, and step 2
+deliberately does *not* fast-forward a branch carrying its own commits — so the run
+aborts with `There are no commands defined in the "lf" namespace` and every later step
+reports `skip_reason: aborted`. Merge `main` into the branch first, then clear the
+`error` status and re-run.
 
 **Two limits.** There is **no `remove-workspace` tool** — `remove-project` removes a
 whole project, not one workspace — so final removal stays a GUI action after `down`.
@@ -209,18 +219,24 @@ to creating a workspace or clearing a status, which is why those two rows say GU
 
 #### Adding a worktree to Solo
 
-**Solo's project list is managed in Solo, not by the workflows.** After `up`, add the
-worktree as a project in Solo's UI; remove it there when you're done with it.
-Nothing in `up`/`down` touches Solo's registry, so there is no Solo state for
-teardown to reverse.
+**Solo's project list is managed in Solo, not by the workflows** — nothing in
+`up`/`down` touches Solo's registry, so there is no Solo state for teardown to
+reverse. That constraint is on the *workflows*, though, not on you: registering the
+worktree is one MCP call, and only trusting its processes needs a human.
 
-Two things to know once it's added:
-
+- **Registering — an agent can do this.** `mcp__solo__create_project` with the
+  worktree path registers it without opening Solo's onboarding UI, so "cut a worktree
+  for branch X and bring it up" can end with the project already in Solo. By hand it's
+  **Add project** in Solo's UI. Remove it there when you're done either way.
+- **Trusting — only you can do this.** New or changed YAML commands start
+  **untrusted**, and every Solo start/restart tool is scoped to trusted commands, so a
+  freshly registered project sits with all four processes stopped — `npm:dev` included,
+  despite its `auto_start: true`. Trust them in the Solo UI or they will not run. This
+  is deliberate: it's what stops a committed `solo.yml` from auto-running arbitrary
+  commands in any checkout that clones it.
 - Solo reads the worktree's committed `solo.yml` and syncs those processes in. Only
   **command** processes are YAML-backed — terminals and agents are not stored in
   `solo.yml`, so those stay per-machine.
-- **New or changed YAML commands start untrusted.** Trust them in the Solo UI or
-  they will not run, and `npm:dev` will not auto-start.
 
 Optionally point LaborForest's terminal launcher at Solo in
 `~/.laborforest/settings.yaml` (`command_launch_terminal`) — a machine-local setting,

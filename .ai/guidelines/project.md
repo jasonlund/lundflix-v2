@@ -549,13 +549,22 @@ LaborForest + Solo is the current path for new work.
   construction. Route it through an artisan command and test that at `artisan()`:
   `lf:workspace-env` derives a workspace's site/database/URL. A step should be one
   line.
-- **The workflows never touch Solo.** Solo owns its own project registry; worktrees
-  are added and removed in its UI. `up` creates no Solo state, so `down` has none to
-  reverse, and the boundary stays where the two tools already draw it — LaborForest
-  orchestrates worktrees, Solo runs processes inside one. Reaching across it means
-  either Solo's CLI (gated behind a per-machine "local CLI access" setting nothing in
-  the repo can enforce — it *silently no-ops* when off, which is worse than failing)
-  or a JSON-RPC socket client. Neither belongs in a `shell` step.
+- **The workflows never touch Solo — but the agent driving them may.** `up` creates no
+  Solo state, so `down` has none to reverse, and the boundary stays where the two tools
+  already draw it: LaborForest orchestrates worktrees, Solo runs processes inside one.
+  A `shell` step reaching across it means either Solo's CLI (gated behind a per-machine
+  "local CLI access" setting nothing in the repo can enforce — it *silently no-ops*
+  when off, which is worse than failing) or a JSON-RPC socket client. Neither belongs
+  in a workflow. **The constraint is on the workflow, not on Solo.** `mcp__solo__create_project`
+  registers a worktree with no UI and none of the CLI's fragility, so an agent
+  provisioning a workspace should register it there too — the committed `solo.yml`
+  processes sync in on their own.
+- **Trusting those processes stays human-only, by design.** Every Solo start/restart
+  tool is scoped to *trusted* commands and the API exposes no trust/approve tool, so a
+  freshly registered project starts with all four processes stopped — `npm:dev`
+  included, despite its `auto_start: true`. That gate is what stops a committed
+  `solo.yml` from auto-running arbitrary commands in any checkout that clones it.
+  Never document or script around it; leave the one click to the operator.
 - **`solo.yml` is repo-controlled, with limits worth knowing.** Solo syncs it into
   local state, but **only `command` processes are YAML-backed** — terminals and
   agents are not stored there at all, so they stay per-machine. New or changed YAML
