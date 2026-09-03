@@ -23,7 +23,7 @@ use Symfony\Component\Finder\SplFileInfo;
  * retired, which contract sections survive, which shapes are forbidden. This
  * class knows how to read the toolkit and nothing about what it should say.
  */
-final class ToolkitFiles
+final readonly class ToolkitFiles
 {
     /**
      * An absolute path inside the repo, from a repo-relative one.
