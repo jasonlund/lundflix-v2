@@ -561,10 +561,11 @@ LaborForest + Solo is the current path for new work.
   processes sync in on their own.
 - **Trusting those processes stays human-only, by design.** Every Solo start/restart
   tool is scoped to *trusted* commands and the API exposes no trust/approve tool, so a
-  freshly registered project starts with all four processes stopped — `npm:dev`
-  included, despite its `auto_start: true`. That gate is what stops a committed
-  `solo.yml` from auto-running arbitrary commands in any checkout that clones it.
-  Never document or script around it; leave the one click to the operator.
+  freshly registered project starts with every process stopped; `npm:dev` is the one
+  the gate actually changes, its `auto_start: true` notwithstanding. That gate is what
+  stops a committed `solo.yml` from auto-running arbitrary commands in any checkout
+  that clones it. Never document or script around it; leave the one click to the
+  operator.
 - **`solo.yml` is repo-controlled, with limits worth knowing.** Solo syncs it into
   local state, but **only `command` processes are YAML-backed** — terminals and
   agents are not stored there at all, so they stay per-machine. New or changed YAML

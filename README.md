@@ -125,8 +125,8 @@ Worktrees land beside the primary checkout as `~/Sites/lundflix-v2-<branch-slug>
   secured Herd site (`https://lf-<branch>.test`), migrate, then reseed via
   `refresh`. Each workspace is isolated, so one branch's migrations never touch
   another's schema.
-- **Run** → open the worktree in Solo; `solo.yml` declares `npm:dev` (auto-starts),
-  `Horizon`, `Queue`, and `Pint`.
+- **Run** → open the worktree in Solo; `solo.yml` declares `npm:dev` (auto-starts once
+  trusted), `Horizon`, `Queue`, and `Pint`.
 - **Reset** → `lf run refresh`: `migrate:fresh` → `db:seed` → `db:import`, which
   restores the committed catalog dumps when `database/dumps/` holds any. Re-runnable
   against a working workspace. **That directory is currently empty**, and `db:import`
@@ -231,9 +231,9 @@ worktree is one MCP call, and only trusting its processes needs a human.
 - **Trusting — only you can do this.** New or changed YAML commands start
   **untrusted**, and every Solo start/restart tool is scoped to trusted commands, so a
   freshly registered project sits with all four processes stopped — `npm:dev` included,
-  despite its `auto_start: true`. Trust them in the Solo UI or they will not run. This
-  is deliberate: it's what stops a committed `solo.yml` from auto-running arbitrary
-  commands in any checkout that clones it.
+  despite its `auto_start: true`. Trust them in the Solo UI or they will not run. The
+  gate is deliberate — see "Local worktree tooling: LaborForest + Solo" in
+  `.ai/guidelines/project.md` for why it stays a manual click.
 - Solo reads the worktree's committed `solo.yml` and syncs those processes in. Only
   **command** processes are YAML-backed — terminals and agents are not stored in
   `solo.yml`, so those stay per-machine.
@@ -308,8 +308,11 @@ restart the session for the Boost tools to connect.
 Only servers whose command resolves on *every* checkout belong in this file;
 `php artisan boost:mcp` is repo-relative and does. **Solo's MCP server is not
 registered here** — it lives inside the Solo app bundle, so committing its path
-would bake one machine's layout into shared config. Register it per-user instead if
-you want its tools (process output, bound-port waits, locks, todos, scratchpads).
+would bake one machine's layout into shared config. Register it per-user instead —
+that is what gives an agent `create_project` and the rest of Solo's tools (process
+output, bound-port waits, locks, todos, scratchpads). Without it the agent
+registration path under [Adding a worktree to Solo](#adding-a-worktree-to-solo) is
+unavailable and every worktree has to be added through Solo's UI by hand.
 
 ### Running locally
 
@@ -321,8 +324,10 @@ Starts the PHP server, queue worker, log tailer (Pail), and Vite dev server
 together. Visit the app at the URL printed by `php artisan serve`.
 
 In a worktree, Herd serves the PHP app and only Vite needs starting:
-`https://lf-<branch>.test` under LaborForest (Solo's `npm:dev` process auto-starts
-it), or `https://<workspace>.test` in a Conductor workspace (the Run button).
+`https://lf-<branch>.test` under LaborForest (Solo's `npm:dev` process auto-starts it,
+but only once you've trusted the project's commands — see [Adding a worktree to
+Solo](#adding-a-worktree-to-solo) if Vite isn't running), or
+`https://<workspace>.test` in a Conductor workspace (the Run button).
 
 ### Running tests
 
