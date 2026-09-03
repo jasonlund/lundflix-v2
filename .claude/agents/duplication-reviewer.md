@@ -104,12 +104,12 @@ Return findings in the standard `=== FINDING ===` block from
 `.claude/skills/review-pipeline/SKILL.md`, `SOURCE: duplication-reviewer`,
 `CATEGORY: architecture` (or `testing` for test helpers/fixtures). Set `FILE`/`LINE`
 to the **second** occurrence and quote **both** in EVIDENCE with their own
-`file:line`. RECOMMENDATION names **both** occurrences with their `file:line` —
-EVIDENCE is not rendered in the posted comment, so it is the only field that
-reaches the reader with the first one — plus the concrete extraction: the shared
-parent, trait, helper, or constant, and where it should live. If the PR is free
-of duplication, return a `=== NO FINDINGS ===` block naming the file pairs you
-compared.
+`file:line`. RECOMMENDATION names **both** occurrences with their `file:line`,
+because EVIDENCE is not rendered in the posted comment — RECOMMENDATION is the
+only field that carries the first occurrence to the reader — plus the concrete
+extraction: the shared parent, trait, helper, or constant, and where it should
+live. If the PR is free of duplication, return a `=== NO FINDINGS ===` block
+naming the file pairs you compared.
 
 ## Convention-Awareness
 
