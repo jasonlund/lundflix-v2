@@ -64,12 +64,13 @@ Work the collector's list into the Phase 2 gate list, plus the skips and dismiss
 go straight to Phase 5.
 
 1. **Weigh origin.** Items carrying the `/review:add` footer (`via /review:claude`,
-   `Found by:`) already passed false-positive-hunter and adversarial verification inside
-   `/review:claude` — **trust them as they stand**. Scrutinize only *external* feedback
-   (human reviewers, general comments, Conductor diff-comments) against the **Convention
-   Override Rule** and "Commonly false-positived conventions" in
-   `.claude/skills/review-pipeline/SKILL.md`. High-volume or low-confidence external
-   feedback may go to a `false-positive-hunter` dispatch over just those items.
+   `Found by:`) already passed a per-finding validator inside `/review:claude`, which
+   drops every finding it cannot confirm — **trust them as they stand**. Scrutinize only
+   *external* feedback (human reviewers, general comments, Conductor diff-comments)
+   against the **Convention Override Rule** and "Commonly false-positived conventions"
+   in `.claude/skills/review-pipeline/SKILL.md`. High-volume or low-confidence external
+   feedback may go to the matching validator — `review-bug-validator` or
+   `review-compliance-validator` — one item per dispatch, answered CONFIRMED or DROPPED.
 2. **Check each item against the Linear ticket** (Phase 0 step 5). Where the ticket
    **endorses** what a reviewer flagged — the change was a deliberate, documented
    deviation — recommend **Skip** and cite the ticket comment; a settled call stays
@@ -88,8 +89,8 @@ go straight to Phase 5.
    SHOULD_FIX / CONSIDER / NIT is **recorded as a skip** with the rationale "out of scope
    — PR did not create or modify this code" and resolved in Phase 5. An `out` item at
    BLOCKING joins the Phase 2 list under its own header.
-5. **Group** duplicates and relatives by `(file, line ±10, category)` per the contract's
-   dedup rule. A group is presented and fixed as one unit.
+5. **Group** duplicates and relatives by `(file, line ±10, category)` — the key
+   `/review:claude` Phase 3 merges on. A group is presented and fixed as one unit.
 6. **Sort** BLOCKING → SHOULD_FIX → CONSIDER → NIT, by the `/review:add` badge
    (🔴/🟠/🟡) where present, otherwise by the contract taxonomy.
 7. **Settle the dismissals silently.** An item you judge a false positive — or one that

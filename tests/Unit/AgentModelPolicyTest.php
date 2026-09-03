@@ -94,43 +94,6 @@ describe('.claude/ toolkit commit trailers', function () use ($scanToolkitLines)
 });
 
 describe('agent frontmatter model pinning', function () use ($declaredModel): void {
-    it('pins every breadth reviewer to the sonnet alias', function () use ($declaredModel): void {
-        // The breadth phase runs on the bare alias so it tracks the current Sonnet,
-        // never a dated model id that pins the phase to a retired snapshot.
-        // Arrange
-        $agents = [
-            'requirements-reviewer',
-            'conventions-reviewer',
-            'edge-case-reviewer',
-            'integration-reviewer',
-            'discipline-reviewer',
-            'testing-reviewer',
-            'coderabbit-reviewer',
-        ];
-
-        // Act
-        $declared = array_combine($agents, array_map($declaredModel, $agents));
-
-        // Assert
-        expect($declared)->toBe(array_fill_keys($agents, 'sonnet'));
-    });
-
-    it('runs the phase 5 hunters on the session model', function () use ($declaredModel): void {
-        // Verification adversaries reason over the whole review, so they follow
-        // whatever model the session runs rather than pinning their own.
-        // Arrange
-        $agents = [
-            'false-positive-hunter',
-            'missing-defect-hunter',
-        ];
-
-        // Act
-        $declared = array_combine($agents, array_map($declaredModel, $agents));
-
-        // Assert
-        expect($declared)->toBe(array_fill_keys($agents, 'inherit'));
-    });
-
     it('runs every write-side agent on the session model', function () use ($declaredModel): void {
         // These agents produce code the session owns, so pinning one would hand part
         // of the work to a model the session never chose.
@@ -166,14 +129,17 @@ describe('agent frontmatter model pinning', function () use ($declaredModel): vo
         expect($declared)->toBe(array_fill_keys($agents, 'haiku'));
     });
 
-    it('pins the compliance agents to the sonnet alias', function () use ($declaredModel): void {
+    it('pins the compliance agents and the CLI wrapper to the sonnet alias', function () use ($declaredModel): void {
         // Convention compliance is pattern matching against a written rule set —
         // more than triage, but it never has to reason about the session's own work,
-        // so it does not follow the session model.
+        // so it does not follow the session model. `coderabbit-reviewer` sits on the
+        // same tier for a weaker reason: it shells a CLI and reshapes the output.
+        // The bare alias, never a dated id, so the pin tracks the current Sonnet.
         // Arrange
         $agents = [
             'review-compliance',
             'review-compliance-validator',
+            'coderabbit-reviewer',
         ];
 
         // Act

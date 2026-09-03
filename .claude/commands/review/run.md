@@ -84,7 +84,7 @@ and nothing upstream is looking at it. This stage closes that.
    or Stage 4 never ran) → skip this stage and say so.
 2. **Re-run the deterministic gates** (Pint, Rector scoped to the changed files, the
    full Pest suite). Stage 4's fixers only ran filtered tests.
-3. **Dispatch ONE focused reviewer** over that delta — `edge-case-reviewer` by
+3. **Dispatch ONE focused reviewer** over that delta — `review-bug-hunter` by
    default, since fix regressions are overwhelmingly failure-mode bugs rather than
    convention drift. Give it:
    - the delta diff **as the only thing in scope** — state plainly that the base
