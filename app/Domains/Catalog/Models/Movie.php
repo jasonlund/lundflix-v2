@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Laravel\Scout\Searchable;
 
-class Movie extends Model
+final class Movie extends Model
 {
     /** @use HasFactory<MovieFactory> */
     use HasFactory;

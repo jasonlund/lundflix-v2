@@ -6,7 +6,7 @@ namespace App\Domains\Download\Exceptions;
 
 use Exception;
 
-class InvalidDownloadCredentials extends Exception
+final class InvalidDownloadCredentials extends Exception
 {
     public static function loginPageReturned(): self
     {

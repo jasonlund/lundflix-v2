@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Map
 
-You don't remember 33 toolkit files — 12 skills, 8 commands, 13 subagents, this
+You don't remember 32 toolkit files — 12 skills, 8 commands, 12 subagents, this
 skill among them — so ask. This page names all of them and when to reach for each.
 It carries no description into the agent's context and fires nothing on its own.
 
@@ -76,24 +76,31 @@ Situations that generate work and then merge onto the flow.
   the cure when a skill fires unreliably (its description is a context pointer, and
   the wording is the bug).
 - **`review-pipeline`** — the shared contract every reviewer cites: finding format,
-  severity taxonomy, the Comment Bar, consensus rules, the endorsed-convention
+  severity taxonomy, the Comment Bar, the model tiers, the endorsed-convention
   false-positive list, and how findings are worded.
 - **`codebase-design`** — the vocabulary layer beneath planning, tdd, and review:
   module, interface, depth, **seam**, adapter, leverage, locality.
 
 ## Subagents (`.claude/agents/`)
 
-Thirteen, and you never invoke one directly — the commands and skills above dispatch
+Twelve, and you never invoke one directly — the commands and skills above dispatch
 them, each into its own context window.
 
-- **Phase 3 reviewers** (`/review:claude`, in parallel): `requirements-reviewer`,
-  `conventions-reviewer`, `edge-case-reviewer`, `integration-reviewer`,
-  `discipline-reviewer`, `testing-reviewer` — one axis each.
-- **Phase 5 challengers** (`/review:claude`): `false-positive-hunter` argues the
-  medium-confidence findings are wrong; `missing-defect-hunter` re-reads the PR with
-  fresh eyes.
+- **Triage** (`/review:claude`, before the reviewers): `review-skip-check` answers
+  SKIP or REVIEW, so a closed, draft, or trivial PR spends nothing below it;
+  `review-summarizer` returns what the PR does and the guideline paths its files
+  fall under.
+- **Phase 3 reviewers** (`/review:claude`, four in parallel, two of each):
+  `review-compliance` checks the diff against those guideline paths;
+  `review-bug-hunter` works diff-local for logic errors.
+- **Phase 4 validators** (`/review:claude`, one per finding):
+  `review-compliance-validator` and `review-bug-validator` each answer CONFIRMED or
+  DROPPED over the one finding they are handed. A finding no validator confirms is
+  dropped, never downgraded — that fail-closed drop is what keeps the report short.
 - **`coderabbit-reviewer`** — `/review:suite`'s second engine; runs the CodeRabbit
   CLI and normalizes its output into the pipeline's finding format.
+- **`review-feedback-collector`** — `/review:process` Phase 0; fetches every
+  un-resolved PR item, keys it, and scope-checks it against the diff. Mechanical only.
 - **`review-fixer`** — `/review:process` runs these in parallel, one per approved
   item or file-cluster, test-first. Each owns its files and never commits.
 - **TDD trio** (`tdd`, one phase each so tests can't be retrofitted):

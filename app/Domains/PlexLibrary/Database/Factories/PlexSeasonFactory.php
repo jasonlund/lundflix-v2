@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 /**
  * @extends Factory<PlexSeason>
  */
-class PlexSeasonFactory extends Factory
+final class PlexSeasonFactory extends Factory
 {
     protected $model = PlexSeason::class;
 

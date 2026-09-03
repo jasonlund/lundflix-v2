@@ -19,7 +19,7 @@ use Illuminate\Support\Str;
 
 #[Description('Dump the catalog and download tables to gzipped SQL, capping the version-controlled set under a size budget')]
 #[Signature('db:dump {--unlimited} {--vc} {--full} {--path=}')]
-class DumpDatabase extends Command
+final class DumpDatabase extends Command
 {
     use EmitsHeartbeat;
 

@@ -3,28 +3,9 @@
 declare(strict_types=1);
 
 use App\Domains\Identity\Models\User;
-use Illuminate\Notifications\Notification;
+use Tests\Support\DatabaseChannelTestNotification;
 
 use function Pest\Laravel\assertDatabaseHas;
-
-/**
- * Throwaway fixture notification exercising Laravel's built-in `database`
- * channel — no example notification ships in production.
- */
-class DatabaseChannelTestNotification extends Notification
-{
-    /** @return list<string> */
-    public function via(object $notifiable): array
-    {
-        return ['database'];
-    }
-
-    /** @return array{message: string} */
-    public function toDatabase(object $notifiable): array
-    {
-        return ['message' => 'hello'];
-    }
-}
 
 describe('database channel delivery', function (): void {
     it('persists a row morphed to the user with its data', function (): void {

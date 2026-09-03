@@ -25,7 +25,7 @@ use Illuminate\Console\Attributes\Signature;
  */
 #[Description('Sync TheTVDB shows incrementally from the /updates feed since the last run marker')]
 #[Signature('catalog:sync-shows-tvdb')]
-class SyncTvdbShows extends TvdbShowsCommand
+final class SyncTvdbShows extends TvdbShowsCommand
 {
     /**
      * The /updates `since` timestamp for this run, resolved from the feed marker in

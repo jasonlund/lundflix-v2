@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Support;
 
 use App\Domains\Common\Support\SourceId;
 
-final class TvdbCrosswalk
+final readonly class TvdbCrosswalk
 {
     /**
      * TVDB carries the IMDb and TMDB identity keys inside its `remoteIds[]`, each

@@ -21,7 +21,7 @@ use Illuminate\Database\Eloquent\Builder;
 
 #[Description('Two-phase TMDB movie sync: insert-new from the ids export, then update-changed from the marker-derived changes window')]
 #[Signature('catalog:sync-movies {--fresh}')]
-class SyncTmdbMovies extends TmdbSyncCommand
+final class SyncTmdbMovies extends TmdbSyncCommand
 {
     private const string EXPORT = 'movie_ids';
 

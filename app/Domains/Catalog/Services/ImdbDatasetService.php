@@ -14,7 +14,7 @@ use Illuminate\Support\LazyCollection;
 use Illuminate\Support\Str;
 use Throwable;
 
-final class ImdbDatasetService
+final readonly class ImdbDatasetService
 {
     private const string BASE_URL = 'https://datasets.imdbws.com';
 

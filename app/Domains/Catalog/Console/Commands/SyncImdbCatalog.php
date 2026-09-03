@@ -19,7 +19,7 @@ use Throwable;
 
 #[Description('Sync the IMDb datasets — ratings, titles, akas — in order, surviving any single failure')]
 #[Signature('catalog:sync-imdb {--force}')]
-class SyncImdbCatalog extends Command
+final class SyncImdbCatalog extends Command
 {
     use MeasuresElapsedTime;
 

@@ -7,7 +7,7 @@ namespace App\Domains\PlexLibrary\Support;
 use App\Domains\Common\Support\SourceId;
 use Illuminate\Support\Str;
 
-final class PlexGuids
+final readonly class PlexGuids
 {
     /**
      * @param  array<string, mixed>  $metadata

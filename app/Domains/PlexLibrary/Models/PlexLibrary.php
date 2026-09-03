@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class PlexLibrary extends Model
+final class PlexLibrary extends Model
 {
     /** @use HasFactory<PlexLibraryFactory> */
     use HasFactory;

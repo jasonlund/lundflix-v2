@@ -29,7 +29,7 @@ use Illuminate\Support\Str;
  */
 #[Description('Sync TheTVDB episodes for already-seeded shows incrementally from the /updates feed since the last run marker')]
 #[Signature('catalog:sync-episodes-tvdb')]
-class SyncTvdbEpisodes extends Command
+final class SyncTvdbEpisodes extends Command
 {
     use EmitsHeartbeat;
     use MeasuresElapsedTime;

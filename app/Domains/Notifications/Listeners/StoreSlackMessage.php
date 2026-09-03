@@ -10,7 +10,7 @@ use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
-final class StoreSlackMessage
+final readonly class StoreSlackMessage
 {
     public function handle(NotificationSent $event): void
     {

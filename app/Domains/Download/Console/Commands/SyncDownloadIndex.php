@@ -16,7 +16,7 @@ use Illuminate\Console\Command;
 
 #[Description('Walk the Movies and Tv index category pages newest-first and upsert each page of results')]
 #[Signature('download:sync-index {--fresh}')]
-class SyncDownloadIndex extends Command
+final class SyncDownloadIndex extends Command
 {
     use EmitsHeartbeat;
 

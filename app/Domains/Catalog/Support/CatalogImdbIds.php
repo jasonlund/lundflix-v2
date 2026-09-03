@@ -7,7 +7,7 @@ namespace App\Domains\Catalog\Support;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 
-final class CatalogImdbIds
+final readonly class CatalogImdbIds
 {
     /**
      * Probed once per flush with just that batch's ids, so nothing about the

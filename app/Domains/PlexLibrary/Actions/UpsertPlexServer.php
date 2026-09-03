@@ -7,7 +7,7 @@ namespace App\Domains\PlexLibrary\Actions;
 use App\Domains\Common\Data\PlexServerConnection;
 use App\Domains\PlexLibrary\Models\PlexServer;
 
-final class UpsertPlexServer
+final readonly class UpsertPlexServer
 {
     public function handle(PlexServerConnection $connection): ?PlexServer
     {

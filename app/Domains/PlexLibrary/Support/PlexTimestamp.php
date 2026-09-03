@@ -7,7 +7,7 @@ namespace App\Domains\PlexLibrary\Support;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Date;
 
-final class PlexTimestamp
+final readonly class PlexTimestamp
 {
     /**
      * Plex sends `addedAt`/`updatedAt` as unix epochs; persist them as datetimes.

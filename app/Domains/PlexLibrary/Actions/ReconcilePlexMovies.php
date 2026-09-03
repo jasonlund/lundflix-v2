@@ -12,7 +12,7 @@ use App\Domains\PlexLibrary\Support\PlexGuids;
 use App\Domains\PlexLibrary\Support\PlexTimestamp;
 use Carbon\CarbonInterface;
 
-final class ReconcilePlexMovies
+final readonly class ReconcilePlexMovies
 {
     use MarksAndSweepsPlexRows;
 

@@ -12,7 +12,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Spatie\LaravelData\Data;
 
-class DownloadResult extends Data
+final class DownloadResult extends Data
 {
     /**
      * @param  Collection<int, DownloadFile>|null  $files

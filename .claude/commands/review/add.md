@@ -18,9 +18,9 @@ The review report comes from one of two places:
    `/review:claude` output.
 
 Either way the report uses the standard format (Spec, Blocking Issues, Should Fix,
-Consider, Dismissed sections). A report from an engine that reviews standards only
-(CodeRabbit) carries no Spec section. If no review output is found in either place,
-stop and tell the user.
+Consider, Nits, Dismissed sections). A report from an engine that reviews
+standards only (CodeRabbit) carries no Spec section. If no review output is found
+in either place, stop and tell the user.
 
 ## Phase 1: Extract Review Data
 
@@ -45,8 +45,13 @@ stop and tell the user.
    - **Blocking Issues** → axis `standards`, severity `critical`
    - **Should Fix** → axis `standards`, severity `major`
    - **Consider** → axis `standards`, severity `minor`
+   - **Nits** (heading `## Nits (trivial, take them or leave them)`) → axis
+     `standards`, severity `minor`, and the `nit` badge from Phase 3. It holds the
+     gate NITs — every Pint violation and every ESLint warning — so skipping the
+     section drops findings the pipeline paid a gate to produce.
    - Prose lines in place of entries ("Implements the ticket as specified.", "No
-     blocking or should-fix defects found.") mean that section has zero findings.
+     blocking or should-fix defects found.", "No nits.") mean that section has zero
+     findings.
    - **Skip "Dismissed Findings"**, **"Key Defects"** (it restates findings the
      severity sections already carry), and **"Coverage Notes"** entirely — do not
      post.
@@ -74,9 +79,12 @@ stop and tell the user.
 | critical | 🔴 **Blocking** |
 | major | 🟠 **Should Fix** |
 | minor | 🟡 **Consider** |
+| minor, from **Nits** | ⚪ **Nit** |
 
-Both axes use this one badge table, so `/review:process` sorts every posted
-comment by severity.
+Both axes use this one badge table, and the badge is what `/review:process` ranks
+a posted comment by. A **Nits** finding keeps severity `minor` — that is the value
+the GitHub API payload carries — and takes its own badge so a trivial gate NIT
+reads as optional: `⚪ **Nit** · convention`.
 
 ### Axis marker
 
@@ -116,7 +124,7 @@ a reader sees a spec defect even when the standards list is long:
 **Issue:** …
 **Violates:** "{quoted ticket line}"
 **Recommendation:** …
-_Found by: requirements-reviewer_
+_Found by: /review:human_
 
 ---
 
@@ -139,9 +147,10 @@ naming the spec count separately, e.g. "All 6 findings are inline above (1 spec,
 ### Body-finding ref key
 
 Every body finding carries one **ref key** that identifies it across runs.
-`/review:process` records the key when it resolves the finding and matches on it to
-skip that finding next run (its Phase 0 step 4), so two distinct findings must
-produce two distinct keys and the same finding must produce the same key every run.
+`/review:process` records the key when it resolves the finding, and the
+`review-feedback-collector` it dispatches (its Phase 0 step 3) matches on the key to
+skip that finding next run. So two distinct findings must produce two distinct keys,
+and the same finding must produce the same key every run.
 The format — stated identically in `.claude/commands/review/process.md`:
 
 - **Has a file** → `{file}:{line}`, and `{file}:0` when the finding names no line.

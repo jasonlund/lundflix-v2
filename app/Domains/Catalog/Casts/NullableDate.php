@@ -20,7 +20,7 @@ use Throwable;
  *
  * @implements CastsAttributes<CarbonInterface, CarbonInterface|string|null>
  */
-class NullableDate implements CastsAttributes
+final readonly class NullableDate implements CastsAttributes
 {
     /**
      * @param  array<string, mixed>  $attributes
