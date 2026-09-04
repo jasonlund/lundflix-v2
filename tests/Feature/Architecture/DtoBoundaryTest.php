@@ -62,6 +62,7 @@ const DTO_BOUNDARY_EXEMPT_METHODS = [
     'App\Domains\Catalog\Services\TvdbApiService::episodes' => 'raw TVDB response body',
     'App\Domains\Catalog\Services\TvdbApiService::allSeries' => 'raw TVDB response body',
     'App\Domains\Catalog\Services\TvdbApiService::seriesMany' => 'raw TVDB id batch',
+    'App\Domains\Catalog\Services\TvdbApiService::episodesMany' => 'raw TVDB id batch',
     'App\Domains\PlexLibrary\Services\PlexLibraryService::fetchSections' => 'raw Plex response body',
     'App\Domains\PlexLibrary\Services\PlexLibraryService::fetchShowChildren' => 'raw Plex response body',
     'App\Domains\PlexLibrary\Services\PlexLibraryService::fetchShowLeaves' => 'raw Plex response body',

@@ -46,6 +46,23 @@ final readonly class TvdbApiService
             ->get("/series/{$id}/extended"));
     }
 
+    /**
+     * Batch-fetch each episode through {@see pooled}, returning a
+     * {@see PooledResult}: the input-ordered id → raw payload map (null on 404)
+     * plus the ids whose requests failed past retries.
+     *
+     * Hits the BASE `/episodes/{id}`, not `/extended`: the base payload already
+     * carries every key UpsertTvdbEpisodes::RAW_COLUMNS maps, so the extended
+     * body is pure bytes over the wire.
+     *
+     * @param  array<int, int>  $ids
+     */
+    public function episodesMany(array $ids): PooledResult
+    {
+        return $this->pooled($ids, fn (PendingRequest $request, int $id) => $request
+            ->get("/episodes/{$id}"));
+    }
+
     private function poolConcurrency(): int
     {
         return (int) config('services.tvdb.concurrency');

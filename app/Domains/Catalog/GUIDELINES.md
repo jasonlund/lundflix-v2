@@ -261,11 +261,48 @@ so one command still re-attempts the whole residue. See `ADR-0005`.
   **on-demand seed trigger is a separate consumer** (out of scope of FLIX-197), so
   the command is intentionally dormant until that consumer exists and stamps the
   first shows.
-- **Season resolution** — `SeedTvdbEpisodes` resolves each episode's `season_id`
-  by matching its `_tvdb_seasonNumber` against the show's seasons filtered to
-  `_tvdb_type->id === $show._tvdb_defaultSeasonType` (the default ordering the
-  episodes were fetched under). Custom orderings (DVD/absolute/alternate) are
-  deferred to FLIX-225.
+
+### Per-episode refresh, not a per-show re-crawl (FLIX-292)
+
+An EntityUpdate record carries **both** `recordId` (the changed episode) and
+`seriesId` (its parent). The leg reads both: `seriesId` decides whether the show is
+seeded and therefore worth fetching for, and `recordId` is what actually gets
+fetched. It never calls `/series/{id}/episodes`.
+
+- `drainFeed()` returns `array<int seriesId, list<int> episodeId>` — a nested int-key
+  set collapsed with `array_keys`, so both levels dedupe for free and the feed never
+  sits in memory as records. A record is usable only when **both** ids are numeric.
+- `Actions\RefreshTvdbEpisodes` is the incremental path: `TvdbApiService::episodesMany()`
+  pools the base `GET /episodes/{id}` (not `/extended` — the base payload already
+  carries every key `UpsertTvdbEpisodes::RAW_COLUMNS` maps), then each payload is
+  attributed to the show **its own `seriesId` names**, not the show whose feed record
+  named the id — an episode can move between shows upstream.
+- **A per-id 404 is a miss, not a failure.** It arrives as a `null` in
+  `PooledResult::results` and counts toward neither the persisted total nor the
+  failure count, so a deleted episode never holds the marker. A failure is a pooled
+  per-id miss, which is why the run-closing line reads `N episodes failed`.
+- The membership read is a single bounded `get()` per 1000-id chunk rather than
+  `chunkById()`. The iterate-and-write rule doesn't reach it: at most 1000 explicit
+  ids, materialized once, paginated not at all — so the later `episodes_synced_at`
+  write cannot skip or double-process a row.
+- **`SeedTvdbEpisodes` survives untouched** as the on-demand full-crawl seed path.
+  This leg simply stopped being its caller.
+
+### Season resolution (`Actions\LinkTvdbEpisodeSeasons`)
+
+Each episode's `season_id` is resolved by matching its `_tvdb_seasonNumber` against
+the show's seasons filtered to `_tvdb_type->id === $show._tvdb_defaultSeasonType` —
+the show's current default ordering. Custom orderings (DVD/absolute/alternate) are
+deferred to FLIX-225.
+
+**It is its own action, and the re-derivation is deliberately show-wide.** It reads
+only *local* rows, so it never needed the API crawl that used to sit beside it — which
+is what let FLIX-292 drop the crawl without weakening it. Scoping it to the changed
+episodes would have broken the two cases it exists for: a **changed default season
+type** and a **removed season** invalidate every one of the show's links, not just the
+changed episodes'. Both the seed path and the incremental path call it, so neither can
+drift. A null `_tvdb_defaultSeasonType` makes it a no-op — a null default matches zero
+seasons, so re-deriving under it would wipe every correct link rather than fix any.
 
 ## Shared sync-command mechanics
 
@@ -349,9 +386,17 @@ have any way to record that it attempted a row and got nothing?** A refused reco
 carries its answer in a column; an unresolvable one has no payload at all, so it
 needs bookkeeping of its own or it is retried forever.
 
-Offenders still open: `catalog:sync-episodes-tvdb`, which reads only `seriesId` off
-an updates record that also carries the episode's own `recordId`, then re-crawls the
-show's entire episode list (FLIX-292).
+**Fixed (FLIX-292):** `catalog:sync-episodes-tvdb` read only `seriesId` off an updates
+record that also carries the episode's own `recordId`, then re-crawled the show's
+entire episode list — one changed episode of a 700-episode show cost 700 records. It
+now fetches the changed episodes by id (see **Per-episode refresh** above). Note the
+fourth question this one adds: **is the leg's cost proportional to the change, or to
+the size of the thing the change is attached to?** The feed was already
+marker-windowed and the leg already touched only changed shows — both audits a
+window-and-membership check passes — yet the amplification sat one level down, in what
+each touched row then cost to refresh.
+
+Offenders still open: none.
 
 ## Incremental sync markers (`SyncMarker` / `SyncFeed`)
 
