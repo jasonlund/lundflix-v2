@@ -145,18 +145,6 @@ abstract class TmdbSyncCommand extends Command
     abstract protected function payloadTitle(array $payload): ?string;
 
     /**
-     * The results worth upserting. A null is a 404 miss, dropped here rather
-     * than treated as a failure.
-     *
-     * @param  array<int, array<string, mixed>|null>  $results
-     * @return list<array<string, mixed>>
-     */
-    protected function payloads(array $results): array
-    {
-        return array_values(array_filter($results));
-    }
-
-    /**
      * The leg's model, read off the query() seam so a leg still names its table
      * exactly once.
      */
@@ -503,7 +491,8 @@ abstract class TmdbSyncCommand extends Command
 
         $this->failedEntities += $missing;
 
-        $payloads = $this->payloads($results);
+        // A null is a 404 miss, dropped here rather than treated as a failure.
+        $payloads = array_values(array_filter($results));
 
         if ($payloads === []) {
             return $failed;

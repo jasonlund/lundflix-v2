@@ -7,9 +7,6 @@ namespace App\Domains\Catalog\Console\Commands;
 use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Actions\UpsertTmdbMovies;
-use App\Domains\Catalog\Data\SyncWindow;
-use App\Domains\Catalog\Enums\SyncFeed;
-use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Services\TmdbApiService;
 use App\Domains\Catalog\Services\TmdbExportService;
 use App\Domains\Catalog\Support\Batches;
@@ -17,7 +14,6 @@ use App\Domains\Catalog\Support\SyncMarker;
 use Generator;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
-use Illuminate\Database\Eloquent\Builder;
 
 /**
  * The operator's remedy for a movies marker stale past the window cap, where the
@@ -31,14 +27,12 @@ use Illuminate\Database\Eloquent\Builder;
  */
 #[Description('Full-catalog TMDB movie seed from the ids export: hydrate every exported id the catalog does not hold (operator-invoked; never scheduled)')]
 #[Signature('catalog:seed-movies {--fresh}')]
-class SeedTmdbMovies extends TmdbSyncCommand
+class SeedTmdbMovies extends TmdbMoviesCommand
 {
     private const string EXPORT = 'movie_ids';
 
     /** Export rows read before a `[scan n]` beat — the export runs to ~1M rows. */
     private const int SCAN_BEAT = 10_000;
-
-    private UpsertTmdbMovies $upsertMovies;
 
     public function handle(
         TmdbExportService $export,
@@ -74,62 +68,6 @@ class SeedTmdbMovies extends TmdbSyncCommand
         } finally {
             @unlink($file);
         }
-    }
-
-    protected function feed(): SyncFeed
-    {
-        return SyncFeed::TmdbMovies;
-    }
-
-    /**
-     * @return Builder<Movie>
-     */
-    protected function query(): Builder
-    {
-        return Movie::query();
-    }
-
-    protected function entityLabel(): string
-    {
-        return 'movies';
-    }
-
-    protected function heartbeatTag(): string
-    {
-        return 'tmdb movies';
-    }
-
-    /**
-     * @return iterable<int, int>
-     */
-    protected function changedIds(SyncWindow $window): iterable
-    {
-        return $this->api->changedMovieIds($window->startDate(), $window->endDate());
-    }
-
-    /**
-     * @param  array<int, int>  $ids
-     * @return array<int, array<string, mixed>|null>
-     */
-    protected function hydrate(array $ids): array
-    {
-        return $this->api->movies($ids);
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $payloads
-     */
-    protected function upsertPayloads(array $payloads): void
-    {
-        $this->upsertMovies->handle($payloads);
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    protected function payloadTitle(array $payload): ?string
-    {
-        return $payload['title'] ?? null;
     }
 
     private function syncRows(TmdbExportService $export, string $file): bool

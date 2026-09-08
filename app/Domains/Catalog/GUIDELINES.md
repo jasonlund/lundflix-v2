@@ -155,7 +155,7 @@ schedule, a full-dataset leg only an operator runs.
   the feed against the live API: `/movie/changes` reported 465/465 of the ids added
   between two daily export snapshots and 112/112 of those removed, so the export
   contributed **no unique discovery**. Of the ~66k ids it re-hydrated every run, ~94%
-  were `video:true` promo records that `payloads()` then dropped pre-upsert — never
+  were `video:true` promo records the leg then dropped pre-upsert — never
   stamped `tmdb_synced_at`, so the probe reported them missing forever. FLIX-290
   removed that drop: a promo record now persists and stamps like any other, so the
   export sweep converges instead of re-paying those hydrations every run.

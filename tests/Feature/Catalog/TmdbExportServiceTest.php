@@ -261,31 +261,3 @@ describe('rows() JSONL streaming', function (): void {
         @unlink($path);
     });
 });
-
-describe('count() kept-row tally', function (): void {
-    it('counts every data line, including the adult and softcore ones', function (): void {
-        // The fixture has 11 JSONL lines, and no line is dropped any more — the
-        // synthetic adult (9999990) and softcore (9999991) rows are counted with the
-        // other 9. count() must stay in step with rows() so a progress total equals
-        // the number of rows actually yielded.
-        Http::fake(['*files.tmdb.org*' => Http::response(fixtureBytes('Catalog/tmdb/movie_ids.json.gz'))]);
-        $service = resolve(TmdbExportService::class);
-        $path = $service->download('movie_ids');
-
-        $count = $service->count($path);
-
-        expect($count)->toBe(11);
-
-        @unlink($path);
-    });
-
-    it('throws a corrupt archive exception when count receives a non-gzip body', function (): void {
-        Http::fake(['*files.tmdb.org*' => Http::response('this is not gzip data at all')]);
-        $service = resolve(TmdbExportService::class);
-        $path = $service->download('movie_ids');
-
-        expect(fn () => $service->count($path))->toThrow(CorruptTmdbExportArchive::class);
-
-        @unlink($path);
-    });
-});

@@ -69,19 +69,6 @@ final readonly class TmdbExportService
     }
 
     /**
-     * Count the decoded JSONL rows that rows() would actually yield.
-     *
-     * Counts over the SAME decodedRows() generator rows() streams, so the returned
-     * total equals the number of rows advanced over downstream — keeping a
-     * progress bar's total honest (it reaches 100% exactly, not snapping early).
-     * JSONL has no header line, so every non-blank, decodable line is counted.
-     */
-    public function count(string $path): int
-    {
-        return iterator_count($this->decodedRows($path));
-    }
-
-    /**
      * Stream the decoded JSONL rows of a downloaded export as a lazy collection.
      *
      * Wraps the decodedRows() generator so each non-blank line is JSON-decoded on
@@ -98,12 +85,11 @@ final readonly class TmdbExportService
     /**
      * Lazily yield each decoded JSONL row of a downloaded export.
      *
-     * The shared read skeleton behind both rows() and count(): open the archive,
-     * skip blank lines, JSON-decode on demand, and skip any line that does not
-     * decode to an array — so both methods see exactly the same set. The gz handle
-     * is closed in a single finally that runs when the generator completes or is
-     * garbage-collected, so callers MUST fully consume it or the handle leaks
-     * until GC.
+     * The read skeleton behind rows(): open the archive, skip blank lines,
+     * JSON-decode on demand, and skip any line that does not decode to an array.
+     * The gz handle is closed in a single finally that runs when the generator
+     * completes or is garbage-collected, so callers MUST fully consume it or the
+     * handle leaks until GC.
      *
      * @return Generator<int, array<string, mixed>>
      */
