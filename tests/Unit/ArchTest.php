@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domains\Catalog\Console\Commands\ImdbSyncCommand;
+use App\Domains\Catalog\Console\Commands\TmdbMoviesCommand;
 use App\Domains\Catalog\Console\Commands\TmdbSyncCommand;
 use App\Domains\Catalog\Console\Commands\TvdbShowsCommand;
 use App\Domains\Catalog\Enums\ArtworkType;
@@ -51,6 +52,7 @@ use Tests\TestCase;
 $domainAbstractBases = [
     ImdbSyncCommand::class,
     TmdbSyncCommand::class,
+    TmdbMoviesCommand::class,
     TvdbShowsCommand::class,
     PlexLibraryCommand::class,
 ];

@@ -8,7 +8,7 @@ use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RetryBackoff;
 use Illuminate\Support\Collection;
 
-class DeferUnresolvedShows
+final readonly class DeferUnresolvedShows
 {
     /**
      * Count one unresolved attempt against every row of $shows the hydrate chunk

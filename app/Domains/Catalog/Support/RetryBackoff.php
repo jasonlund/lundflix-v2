@@ -6,7 +6,7 @@ namespace App\Domains\Catalog\Support;
 
 use Carbon\CarbonImmutable;
 
-final class RetryBackoff
+final readonly class RetryBackoff
 {
     /** The interval after a row's first unresolved attempt. Every later one doubles it. */
     private const int FIRST_INTERVAL_DAYS = 1;

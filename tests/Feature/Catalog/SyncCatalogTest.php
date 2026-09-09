@@ -472,8 +472,9 @@ describe('catalog:sync progress output', function (): void {
         Sleep::fake();
         Exceptions::fake();
         // Http::fake merges stubs and the first registered match wins, so this 500
-        // registered ahead of the happy-path helper overrides only the ids export.
-        Http::fake(['*movie_ids*' => Http::response('', 500)]);
+        // registered ahead of the happy-path helper overrides only the changes feed —
+        // the incremental movies leg's sole source, and so its only way to die.
+        Http::fake(['*/movie/changes*' => Http::response('', 500)]);
         fakeCatalogSync();
 
         // Act

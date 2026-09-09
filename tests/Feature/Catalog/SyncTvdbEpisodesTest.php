@@ -282,46 +282,31 @@ describe('catalog:sync-episodes-tvdb feed record selection', function (): void {
         Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9256456'));
     });
 
-    it('skips a feed record whose seriesId would truncate to a different real show', function (): void {
+    it('skips a feed record whose ids would truncate to different real records', function (): void {
         // Arrange
-        // Synthetic feed body: a decimal, an exponential, and a slug-appended
-        // seriesId are malformed inputs a byte-exact real capture can't provide.
-        // Each is numeric-ish enough to survive a bare is_numeric() guard and then
-        // truncate under (int) to a plausible but wrong id — "70327.5" → 70327,
-        // "1e5" → 100000, "1335814-slug" → 1335814 — so all three truncations are
-        // seeded shows here, and crawling any of them is the defect. Records
-        // otherwise keep TheTVDB's real /updates shape.
+        // Synthetic feed body: a decimal, an exponential and a slug-appended id are
+        // malformed inputs a byte-exact real capture can't provide. Each is
+        // numeric-ish enough to survive a bare is_numeric() guard and then truncate
+        // under (int) into a plausible but wrong id — "70327.5" → 70327, "1e5" →
+        // 100000, "1335814-slug" → 1335814 — so every truncation target is a seeded
+        // show here, and fetching for any of them is the defect. The last record
+        // breaks the OTHER id: 9786563 is a real episode of the same seeded show, so
+        // a truncated recordId would fetch a genuinely wrong episode rather than
+        // erroring. Records otherwise keep TheTVDB's real /updates shape.
         $body = json_encode(['status' => 'success', 'data' => [
-            tvdbEpisodeUpdateRecord(9786562, '70327.5'),
-            tvdbEpisodeUpdateRecord(9786563, '1e5'),
-            tvdbEpisodeUpdateRecord(9786564, '1335814-slug'),
-            tvdbEpisodeUpdateRecord(9786565, 434847),
+            tvdbEpisodeUpdateRecord(9256455, '70327.5'),
+            tvdbEpisodeUpdateRecord(9256456, '1e5'),
+            tvdbEpisodeUpdateRecord(11846050, '1335814-slug'),
+            tvdbEpisodeUpdateRecord('9786563.5', 434847),
+            tvdbEpisodeUpdateRecord(9786562, 434847),
         ], 'links' => ['prev' => null, 'self' => '/updates', 'next' => null]]);
-        // One /episodes capture replayed for every show would collide on the globally
-        // unique episodes._tvdb_id, so each page's ids are offset by the series the walk
-        // is currently on — otherwise a truncated id crawling a second show would abort
-        // the run on a constraint violation instead of reaching the assertion below.
-        $currentSeries = 0;
+        // Only the well-formed record's episode is stubbed. Http::preventStrayRequests()
+        // is global, so a truncation that slipped through would abort the run rather
+        // than reach the assertions — either way it cannot pass silently.
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
             '*api4.thetvdb.com/v4/updates*' => Http::response($body),
-            '*api4.thetvdb.com/v4/series/*/episodes*' => function (Request $request) use (&$currentSeries) {
-                $isFollowUp = Str::contains($request->url(), 'page=1');
-
-                if (! $isFollowUp) {
-                    $currentSeries = (int) Str::before(Str::after($request->url(), '/series/'), '/');
-                }
-
-                $payload = json_decode(fixtureBytes($isFollowUp
-                    ? 'Catalog/tvdb/series_episodes_page2.json'
-                    : 'Catalog/tvdb/series_episodes_page1.json'), true);
-                $payload['data']['episodes'] = array_map(
-                    fn (array $episode): array => [...$episode, 'id' => $episode['id'] + $currentSeries, 'seriesId' => $currentSeries],
-                    $payload['data']['episodes'],
-                );
-
-                return Http::response(json_encode($payload));
-            },
+            '*api4.thetvdb.com/v4/episodes/9786562*' => Http::response(fixtureBytes('Catalog/tvdb/episode_9786562.json')),
         ]);
         collect([70327, 100000, 1335814, 434847])->each(fn (int $tvdbId) => Show::factory()->create([
             '_tvdb_id' => $tvdbId,
@@ -330,15 +315,16 @@ describe('catalog:sync-episodes-tvdb feed record selection', function (): void {
         ]));
 
         // Act
-        $this->artisan('catalog:sync-episodes-tvdb');
+        $this->artisan('catalog:sync-episodes-tvdb')->assertExitCode(0);
 
         // Assert
-        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series/434847/episodes'));
-        // page=1 follow-ups are excluded: the /episodes page-2 fixture is a real
-        // capture whose links.next names its own (different) series id.
-        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/')
-            && ! Str::contains($request->url(), 'page=1')
-            && ! Str::contains($request->url(), '/series/434847/'));
+        $this->assertDatabaseCount('episodes', 1);
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9786562'));
+        // the three truncated-seriesId records, then the truncated-recordId one
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9256455'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9256456'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/11846050'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9786563'));
     });
 });
 

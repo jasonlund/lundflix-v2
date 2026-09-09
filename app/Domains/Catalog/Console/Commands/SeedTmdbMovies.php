@@ -27,7 +27,7 @@ use Illuminate\Console\Attributes\Signature;
  */
 #[Description('Full-catalog TMDB movie seed from the ids export: hydrate every exported id the catalog does not hold (operator-invoked; never scheduled)')]
 #[Signature('catalog:seed-movies {--fresh}')]
-class SeedTmdbMovies extends TmdbMoviesCommand
+final class SeedTmdbMovies extends TmdbMoviesCommand
 {
     private const string EXPORT = 'movie_ids';
 

@@ -38,7 +38,7 @@ final class SyncTmdbMovies extends TmdbMoviesCommand
      * title to create rather than one to skip.
      */
     #[\Override]
-    protected function insertHeartbeatTag(): ?string
+    protected function insertHeartbeatTag(): string
     {
         return 'new tmdb movies';
     }
