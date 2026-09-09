@@ -1,144 +1,110 @@
 ---
 name: review:human
-description: Human-facing orientation pass before the automated engines — diffs the branch, summarizes in plain language what the PR does, and checks it against the Linear ticket, flagging any deviation from the ticket's scope.
+description: The human read of the branch — resolves the PR, prints the Linear diff link, waits while a person reads the diff and submits their review, then hands the submitted comments to /review:process --human-round.
 ---
 
 # Human Review
 
-You are running the **human-orientation** stage of the review loop:
-`/review:create-pr` → **`/review:human`** → `/review:suite` (or `/review:claude`) →
-`/review:add` → `/review:process`.
+You are running the **human** stage of the review loop:
+`/review:create-pr` → `/review:debrief` → **`/review:human`** → `/review:suite`
+(or `/review:claude`) → `/review:add` → `/review:process`.
 
-This stage is for the **human**, not the machine. Before the adversarial
-multi-agent engines burn tokens finding defects, give the author a plain-language
-readout of *what this branch actually does* and *how it lines up with the ticket
-it claims to close*. The single most important output is **scope deviation**: work
-that shipped but the ticket never asked for, and acceptance criteria the ticket
-asked for but the diff doesn't deliver.
+The person reads the branch **before** the machines do. A reader who has already
+seen fifteen machine findings checks their work instead of forming their own
+view, and the engines otherwise burn a full pass over code a reader would have
+restructured anyway. So the human goes first, and the engines review what the
+human left behind.
 
-You **do not** post anything to GitHub, run linters/tests, or spawn reviewer
-subagents. You read, you compare, you tell the user. Keep it conversational — this
-is a briefing, not a `=== FINDING ===` report.
+**Any human reviews here** — the author most often, a teammate just as validly.
+
+You do not read the diff for them, you do not defect-hunt, and you post nothing
+yourself. You print the link, you wait, and you hand back what comes in.
 
 ## Input
-- **PR number** — positional arg, or auto-detected from the current branch.
-- **Ticket ID** — `FLIX-XXX`, positional arg, or extracted from the branch / PR
-  title.
 
-Both are optional when the branch has an open PR. See Phase 0.
+- **PR number** — positional arg, or auto-detected from the current branch.
 
 ## Example Invocation
+
 ```
-/review:human                 # auto-detect PR + ticket from branch
-/review:human 205             # explicit PR, auto-detect ticket
-/review:human FLIX-205        # auto-detect PR, explicit ticket
-/review:human 205 FLIX-205    # explicit both
+/review:human        # auto-detect the PR from the current branch
+/review:human 205    # explicit PR
 ```
 
 ---
 
-## Phase 0: Resolve PR + Ticket
+## Phase 0: Resolve the PR and the Repo
 
 1. **PR number** — if not passed, follow **PR Number Auto-Extraction** in
-   `.claude/skills/review-pipeline/SKILL.md`. A PR is **not required** — if none
-   exists, fall back to the local branch (`git diff origin/main...HEAD`) and note
-   in the report that there's no open PR yet (suggest `/review:create-pr`).
-2. **Ticket ID** — if not passed, follow **Ticket ID Auto-Extraction** in the same
-   contract (branch name → PR title → null). If null, run the summary anyway and
-   state plainly that ticket-alignment is **skipped** — there's nothing to check
-   scope against.
+   `.claude/skills/review-pipeline/SKILL.md`. With no PR found, HALT and tell the
+   user to run `/review:create-pr` first: there is no diff to open in Linear
+   until a PR is open.
+2. **Repo** — `{owner}/{repo}` from
+   `gh repo view --json nameWithOwner -q '.nameWithOwner'`.
+
+Resolve both here rather than assuming `/review:debrief` ran. This command is
+invoked on its own as often as it runs in the chain, and a link built from a
+stale hand-off points at the wrong PR.
 
 ---
 
-## Phase 1: Gather the Change
+## Phase 1: Hand Over the Diff and Wait  ⏸
 
-Ground the readout in the same three sources `/review:create-pr` uses — **read them, do
-not guess**:
+Print the diff link:
 
-| Source | Supplies | How |
-|---|---|---|
-| Diff | the *what* — actual changes | `gh pr diff {PR}` if a PR exists, else `git diff origin/main...HEAD` |
-| Commits | the *narrative* / ordering | `git log --oneline origin/main..HEAD` |
-| Ticket | the *why* — intent + acceptance criteria | `mcp__linear-server__get_issue` when a ticket ID is set |
-
-Assert the diff is non-empty. Note added / modified / deleted files. If the diff
-is large (> ~500 lines), lead with the highest-signal files and say you're
-summarizing the rest.
-
-If the Linear MCP is unavailable, say so and run the summary without alignment
-(don't invent the ticket's contents).
-
----
-
-## Phase 2: Summarize What We Did
-
-Write a tight, plain-language account of the branch — the way you'd brief a
-teammate looking at it for the first time. Group by **concern**, not by file:
-"adds X action", "wires Y into the Filament panel", "backfills the Z column". Name
-the key classes/files so the reader can jump in. Present tense, house style —
-prose first, a short bullet list only if the change spans several distinct
-concerns.
-
-This is not a changelog dump of every hunk. It's *what the branch accomplishes*.
-
----
-
-## Phase 3: Check Against the Ticket
-
-Only if a ticket ID resolved and its contents loaded. Compare the diff against the
-ticket's description and acceptance criteria and sort every material change into:
-
-- **✅ On scope** — a change the ticket asked for. (Summarize, don't enumerate
-  every line.)
-- **⚠️ Deviation — shipped, not in the ticket** — code in this branch that no
-  acceptance criterion covers. Reasonable incidental work (a rename, a lint fix)
-  is fine to note lightly; a whole feature the ticket never mentioned is a real
-  deviation, call it out.
-- **❌ Gap — in the ticket, not shipped** — an acceptance criterion the diff
-  doesn't appear to satisfy. Say which, and where you'd expect to see it.
-
-For each deviation and gap, give the file(s) and a one-line why-it-matters. Don't
-moralize — surface it and let the author decide.
-
-Per the CLAUDE.md Linear rule (*"work deviates → confirm first, then update the
-ticket and mark it a deviation"*), close this phase by reminding the user to
-reconcile any real deviation on the ticket **before** merge — either fold it into
-scope or split it out.
-
----
-
-## Phase 4: Brief the User
-
-Print a conversational briefing (this is the whole deliverable — nothing is
-posted):
-
-```markdown
-# Human Review: PR #{number}{ against {ticket_id} if present}
-
-## What this branch does
-{plain-language summary from Phase 2}
-
-## Ticket alignment
-{✅ on-scope / ⚠️ deviations / ❌ gaps from Phase 3 —
- or "No ticket resolved — alignment skipped." }
-
-## Before you kick off the automated review
-- {deviations/gaps to reconcile on the ticket, if any}
-- {anything that looked off but isn't defect-hunting — that's /review:suite's job}
-
-Next: /review:suite  (or /review:claude for the in-house engine only)
+```
+Diff: https://linear.review/{owner}/{repo}/pull/{n}
 ```
 
-If there are no deviations and no gaps, say so in one line — a clean
-ticket-to-diff match is the good outcome, not a reason to manufacture concerns.
+Then tell the reader, in plain words, what to do with it:
+
+- Open the link and read the diff in Linear.
+- Comment on the lines that need a comment.
+- **Submit** the review at the end. Linear syncs a review's line-anchored
+  comments to the GitHub PR only when it is submitted. A review left as a draft
+  stays in Linear, never reaches GitHub, and no later stage can see it.
+
+Now stop and wait for the user. This is a ⏸ gate: run no engines, collect no
+feedback, and start no other stage until the user tells you the review is
+submitted (or that there was nothing to say).
+
+---
+
+## Phase 2: Ingest the Submitted Review
+
+The submitted comments now sit on the PR as ordinary human feedback, so there is
+no new ingest path to write. Delegate to `/review:process --human-round`, with
+the PR number Phase 0 resolved.
+
+That command owns the mechanics — collection, triage, the numbered gate, the
+fixers, the replies. Defer to it. Do not restate its triage here and do not
+settle any item yourself.
+
+### When the ingest reports zero items
+
+Zero items is not by itself a clean review. Name both ways it happens, rather
+than sliding on to the engines as though there were no feedback:
+
+- **The review is still saved as a draft.** The likeliest cause. A draft never
+  syncs to GitHub, so the pipeline cannot see it and the PR carries nothing to
+  collect — the comments are on screen in Linear and nowhere else.
+- **There was nothing to flag.** A legitimate outcome, and the good one. A clean
+  read is a result, not a failure to find something.
+
+This stage cannot tell the two apart, so say both and offer the choice: re-check
+the PR after the reader submits, or accept the clean read and move on to
+`/review:suite`.
 
 ## Notes
-- **Human-facing only.** No GitHub posting, no linters, no reviewer subagents,
-  no commits — this stage informs, the later stages act.
-- **Don't defect-hunt.** Correctness/edge-case/convention review is `/review:suite`'s
-  job. Staying in your lane keeps this stage fast and cheap. If something genuinely
-  alarming jumps out, mention it in one line and defer to the review engines.
-- **Ground everything** in the diff, commits, and ticket — never describe work the
-  diff doesn't show or ticket scope you didn't read.
+
+- **Any human reviews here.** Write and speak to "the reviewer", not "the
+  author" — a teammate reviewing someone else's branch is the same stage.
+- **Submitted, not drafted.** Every empty result traces back to this, so say it
+  before the wait and again after a zero-item ingest.
+- **Read nothing for them.** Summarizing the branch is `/review:debrief`'s job,
+  and defect-hunting is `/review:suite`'s. Staying in your lane keeps this stage
+  a link, a wait, and a hand-off.
+- **Never continue through the gate on your own.** The whole value of the stage
+  is a human view formed before the machines speak.
 
 $ARGUMENTS

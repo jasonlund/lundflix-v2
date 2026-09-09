@@ -124,7 +124,7 @@ a reader sees a spec defect even when the standards list is long:
 **Issue:** …
 **Violates:** "{quoted ticket line}"
 **Recommendation:** …
-_Found by: /review:human_
+_Found by: /review:debrief_
 
 ---
 
