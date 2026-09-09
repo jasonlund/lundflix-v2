@@ -77,6 +77,23 @@ readonly.
 Anonymous migration classes are the one structural exclusion — they can't be named,
 and the arch targets (`Database\Factories`, `Database\Seeders`) don't reach them.
 
+### Import every class, including global ones
+
+**A class name is written bare and imported with a `use` statement — never inlined
+as a leading-backslash FQCN.** This holds for global classes and PHP's own
+attributes too: `use Override;` then `#[Override]`, not `#[\Override]`; `use
+Throwable;` then `catch (Throwable $e)`, not `catch (\Throwable $e)`.
+
+One import block at the top of the file is the only place a reader has to look to
+learn what a class depends on, and a `\`-prefixed name in the body hides that
+dependency from it.
+
+**Adopted 2026-09-09 and not yet swept.** The repo currently carries ~20
+`#[\Override]` sites written before this rule; they are wrong and are being
+corrected in their own ticket, so a leading backslash you meet in existing code is
+debt, not precedent. Nothing enforces this yet — no Rector rule and no arch test —
+so it holds by review until one exists.
+
 ### Action classes
 
 Single-purpose actions live in `App\Domains\{Domain}\Actions`.

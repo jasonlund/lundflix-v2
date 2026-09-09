@@ -70,6 +70,42 @@ describe('handle() column hydration', function (): void {
     });
 });
 
+describe('handle() refusal flags', function (): void {
+    it('persists the adult and softcore flags raw', function (): void {
+        // Arrange
+        $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+        $payload['adult'] = true;
+        $payload['softcore'] = true;
+        Show::factory()->create(['_tmdb_id' => 1399]);
+
+        // Act
+        resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+        // Assert
+        $show = Show::query()->where('_tmdb_id', 1399)->firstOrFail();
+        expect($show->_tmdb_adult)->toBeTrue()
+            ->and($show->_tmdb_softcore)->toBeTrue();
+    });
+
+    // Null is load-bearing: `Refusable::notRefused()` reads a null flag as "unknown,
+    // not refused", so a mapper defaulting an absent flag to false would silently
+    // change what the read filter means.
+    it('leaves the refusal flags null when the payload omits them', function (): void {
+        // Arrange
+        $payload = json_decode(fixtureBytes('Catalog/tmdb/tv.json'), true);
+        unset($payload['adult'], $payload['softcore']);
+        Show::factory()->create(['_tmdb_id' => 1399]);
+
+        // Act
+        resolve(UpsertTmdbShows::class)->handle([$payload]);
+
+        // Assert
+        $show = Show::query()->where('_tmdb_id', 1399)->firstOrFail();
+        expect($show->_tmdb_adult)->toBeNull()
+            ->and($show->_tmdb_softcore)->toBeNull();
+    });
+});
+
 describe('handle() first_air_date sentinels', function (): void {
     it('persists a blank TMDB first_air_date as null, not an empty string', function (): void {
         // Arrange
