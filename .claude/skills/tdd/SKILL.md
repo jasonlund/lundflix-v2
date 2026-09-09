@@ -22,7 +22,7 @@ only through (a) the prompt you pass in, (b) the text the subagent returns, and
 (c) files on disk (shared workspace).
 
 ```
-YOU approve RED plan card (plan UI, or terminal approval)
+RED slice card → YOU approve it (attended), or it goes to chat (unattended)
    ▼
 orchestrator ─spawn▶ tdd-test-writer (🔴)  → returns failing output → GATE
    ▼
@@ -85,30 +85,44 @@ seam question above — is adapted from `mattpocock-skills:tdd`'s *Seams: where
 tests go*, which puts tests only at pre-agreed public boundaries. Offer to explain
 the upstream contract when a slice's seam is in question.
 
-## Step 1 — 🔴 RED (presented for approval via the plan UI)
+## Step 1 — 🔴 RED (the slice contract, approved when someone is there to approve)
 
-The gate is the **approval**, not the UI that renders it: Conductor's plan UI, or
-plain `EnterPlanMode` / `ExitPlanMode` approval in the terminal under LaborForest +
-Solo. Either way the RED slice is agreed before any test is written.
+**On the first slice for a ticket, move it to In Progress.** Before writing that
+ticket's first RED card, advance the ticket to **In Progress** per the *Automatic
+ticket status transitions* contract in `project.md` (forward-only, active ticket
+only). Only the ticket whose slice is starting moves — on a multi-ticket branch,
+each ticket transitions when the loop (Step 4) reaches its own first slice;
+already-started tickets are untouched (forward-only makes re-entry a no-op). This
+fires on **both** paths below: it is an MCP write, not a human gate, and an
+unattended run is exactly when nobody is around to move the ticket by hand.
 
-**On the first slice for a ticket, move it to In Progress.** Before presenting
-that ticket's first RED card, advance the ticket to **In Progress** per the
-*Automatic ticket status transitions* contract in `project.md` (forward-only,
-active ticket only). Only the ticket whose slice is starting moves — on a
-multi-ticket branch, each ticket transitions when the loop (Step 4) reaches its
-own first slice; already-started tickets are untouched (forward-only makes
-re-entry a no-op).
+**The card always carries the same seven fields** — the behavior slice, **the seam
+these tests run against** (and whether it already exists), the **list of tests** you
+intend to write, the target stack (Laravel or React), the files involved, the
+subagent (`tdd-test-writer`), and the verify command. That content *is* the
+commitment; only its *approval* is a permission gate. So the fork below changes
+where the card goes and whether you wait — never what it says.
 
-The RED slice is the contract you commit to, so present it for approval first:
+**Is this session unattended?** Unattended ⇔ an `[unattended-mode]` notice is
+present in this turn's context (printed by `.claude/hooks/unattended-mode-notice.sh`
+when Claude Code reports `permission_mode=bypassPermissions`). **No notice → gated.**
+The hook fails closed, so an absent, unreadable, or non-bypass mode all arrive as
+silence and leave the approval in force — never infer the mode any other way.
 
-1. Call **`EnterPlanMode`**.
-2. Write the slice plan to the plan file: the behavior slice, **the seam these
-   tests run against** (and whether it already exists), the **list of tests** you
-   intend to write, the target stack (Laravel or React), the files involved, the
-   subagent (`tdd-test-writer`), and the verify command.
-3. Call **`ExitPlanMode`** → the user approves or edits the slice.
-4. On approval (now out of plan mode) **spawn `tdd-test-writer`** with the approved
-   slice + relevant existing files.
+- **Attended (no notice) — present the card and wait.** The gate is the
+  **approval**, not the UI that renders it: Conductor's plan UI, or plain
+  `EnterPlanMode` / `ExitPlanMode` approval in the terminal under LaborForest +
+  Solo.
+  1. Call **`EnterPlanMode`**.
+  2. Write the seven-field slice plan to the plan file.
+  3. Call **`ExitPlanMode`** → the user approves or edits the slice.
+  4. On approval (now out of plan mode) **spawn `tdd-test-writer`** with the
+     approved slice + relevant existing files.
+- **Unattended (notice present) — write the card to chat and proceed.** Print the
+  same seven fields as a message, then **spawn `tdd-test-writer`** directly. **Never
+  call `EnterPlanMode` on this path**: it switches the session's permission mode to
+  `plan`, downgrading the very mode that was detected, and the plan file is a
+  plan-mode artifact with no reader when nobody is approving it.
 
 **GATE:** Do not proceed until the subagent returns the **confirmed failing** output
 for the whole slice — assertions failing for the RIGHT reason, not syntax/setup
@@ -144,7 +158,10 @@ finish the backend cycle(s) before starting the frontend cycle(s).
   they differ from the documented defaults.
 - `.claude/skills/codebase-design/SKILL.md` — seam / interface / depth vocabulary
   and the four dependency categories that decide how a seam gets faked.
-- GREEN and BLUE run automatically after RED approval. To make them stop-and-show
-  too, add an `AskUserQuestion` gate before each.
-- A skill-activation reminder hook (`tdd-activation-reminder.sh`) nudges this skill
-  on new-feature prompts — see `.claude/hooks/README.md`.
+- GREEN and BLUE run automatically once RED is confirmed, in both modes — their
+  gates are correctness gates, not permission gates. To make them stop-and-show
+  too, add an `AskUserQuestion` gate before each; that is an **attended-only**
+  addition, since an unattended run has nobody to answer it.
+- Two hooks touch this loop, both `UserPromptSubmit` — `tdd-activation-reminder.sh`
+  nudges the skill on new-feature prompts, and `unattended-mode-notice.sh` prints
+  the `[unattended-mode]` notice Step 1 forks on. See `.claude/hooks/README.md`.

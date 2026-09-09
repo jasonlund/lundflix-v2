@@ -33,6 +33,11 @@ classifies the *feedback type* (bug / behavior change / cleanup / non-code).
 **Every code branch shows its classification + a plan card before any subagent runs.**
 The user confirms the chosen route. Only the DIRECT (non-code) branch skips approval.
 
+**Unattended sessions skip the confirmation, not the card** — same fork, same
+detection rule, as `tdd` Step 1: an `[unattended-mode]` notice in this turn's
+context means write the classification and card to chat and proceed; no notice
+means gated, as above. Every correctness gate below is unchanged in both modes.
+
 ## Hard rules
 
 - **Bug → test-first, ALWAYS.** A failing reproducer (RED) goes in before the fix
