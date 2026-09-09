@@ -41,21 +41,29 @@ function workspaceSyncDir(array $paths = []): string
  * runs its output through an empty() check, so a bare '0' is swallowed to '' and
  * the stub silently stops discriminating.
  *
+ * The two `ls-tree` legs are keyed on their ref, not the subcommand: both command
+ * lines contain "ls-tree" and the fake resolves by first match in insertion order,
+ * so a bare '*ls-tree*' would answer the HEAD read with the upstream listing and
+ * make the index-vs-HEAD divergence unobservable — the very thing under test.
+ *
  * @param  string  $upstream  stdout of `ls-tree -r --name-only origin/main -- .laborforest`
  * @param  string  $tracked  stdout of `ls-files -- .laborforest`
+ * @param  string  $head  stdout of `ls-tree -r --name-only HEAD -- .laborforest`
  * @param  string  $ahead  stdout of `rev-list --count origin/main..HEAD`
  * @param  int  $merge  exit code of `merge --ff-only origin/main`
  * @param  string  $mergeError  stderr of `merge --ff-only origin/main`
  * @param  int  $aheadExit  exit code of `rev-list --count origin/main..HEAD`
  * @param  string  $aheadError  stderr of `rev-list --count origin/main..HEAD`
- * @param  int  $upstreamExit  exit code of `ls-tree …`
+ * @param  int  $upstreamExit  exit code of `ls-tree … origin/main …`
  * @param  int  $trackedExit  exit code of `ls-files …`
+ * @param  int  $headExit  exit code of `ls-tree … HEAD …`
  * @param  string  $listingError  stderr of whichever listing leg the test fails
  * @param  int  $checkout  exit code of `checkout HEAD -- .laborforest`
  */
 function fakeWorkspaceSyncGit(
     string $upstream,
     string $tracked = '',
+    string $head = '',
     string $ahead = "0\n",
     int $merge = 0,
     string $mergeError = '',
@@ -63,6 +71,7 @@ function fakeWorkspaceSyncGit(
     string $aheadError = '',
     int $upstreamExit = 0,
     int $trackedExit = 0,
+    int $headExit = 0,
     string $listingError = '',
     int $checkout = 0,
 ): void {
@@ -70,7 +79,8 @@ function fakeWorkspaceSyncGit(
 
     Process::fake([
         '*rev-list*' => Process::result(output: $ahead, errorOutput: $aheadError, exitCode: $aheadExit),
-        '*ls-tree*' => Process::result(output: $upstream, errorOutput: $listingError, exitCode: $upstreamExit),
+        '*ls-tree*origin/main*' => Process::result(output: $upstream, errorOutput: $listingError, exitCode: $upstreamExit),
+        '*ls-tree*HEAD*' => Process::result(output: $head, errorOutput: $listingError, exitCode: $headExit),
         '*ls-files*' => Process::result(output: $tracked, errorOutput: $listingError, exitCode: $trackedExit),
         '*checkout*' => Process::result(exitCode: $checkout),
         '*merge*' => Process::result(errorOutput: $mergeError, exitCode: $merge),
@@ -174,10 +184,11 @@ describe('lf:workspace-sync clearing seeded files', function (): void {
         expect(File::exists($dir.'/.laborforest/workflows/up.yaml'))->toBeFalse();
     });
 
-    // The other half of the blast radius: both reads must stay scoped to the
+    // The other half of the blast radius: every read must stay scoped to the
     // workspace (-C) and to the seeded directory (the pathspec), or the listings
-    // themselves start naming paths the delete loop has no business seeing.
-    it('scopes both listings to the workspace and the .laborforest pathspec', function (): void {
+    // themselves start naming paths the delete loop has no business seeing. The
+    // ref is asserted too, because the three legs answer three different questions.
+    it('scopes every listing to the workspace and the .laborforest pathspec', function (): void {
         // Arrange
         $dir = workspaceSyncDir(['.laborforest/workflows/up.yaml']);
         fakeWorkspaceSyncGit(upstream: ".laborforest/workflows/up.yaml\n");
@@ -186,7 +197,8 @@ describe('lf:workspace-sync clearing seeded files', function (): void {
         $this->artisan('lf:workspace-sync', ['dir' => $dir])->assertSuccessful();
 
         // Assert
-        Process::assertRan(workspaceSyncRan(["-C {$dir}", 'ls-tree', '-- .laborforest']));
+        Process::assertRan(workspaceSyncRan(["-C {$dir}", 'ls-tree -r --name-only origin/main', '-- .laborforest']));
+        Process::assertRan(workspaceSyncRan(["-C {$dir}", 'ls-tree -r --name-only HEAD', '-- .laborforest']));
         Process::assertRan(workspaceSyncRan(["-C {$dir}", 'ls-files', '-- .laborforest']));
     });
 
@@ -258,6 +270,7 @@ describe('lf:workspace-sync discarding local edits', function (): void {
         fakeWorkspaceSyncGit(
             upstream: ".laborforest/workflows/up.yaml\n",
             tracked: ".laborforest/workflows/up.yaml\n",
+            head: ".laborforest/workflows/up.yaml\n",
         );
 
         // Act
@@ -267,13 +280,14 @@ describe('lf:workspace-sync discarding local edits', function (): void {
         Process::assertRan(workspaceSyncRan(["-C {$dir}", 'checkout HEAD -- .laborforest']));
     });
 
-    // A workspace cut from a local main that predates `.laborforest/` tracks none
-    // of it, and `checkout HEAD -- .laborforest` on a pathspec HEAD never knew is
-    // a hard git error — which would abort the very run this command exists to fix.
-    it('skips the checkout when the workspace tracks no .laborforest path', function (): void {
+    // A workspace cut from a local main that predates `.laborforest/` has nothing
+    // under it in HEAD's tree, and `checkout HEAD -- .laborforest` on a pathspec
+    // HEAD never knew is a hard git error — which would abort the very run this
+    // command exists to fix.
+    it('skips the checkout when HEAD\'s tree holds no .laborforest path', function (): void {
         // Arrange
         $dir = workspaceSyncDir(['.laborforest/workflows/up.yaml']);
-        fakeWorkspaceSyncGit(upstream: ".laborforest/workflows/up.yaml\n");
+        fakeWorkspaceSyncGit(upstream: ".laborforest/workflows/up.yaml\n", head: '');
 
         // Act
         $this->artisan('lf:workspace-sync', ['dir' => $dir])->assertSuccessful();
@@ -282,12 +296,54 @@ describe('lf:workspace-sync discarding local edits', function (): void {
         Process::assertDidntRun(workspaceSyncRan(['checkout']));
     });
 
+    // The index and HEAD's tree are different surfaces, and `git checkout HEAD --`
+    // resolves its pathspec against the tree alone. Staging the seeds into a
+    // workspace whose HEAD predates `.laborforest/` — a plain `git add -A` during a
+    // documented re-run does it — fills the index while the tree stays empty, so an
+    // index-side guard waves the checkout through onto its hard error.
+    it('skips the checkout when the index lists a .laborforest path HEAD\'s tree does not', function (): void {
+        // Arrange
+        $dir = workspaceSyncDir(['.laborforest/workflows/up.yaml']);
+        fakeWorkspaceSyncGit(
+            upstream: ".laborforest/workflows/up.yaml\n",
+            tracked: ".laborforest/workflows/up.yaml\n",
+            head: '',
+        );
+
+        // Act
+        $this->artisan('lf:workspace-sync', ['dir' => $dir])->assertSuccessful();
+
+        // Assert
+        Process::assertDidntRun(workspaceSyncRan(['checkout']));
+    });
+
+    // A failed listing returns empty stdout, which reads as "HEAD tracks nothing"
+    // and would silently skip a checkout the run needed — the ff-only merge then
+    // fails on local changes this command was called to clear.
+    it('fails without checking out when the HEAD listing fails', function (): void {
+        // Arrange
+        $dir = workspaceSyncDir(['.laborforest/workflows/up.yaml']);
+        fakeWorkspaceSyncGit(
+            upstream: ".laborforest/workflows/up.yaml\n",
+            tracked: ".laborforest/workflows/up.yaml\n",
+            headExit: 1,
+        );
+
+        // Act
+        $this->artisan('lf:workspace-sync', ['dir' => $dir])->assertFailed();
+
+        // Assert
+        Process::assertDidntRun(workspaceSyncRan(['checkout']));
+        Process::assertDidntRun(workspaceSyncRan(['merge']));
+    });
+
     it('fails without merging when the checkout fails', function (): void {
         // Arrange
         $dir = workspaceSyncDir(['.laborforest/workflows/up.yaml']);
         fakeWorkspaceSyncGit(
             upstream: ".laborforest/workflows/up.yaml\n",
             tracked: ".laborforest/workflows/up.yaml\n",
+            head: ".laborforest/workflows/up.yaml\n",
             checkout: 1,
         );
 

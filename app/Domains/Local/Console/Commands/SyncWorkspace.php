@@ -114,7 +114,7 @@ final class SyncWorkspace extends Command
 
         $this->flushTotal('cleared', $cleared);
 
-        return $this->discardLocalEdits($dir, $trackedLocally);
+        return $this->discardLocalEdits($dir);
     }
 
     /**
@@ -126,15 +126,27 @@ final class SyncWorkspace extends Command
      * This therefore discards ANY local edit under the seeded directory, not just
      * the untracked seeds — safe because the skip check has already established the
      * branch carries no commits of its own, so nothing under it here is real work.
-     *
-     * @param  Collection<int, string>  $trackedLocally
      */
-    private function discardLocalEdits(string $dir, Collection $trackedLocally): bool
+    private function discardLocalEdits(string $dir): bool
     {
-        // A workspace cut from a local main that predates the seeded directory
-        // tracks none of it, and a checkout against a pathspec HEAD never knew is a
-        // hard git error — which would abort the very run this command exists to fix.
-        if ($trackedLocally->isEmpty()) {
+        // A workspace cut from a local main that predates the seeded directory has
+        // nothing under it in HEAD's tree, and a checkout against a pathspec HEAD
+        // never knew is a hard git error — which would abort the very run this
+        // command exists to fix. The guard therefore reads HEAD's own tree, the
+        // surface `checkout HEAD --` resolves its pathspec against; the index that
+        // `ls-files` reports is a different one and the two do disagree, exactly
+        // when anything stages the seeds into a workspace whose HEAD predates them.
+        $headListing = $this->git($dir, ['ls-tree', '-r', '--name-only', 'HEAD', '--', self::SEEDED_DIR]);
+
+        if ($headListing->failed()) {
+            $this->reportGitFailure('Failed to list the '.self::SEEDED_DIR." files tracked in HEAD: {$dir}", $headListing);
+
+            return false;
+        }
+
+        // Exit-checked above, never after: a failed read returns empty stdout, which
+        // here would read as "HEAD tracks nothing" and skip a checkout that was needed.
+        if ($this->gitPaths($headListing)->isEmpty()) {
             return true;
         }
 
