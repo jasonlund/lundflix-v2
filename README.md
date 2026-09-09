@@ -119,6 +119,11 @@ what to run in it.
 
 Worktrees land beside the primary checkout as `~/Sites/lundflix-v2-<branch-slug>`.
 
+**Working with an agent, the whole lifecycle is two commands** — `/worktree:up FLIX-NNN`
+and `/worktree:down`. Each runs the LaborForest workflow *and* the Solo registration, and
+reads success off the run log rather than the dispatch call. Everything below is what
+they do and what to reach for when the MCP is unavailable.
+
 - **Create** → `.laborforest/workflows/up.yaml`: fetch and fast-forward onto
   `origin/main`, copy `.env` from the primary, derive this workspace's names, create
   its **own** MySQL database (`lf_<branch>`), install deps, build assets, link a

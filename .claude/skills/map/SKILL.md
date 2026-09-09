@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Map
 
-You don't remember 32 toolkit files — 12 skills, 8 commands, 12 subagents, this
+You don't remember 34 toolkit files — 12 skills, 10 commands, 12 subagents, this
 skill among them — so ask. This page names all of them and when to reach for each.
 It carries no description into the agent's context and fires nothing on its own.
 
@@ -66,6 +66,10 @@ Situations that generate work and then merge onto the flow.
 - **A bug that resists the first look** → `tdd-feedback`'s BUG branch hands off to
   **`mattpocock-skills:diagnosing-bugs`**, which refuses to theorise until it has a
   **tight** loop that goes **red** on this bug.
+- **A ticket needs a workspace to work in** → **`/worktree:up FLIX-NNN`**: derives the
+  branch, cuts the LaborForest worktree, registers it in Solo, runs `up`, and reads the
+  verdict off the run log. **`/worktree:down`** reverses it once the PR is merged,
+  refusing on a dirty or unmerged branch. User-invoked — they create and drop a database.
 - **Every slice in a multi-slice PR is done** → **`review-tdd-cross-slice`**.
   Per-slice refactors never see the combined diff; this points the REFACTOR HAT at
   the whole PR. Single-slice PR → skip it; one ticket of many slices still qualifies.
