@@ -901,7 +901,7 @@ describe('catalog:sync-shows-tmdb backoff and real failures', function (): void 
             ->and($got->tmdb_retry_after)->toBeNull();
     });
 
-    it('defers the rest of a chunk that carries one failed id', function (): void {
+    it('spares the rest of a chunk that carries one failed id', function (): void {
         // Deliberate: neither signal is per-row, so one failure holds its whole
         // chunk back. The rows it spares are deferred by the next run instead.
         // Arrange

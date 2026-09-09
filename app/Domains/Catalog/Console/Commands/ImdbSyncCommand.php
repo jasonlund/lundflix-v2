@@ -36,10 +36,12 @@ abstract class ImdbSyncCommand extends Command
      * The default --batch ceiling, and the one bound an operator can actually
      * breach: the batch sizes both the pre-filter's id probe and the write buffer,
      * and a fully-matched batch spends its whole width on one bulk CASE update
-     * against MySQL's 65,535 placeholder cap. This figure suits the narrow feeds
-     * — ratings writes 2 columns (5 bindings a row) and akas 1 (3) — which leaves
-     * both an order of magnitude of headroom here. A feed wide enough for the cap
-     * to bind carries its own lower ceiling by overriding {@see maxBatchSize()};
+     * against MySQL's 65,535 placeholder cap. This figure suits the narrow feeds:
+     * `BulkCaseUpdate` spends 2 bindings per column per matched row plus 1 for the
+     * WHERE IN id, so ratings' 2 columns cost 5 a row — 4000 × 5 + 1 for the
+     * per-statement updated_at = 20,001 placeholders, about 3x under the cap — and
+     * akas' 1 column costs 3 a row, 12,001, about 5x under. A feed wide enough for
+     * the cap to bind carries its own lower ceiling by overriding {@see maxBatchSize()};
      * {@see SyncImdbTitles} is the one that does.
      */
     private const int MAX_BATCH_SIZE = 4000;

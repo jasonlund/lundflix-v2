@@ -912,6 +912,31 @@ describe('catalog:sync-movies capped changes window', function (): void {
         expect(Movie::where('_tmdb_id', 9500)->exists())->toBeTrue();
     });
 
+    it('counts a capped window that also fails to read as one failed window', function (): void {
+        // Arrange
+        // Both faults land on the SAME window: the marker is 30 days stale, so the
+        // CAP_DAYS floor truncates it, and the feed then 5xxs while reading what is
+        // left. One window, so the run owes one — a second count would tell an
+        // operator two spans are outstanding when only one ever existed.
+        Cache::flush();
+        Exceptions::fake();
+        Date::setTestNow('2026-07-16 12:00:00');
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
+        Http::fake([
+            '*movie_ids*' => Http::response(gzencode('')),
+            '*/movie/changes*' => Http::response('', 500),
+            '*api.themoviedb.org*' => Http::response('', 404),
+        ]);
+
+        // Act
+        Artisan::call('catalog:sync-movies');
+
+        // Assert
+        expect(Artisan::output())
+            ->toContain('1 changes-feed window failed;')
+            ->not->toContain('2 changes-feed window failed;');
+    });
+
     it('reports no uncovered span when the marker sits inside the cap', function (): void {
         // Arrange
         Cache::flush();

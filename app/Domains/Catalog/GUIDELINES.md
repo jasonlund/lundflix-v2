@@ -150,6 +150,16 @@ schedule, a full-dataset leg only an operator runs.
   for a marker stale past the cap, and what `catalog:sync --fresh` dispatches in the
   incremental leg's place. `--fresh` here skips the already-synced probe and
   re-hydrates every exported row.
+  - **The seed runs two phases, and which ones depends on `--fresh`.** The export
+    scan reaches only ids the catalog does *not* hold, so an insert-only seed would
+    advance the marker while every update inside the span it skipped stayed
+    unfetched. A plain seed therefore runs `updateChanged()` after the scan; a
+    `--fresh` seed skips it, because re-hydrating every exported row already covers
+    that window and the pass would be redundant work.
+  - **Only `--fresh` can clear a capped marker.** `updateChanged()` reports a capped
+    window, which holds the marker — so a plain seed keeps the alarm alive by design,
+    and the `--fresh` run that genuinely repaired the gap is the one that advances.
+    See **Incremental sync markers** below.
 - **Why the export left the schedule (FLIX-289).** That phase alone exceeded an hour
   per production run and did not shrink as the catalog converged. FLIX-286 measured
   the feed against the live API: `/movie/changes` reported 465/465 of the ids added
@@ -279,8 +289,11 @@ fetched. It never calls `/series/{id}/episodes`.
   named the id — an episode can move between shows upstream.
 - **A per-id 404 is a miss, not a failure.** It arrives as a `null` in
   `PooledResult::results` and counts toward neither the persisted total nor the
-  failure count, so a deleted episode never holds the marker. A failure is a pooled
-  per-id miss, which is why the run-closing line reads `N episodes failed`.
+  failure count, so a deleted episode never holds the marker. A **failure** is what
+  `EpisodeRefreshResult::failedEpisodes` counts — an id the pool dropped from its
+  result map entirely — plus a whole batch a caught `TvdbRequestFailed` /
+  `TvdbAuthenticationFailed` lost. That is why the run-closing line reads
+  `N episodes failed`.
 - The membership read is a single bounded `get()` per 1000-id chunk rather than
   `chunkById()`. The iterate-and-write rule doesn't reach it: at most 1000 explicit
   ids, materialized once, paginated not at all — so the later `episodes_synced_at`
@@ -431,7 +444,12 @@ window.
   - The capped run **still covers the 14 days it can reach**; it reports the gap
     rather than skipping the window.
   - The marker deliberately stays put, so the alarm repeats every run until an
-    operator runs `catalog:seed-movies`. That is the intended escalation: ideal
+    operator runs `catalog:seed-movies --fresh`. **The `--fresh` is load-bearing**:
+    only a full re-hydration covers the uncovered span, so only that run earns the
+    advance and clears the alarm. A plain `catalog:seed-movies` hydrates just the
+    ids the catalog does not hold, runs the changes pass, and leaves the capped
+    window holding the marker — correctly, because updates to held titles inside the
+    span are still unfetched. That is the intended escalation: ideal
     operation is the assumption, and the guard exists so a departure is noticed
     immediately instead of months later. Production carried **no**
     `catalog:sync:marker:tmdb_movies` entry at all while every row was stamped —

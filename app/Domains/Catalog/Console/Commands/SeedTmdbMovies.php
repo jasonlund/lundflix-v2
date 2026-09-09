@@ -18,7 +18,11 @@ use Illuminate\Console\Attributes\Signature;
 /**
  * The operator's remedy for a movies marker stale past the window cap, where the
  * incremental changes feed can no longer cover the gap: one full pass over the ids
- * export, hydrating everything the catalog does not already hold.
+ * export, hydrating everything the catalog does not already hold, then the ordinary
+ * changes pass over the marker window — the half that refreshes what the catalog
+ * DOES hold, and the only reason a plain seed has earned the right to move the
+ * marker. Under --fresh the export pass refreshes held titles too, so it carries
+ * that right on its own; only --fresh can clear a capped marker.
  *
  * Deliberately on no schedule. A blind weekly sweep would re-pay ~62k
  * unpersistable hydrations every run and, worse, keep a stalled marker looking
@@ -47,7 +51,26 @@ final class SeedTmdbMovies extends TmdbMoviesCommand
         $this->upsertImages = $upsertImages;
         $this->reindexTouchedRows = $reindexTouchedRows;
 
-        return $this->runLeg($marker, fn (): bool => $this->insertNew($export));
+        // Both phases, in this order, because runLeg() advances the marker on any
+        // zero-failure run: the export scan can only reach ids the catalog does NOT
+        // hold, so an insert-only seed would jump the marker to now while every UPDATE
+        // inside the span it skipped stays unfetched — and silence recordCappedWindow()
+        // in the bargain. The changes pass is what earns the advance.
+        //
+        // Except under --fresh, which re-hydrates EVERY exported id: the span the
+        // capped window leaves uncovered is genuinely covered by that full pass, so the
+        // changes pass would be redundant work AND — because it reports a capped window
+        // as a failure — would hold the marker back forever, on the one run that
+        // actually repaired the gap. `catalog:seed-movies --fresh` is therefore the
+        // operator's remedy for a marker stale past the cap; a plain seed leaves held
+        // titles inside that span unfetched, so its alarm rightly persists.
+        // Assigned before the `||` so a failing insert can't short-circuit it away.
+        return $this->runLeg($marker, function () use ($export, $marker): bool {
+            $insertFailed = $this->insertNew($export);
+            $changesFailed = $this->option('fresh') ? false : $this->updateChanged($marker);
+
+            return $insertFailed || $changesFailed;
+        });
     }
 
     /**

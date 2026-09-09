@@ -132,6 +132,44 @@ describe('handle() show attribution', function (): void {
             ->and($secondShow->episodes()->pluck('_tvdb_id')->sort()->values()->all())->toBe([11846050, 11846051]);
     });
 
+    it('re-parents an episode whose series changed rather than inserting a second row', function (): void {
+        // Arrange
+        // `episodes._tvdb_id` is globally unique, so an episode stored under the
+        // show that used to own it has to move when the payload names another —
+        // a show-scoped lookup misses that row and the insert is rejected.
+        $formerShow = Show::factory()->create([
+            '_tvdb_id' => 469484,
+            '_tvdb_defaultSeasonType' => 1,
+            'episodes_synced_at' => now(),
+        ]);
+        $currentShow = Show::factory()->create([
+            '_tvdb_id' => 434847,
+            '_tvdb_defaultSeasonType' => 1,
+            'episodes_synced_at' => now(),
+        ]);
+        Episode::factory()->create([
+            'show_id' => $formerShow->id,
+            '_tvdb_id' => 9786562,
+            '_tvdb_seriesId' => 469484,
+        ]);
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*/episodes/9786562*' => Http::response(fixtureBytes('Catalog/tvdb/episode_9786562.json')),
+        ]);
+
+        // Act
+        $result = resolve(RefreshTvdbEpisodes::class)->handle(
+            showsKeyedForEpisodeRefresh([434847, 469484]),
+            collect([9786562]),
+        );
+
+        // Assert
+        expect($result->episodes)->toBe(1)
+            ->and(Episode::where('_tvdb_id', 9786562)->count())->toBe(1)
+            ->and($currentShow->episodes()->pluck('_tvdb_id')->all())->toBe([9786562])
+            ->and($formerShow->episodes()->count())->toBe(0);
+    });
+
     it('ignores an episode whose series is not among the given shows', function (): void {
         // Arrange
         // Series 371082 has no Show row at all, so the episodes it owns belong to

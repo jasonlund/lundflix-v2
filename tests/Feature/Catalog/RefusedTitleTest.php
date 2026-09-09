@@ -70,6 +70,23 @@ describe('show refusal flags', function (): void {
         'tmdb softcore' => '_tmdb_softcore',
     ]);
 
+    // Shows override nothing, so they walk the trait's base column set — the
+    // movie negative above says nothing about which columns this iterates.
+    it('does not refuse a show carrying none of the refusal flags', function (): void {
+        // Arrange
+        $show = Show::factory()->create([
+            '_imdb_isAdult' => false,
+            '_tmdb_adult' => false,
+            '_tmdb_softcore' => false,
+        ]);
+
+        // Act
+        $refused = $show->isRefused();
+
+        // Assert
+        expect($refused)->toBeFalse();
+    });
+
     // As on movies, the clean row's flags stay unset so null must read as
     // unknown, not refused.
     it('excludes refused shows from a notRefused query', function (): void {
@@ -122,6 +139,26 @@ describe('shouldBeSearchable() refusal filter', function (): void {
         'tmdb adult' => '_tmdb_adult',
         'tmdb softcore' => '_tmdb_softcore',
         'tmdb promo' => '_tmdb_video',
+    ]);
+
+    it('keeps a show searchable while nothing refuses it', function (array $attributes): void {
+        // Arrange
+        $show = Show::factory()->create($attributes);
+
+        // Act
+        $searchable = $show->shouldBeSearchable();
+
+        // Assert
+        expect($searchable)->toBeTrue();
+    })->with([
+        'flags answered false' => [[
+            '_imdb_isAdult' => false,
+            '_tmdb_adult' => false,
+            '_tmdb_softcore' => false,
+        ]],
+        // A show nobody has classified yet is unknown, not refused — it has to
+        // stay findable rather than fall out of search on a missing flag.
+        'flags unknown' => [[]],
     ]);
 
     it('drops a refused show out of the searchable set', function (string $column): void {

@@ -314,7 +314,9 @@ abstract class TmdbSyncCommand extends Command
             // what it can reach — it just must not pass for a clean one, or the
             // marker advances over the gap and the loss becomes unrecoverable. This
             // is what let a stalled marker sit unnoticed on production for months.
-            $failed = $this->recordCappedWindow($window);
+            $capped = $this->recordCappedWindow($window);
+
+            $failed = $capped;
 
             // The whole loop sits inside the try, not just the call: the feed is a
             // generator, so it defers its first request to the first iteration.
@@ -341,7 +343,12 @@ abstract class TmdbSyncCommand extends Command
             } catch (\Throwable $e) {
                 report($e);
 
-                $this->failedChangesWindows++;
+                // The counter counts WINDOWS, and this pass reads exactly one: a
+                // capped window already counted itself above, so failing to read
+                // what was left of it is the same window still owed, not a second.
+                if (! $capped) {
+                    $this->failedChangesWindows++;
+                }
 
                 return true;
             }

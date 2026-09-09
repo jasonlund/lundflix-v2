@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
+use App\Domains\Catalog\Support\SyncMarker;
 use GuzzleHttp\Promise\PromiseInterface;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -39,9 +40,10 @@ uses(RefreshDatabase::class);
 |   sizes differ), neither of which any committed capture provides — plus a minimal
 |   `{"id":N,"title":"Movie N"}` detail body per requested id, images omitted so
 |   the runs stay fast.
-| — the empty `/movie/changes` results page. This command must never read the
-|   changes feed, so the stub exists ONLY so a leg that wrongly requests it fails
-|   on the "no changes feed" assertion rather than dying as a stray request.
+| — the `/movie/changes` results page. A plain seed runs the changes pass after the
+|   export scan (a --fresh one skips it), so every fake serves the feed:
+|   fakeTmdbSeedIdsExport() carries whichever ids a test names on it, and the others
+|   an empty results page — a real capture would pin ids no export shares.
 | — the `video:true` detail body served by fakeTmdbSeedPromoExport() — the same
 |   minimal `{"id":N,"title":"Movie N"}` shape with TMDB's promo flag set, for an
 |   export whose ids are chosen per test; no committed capture pairs a promo record
@@ -71,17 +73,28 @@ function fakeTmdbMovieSeed(?string &$exportSink = null): void
 
 /**
  * Fakes an export of exactly the given ids, each resolving to a minimal detail
- * body. $onDetail observes every detail request, for the interleaving timeline.
+ * body, plus a single-page changes feed carrying $changedIds (none by default).
+ * $onDetail observes every detail request, for the interleaving timeline.
  *
  * @param  list<int>  $ids
+ * @param  list<int>  $changedIds
  */
-function fakeTmdbSeedIdsExport(array $ids, ?Closure $onDetail = null): void
+function fakeTmdbSeedIdsExport(array $ids, ?Closure $onDetail = null, array $changedIds = []): void
 {
     $lines = array_map(fn (int $id): string => json_encode(['id' => $id]), $ids);
 
     Http::fake([
-        '*movie_ids*' => Http::response(gzencode(implode("\n", $lines))),
-        '*/movie/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+        // A closure, not a prepared response: a single Http::response holds one stream,
+        // which the first run's sink drains — a second run would then download an empty
+        // body and die as a corrupt archive.
+        '*movie_ids*' => fn (): PromiseInterface => Http::response(gzencode(implode("\n", $lines))),
+        // Listed before the generic detail stub since it lives on the same host.
+        '*/movie/changes*' => Http::response(json_encode([
+            'results' => array_map(static fn (int $id): array => ['id' => $id], $changedIds),
+            'page' => 1,
+            'total_pages' => 1,
+            'total_results' => count($changedIds),
+        ])),
         '*api.themoviedb.org*' => function (Request $request) use ($onDetail) {
             preg_match('#/movie/(\d+)#', (string) $request->url(), $matches);
             $id = (int) ($matches[1] ?? 0);
@@ -180,6 +193,26 @@ describe('catalog:seed-movies export scan', function (): void {
         Http::assertSent(fn (Request $request): bool => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/8001'));
     });
 
+    it('refreshes a held title the changes feed reports', function (): void {
+        // Arrange
+        // A row the catalog already holds is invisible to the export scan — the probe
+        // filters it out — so the changes pass is the only phase that can reach it.
+        // That span is exactly what the run then advances the marker over, and an
+        // export-only seed would move the marker past every UPDATE inside it.
+        Movie::factory()->create([
+            '_tmdb_id' => 8001,
+            '_tmdb_title' => 'Stale title',
+            'tmdb_synced_at' => now(),
+        ]);
+        fakeTmdbSeedIdsExport([8001], changedIds: [8001]);
+
+        // Act
+        $this->artisan('catalog:seed-movies');
+
+        // Assert
+        expect(Movie::where('_tmdb_id', 8001)->value('_tmdb_title'))->toBe('Movie 8001');
+    });
+
     it('deletes the export temp file and exits SUCCESS', function (): void {
         // Capturing the sink path pins the assertion to THIS run's temp file; globbing
         // the shared system temp dir would also see files other processes create and
@@ -197,7 +230,7 @@ describe('catalog:seed-movies export scan', function (): void {
         expect(file_exists($sinkPath))->toBeFalse();
     });
 
-    it('reads no changes feed', function (): void {
+    it('reads the changes feed after the export scan', function (): void {
         // Arrange
         fakeTmdbMovieSeed();
 
@@ -205,10 +238,15 @@ describe('catalog:seed-movies export scan', function (): void {
         $this->artisan('catalog:seed-movies');
 
         // Assert
-        // Both halves in one test: the absence alone would pass on a run that made no
-        // request at all, so the export download is asserted alongside it.
-        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/movie/changes'));
-        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), 'movie_ids'));
+        // The ORDER is the assertion, not just the pair: the export scan hydrates what
+        // the catalog lacks and the changes pass refreshes what it holds, and only
+        // running both covers the span the run then advances the marker over.
+        $urls = Http::recorded()->map(fn (array $pair): string => (string) $pair[0]->url());
+        $export = $urls->search(fn (string $url): bool => Str::contains($url, 'movie_ids'));
+        $changes = $urls->search(fn (string $url): bool => Str::contains($url, '/movie/changes'));
+        expect($export)->toBeInt();
+        expect($changes)->toBeInt();
+        expect($export)->toBeLessThan($changes);
     });
 
     it('advances the movies marker on a clean run', function (): void {
@@ -222,6 +260,54 @@ describe('catalog:seed-movies export scan', function (): void {
 
         // Assert
         expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
+    });
+});
+
+describe('catalog:seed-movies capped marker remedy', function (): void {
+    it('clears a capped marker under --fresh', function (): void {
+        // Arrange
+        // A marker 30 days stale is the exact condition this command exists to remedy,
+        // and the condition the changes pass can never clear on its own: SyncMarker
+        // floors `since` at now − 14d, so the changes pass reports a capped window on
+        // every run. --fresh re-hydrates EVERY exported id, so the uncovered span is
+        // covered by the full pass and the advance is earned.
+        Cache::flush();
+        Date::setTestNow('2026-07-16 12:00:00');
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
+        fakeTmdbMovieSeed();
+
+        // Act
+        Artisan::call('catalog:seed-movies', ['--fresh' => true]);
+
+        // Assert
+        // Both halves: the marker moving to now is what actually clears the gap, and
+        // the absent alarm line is what tells an operator it cleared.
+        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
+        expect(Artisan::output())->not->toContain('changes-feed window failed');
+    });
+
+    it('holds a capped marker on a plain seed and names the uncovered span', function (): void {
+        // Arrange
+        // The other half of the same condition. A plain seed hydrates only the ids the
+        // catalog does NOT hold, so updates to held titles inside the uncovered span
+        // are still missing — the alarm has to persist and the marker has to stay put.
+        Cache::flush();
+        Date::setTestNow('2026-07-16 12:00:00');
+        $stale = now()->subDays(30)->toImmutable();
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, $stale);
+        fakeTmdbMovieSeed();
+
+        // Act
+        Artisan::call('catalog:seed-movies');
+
+        // Assert
+        // Unchanged, not merely un-advanced-to-now: a capped run that quietly moved the
+        // marker forward would erase the evidence of its own gap. 2026-06-16 is the
+        // marker less its 6h overlap, 2026-07-02 the floor.
+        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe($stale->toIso8601String());
+        expect(Artisan::output())
+            ->toContain('1 changes-feed window failed;')
+            ->toContain('2026-06-16 to 2026-07-02 uncovered');
     });
 });
 
@@ -330,9 +416,9 @@ describe('catalog:seed-movies export probing and batching', function (): void {
         $this->artisan('catalog:seed-movies', ['--fresh' => true]);
 
         // Assert
-        // This absence is clean only because the leg reads no changes feed either —
-        // that phase's whereNotNull('tmdb_synced_at') intersection probes the same
-        // column, and would make this mean something weaker.
+        // Unscoped on purpose: --fresh skips the changes pass entirely, and that pass
+        // was the only other thing that probes this column (from the other side,
+        // whereNotNull('tmdb_synced_at')), so a --fresh run has no probe of any origin.
         expect(loggedSyncedProbes()->pluck('query')->all())->toBe([]);
     });
 });

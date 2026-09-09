@@ -58,6 +58,41 @@ describe('handle() tmdb id resolution', function (): void {
         expect($show->fresh()->_tmdb_id)->toBeNull();
     });
 
+    it('flags the chunk failed when /find never answers for an imdb id', function (): void {
+        // A pooled id whose request fails outright is dropped from the result map, and
+        // that short map is the only per-id failure signal TMDB gives. The flag has to
+        // carry it out, or the caller defers a chunk an outage merely never answered.
+        // Arrange
+        Exceptions::fake();
+        Http::fake(['*/find/tt0903747*' => Http::response('', 500)]);
+        $show = Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null]);
+
+        // Act
+        $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$show]), resolve(TmdbApiService::class));
+
+        // Assert
+        expect($resolved->failed)->toBeTrue();
+        expect($resolved->resolvedIds)->toBe([]);
+        expect($show->fresh()->_tmdb_id)->toBeNull();
+    });
+
+    it('leaves the chunk unflagged when /find answers 404 for an imdb id', function (): void {
+        // The counterpart guard: a 404 is an answer, so the id stays in the map as null
+        // and the chunk is NOT failed — flagging it would make an unknown imdb id look
+        // like an outage and block the caller from ever deferring the row.
+        // Arrange
+        Http::fake(['*/find/tt0903747*' => Http::response('', 404)]);
+        $show = Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0903747', '_tmdb_id' => null]);
+
+        // Act
+        $resolved = resolve(ReconcileImdbOnlyShows::class)->handle(collect([$show]), resolve(TmdbApiService::class));
+
+        // Assert
+        expect($resolved->failed)->toBeFalse();
+        expect($resolved->resolvedIds)->toBe([]);
+        expect($show->fresh()->_tmdb_id)->toBeNull();
+    });
+
     it('reports a collision and leaves the row null when the resolved id already belongs to another row', function (): void {
         // Arrange
         Exceptions::fake();

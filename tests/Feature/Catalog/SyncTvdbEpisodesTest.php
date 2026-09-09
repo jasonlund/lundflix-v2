@@ -256,9 +256,19 @@ describe('catalog:sync-episodes-tvdb feed record selection', function (): void {
         // provide. Records otherwise keep TheTVDB's real /updates shape. Both ids
         // are load-bearing now, so each is broken in turn while a well-formed
         // sibling of the same seeded series rides alongside.
+        //
+        // The free-text seriesId is the seeded show's own id with junk appended, not
+        // bare text: it is the only shape that discriminates here. A bare (int) cast
+        // resolves "434847abc" to the seeded show and fetches 9256456, while
+        // SourceId's ctype_digit gate rejects it — so dropping the guard fails the
+        // assertion below. Bare "abc" would not: it casts to 0, and no show carries
+        // _tvdb_id 0. That is also why the missing-key seriesId record can prove only
+        // that an absent key is tolerated rather than fatal — null casts to 0 too, so
+        // no seriesId value can give it teeth. Both recordId records do discriminate
+        // on their own: either would ask for the unstubbed /episodes/0.
         $body = json_encode(['status' => 'success', 'data' => [
             Arr::except(tvdbEpisodeUpdateRecord(9256455, 371082), 'seriesId'),
-            tvdbEpisodeUpdateRecord(9256456, 'abc'),
+            tvdbEpisodeUpdateRecord(9256456, '434847abc'),
             Arr::except(tvdbEpisodeUpdateRecord(0, 434847), 'recordId'),
             tvdbEpisodeUpdateRecord('abc', 434847),
             tvdbEpisodeUpdateRecord(9786562, 434847),
