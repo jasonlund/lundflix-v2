@@ -31,7 +31,7 @@ final class SyncWorkspace extends Command
 
     public function handle(): int
     {
-        // The worktree comes from the argument, never base_path(): in production
+        // The worktree comes from the argument, never base_path(): under LaborForest
         // the primary checkout's artisan runs this against a different tree.
         $dir = (string) $this->argument('dir');
 
@@ -44,7 +44,7 @@ final class SyncWorkspace extends Command
         $ahead = $this->git($dir, ['rev-list', '--count', self::UPSTREAM.'..HEAD']);
 
         if ($ahead->failed()) {
-            $this->error('Failed to count the commits ahead of '.self::UPSTREAM.": {$dir}");
+            $this->reportGitFailure('Failed to count the commits ahead of '.self::UPSTREAM.": {$dir}", $ahead);
 
             return self::FAILURE;
         }
@@ -55,12 +55,16 @@ final class SyncWorkspace extends Command
             return self::SUCCESS;
         }
 
-        $this->clearSeededFiles($dir);
+        if (! $this->clearSeededFiles($dir)) {
+            return self::FAILURE;
+        }
 
         $this->output->writeln('Fast-forwarding onto '.self::UPSTREAM.'…');
 
-        if ($this->git($dir, ['merge', '--ff-only', self::UPSTREAM])->failed()) {
-            $this->error('Failed to fast-forward onto '.self::UPSTREAM.": {$dir}");
+        $merge = $this->git($dir, ['merge', '--ff-only', self::UPSTREAM]);
+
+        if ($merge->failed()) {
+            $this->reportGitFailure('Failed to fast-forward onto '.self::UPSTREAM.": {$dir}", $merge);
 
             return self::FAILURE;
         }
@@ -70,14 +74,34 @@ final class SyncWorkspace extends Command
         return self::SUCCESS;
     }
 
-    private function clearSeededFiles(string $dir): void
+    /**
+     * @return bool whether the workspace is safe to fast-forward
+     */
+    private function clearSeededFiles(string $dir): bool
     {
         $this->output->writeln('Clearing seeded files…');
 
-        $trackedUpstream = $this->gitPaths($dir, ['ls-tree', '-r', '--name-only', self::UPSTREAM, '--', self::SEEDED_DIR]);
-        $trackedLocally = $this->gitPaths($dir, ['ls-files', '--', self::SEEDED_DIR]);
+        $upstreamListing = $this->git($dir, ['ls-tree', '-r', '--name-only', self::UPSTREAM, '--', self::SEEDED_DIR]);
+        $localListing = $this->git($dir, ['ls-files', '--', self::SEEDED_DIR]);
 
+        // Both listings are exit-checked before the diff, never after: a failed
+        // read returns empty stdout, and an empty local side makes the diff select
+        // every upstream-tracked path — deleting the very files it exists to spare.
+        foreach ([$upstreamListing, $localListing] as $listing) {
+            if ($listing->failed()) {
+                $this->reportGitFailure('Failed to list the '.self::SEEDED_DIR." files: {$dir}", $listing);
+
+                return false;
+            }
+        }
+
+        $trackedUpstream = $this->gitPaths($upstreamListing);
+        $trackedLocally = $this->gitPaths($localListing);
+
+        // The pathspec already scopes each listing; re-checking the prefix keeps a
+        // future widening of it from turning this loop loose on the whole worktree.
         $conflicting = $trackedUpstream->diff($trackedLocally)
+            ->filter(fn (string $path): bool => Str::startsWith($path, self::SEEDED_DIR.'/'))
             ->filter(fn (string $path): bool => File::exists($dir.'/'.$path));
 
         $cleared = 0;
@@ -89,15 +113,63 @@ final class SyncWorkspace extends Command
         }
 
         $this->flushTotal('cleared', $cleared);
+
+        return $this->discardLocalEdits($dir, $trackedLocally);
     }
 
     /**
-     * @param  list<string>  $arguments
+     * Deleting the untracked seeds only answers one of git's two ff-only refusals.
+     * A seeded path tracked in the index and modified on disk draws the other
+     * ("your local changes … would be overwritten") and the diff above structurally
+     * excludes it, so only a checkout clears it.
+     *
+     * This therefore discards ANY local edit under the seeded directory, not just
+     * the untracked seeds — safe because the skip check has already established the
+     * branch carries no commits of its own, so nothing under it here is real work.
+     *
+     * @param  Collection<int, string>  $trackedLocally
+     */
+    private function discardLocalEdits(string $dir, Collection $trackedLocally): bool
+    {
+        // A workspace cut from a local main that predates the seeded directory
+        // tracks none of it, and a checkout against a pathspec HEAD never knew is a
+        // hard git error — which would abort the very run this command exists to fix.
+        if ($trackedLocally->isEmpty()) {
+            return true;
+        }
+
+        $checkout = $this->git($dir, ['checkout', 'HEAD', '--', self::SEEDED_DIR]);
+
+        if ($checkout->failed()) {
+            $this->reportGitFailure('Failed to discard local changes under '.self::SEEDED_DIR.": {$dir}", $checkout);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Git's own reason for the abort is the whole diagnostic value in LaborForest's
+     * run log — the inline step this command replaced piped it there verbatim.
+     */
+    private function reportGitFailure(string $message, ProcessResult $result): void
+    {
+        $this->error($message);
+
+        $reason = Str::trim($result->errorOutput());
+
+        if ($reason !== '') {
+            $this->output->writeln($reason);
+        }
+    }
+
+    /**
      * @return Collection<int, string>
      */
-    private function gitPaths(string $dir, array $arguments): Collection
+    private function gitPaths(ProcessResult $result): Collection
     {
-        return Str::of($this->git($dir, $arguments)->output())
+        return Str::of($result->output())
             ->explode("\n")
             ->map(fn (string $line): string => Str::trim($line))
             ->filter(fn (string $line): bool => $line !== '')

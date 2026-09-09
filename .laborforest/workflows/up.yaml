@@ -5,7 +5,8 @@ sort_order: 0
 steps:
   # LaborForest cuts a worktree from the *local* base branch and never fetches, so
   # a stale primary silently produces stale branches. Fetching here rather than
-  # asking anyone to keep the primary current means its freshness stops mattering.
+  # asking anyone to keep the primary current means its *branch* freshness stops
+  # mattering; its code still does — the next step runs the primary's artisan.
   - name: 'Fetch from origin'
     type: shell
     run: 'git fetch origin --prune'

@@ -400,6 +400,12 @@ describe('up.yaml fast-forward', function () use ($workflow, $stepsOf): void {
     // into `lf:workspace-sync`, where the Feature suite can actually run them —
     // which also retires the `test "$(git rev-list …)"` condition, computation
     // inside a workflow string that nothing in this repo can test.
+    //
+    // The workspace argument is counted separately because it is the half the
+    // design rests on: the step runs the PRIMARY checkout's artisan, so
+    // base_path() in that process is the primary's tree. Dropped or mistyped, the
+    // command still runs — against the primary — and a count of invocations alone
+    // stays green while the fast-forward silently acts on the wrong worktree.
     it('fast-forwards through the artisan command rather than an inline merge', function () use ($workflow, $stepsOf): void {
         // Arrange
         $steps = collect($stepsOf($workflow('up')));
@@ -408,6 +414,10 @@ describe('up.yaml fast-forward', function () use ($workflow, $stepsOf): void {
         $report = [
             'lf:workspace-sync steps' => $steps
                 ->filter(fn (array $step): bool => Str::contains((string) ($step['run'] ?? ''), 'lf:workspace-sync'))
+                ->count(),
+            'sync steps passing the workspace dir' => $steps
+                ->filter(fn (array $step): bool => Str::contains((string) ($step['run'] ?? ''), 'lf:workspace-sync')
+                    && Str::contains((string) ($step['run'] ?? ''), '{{ WORKSPACE_DIR }}'))
                 ->count(),
             'inline merge' => $steps
                 ->contains(fn (array $step): bool => Str::contains((string) ($step['run'] ?? ''), 'git merge')),
@@ -422,6 +432,7 @@ describe('up.yaml fast-forward', function () use ($workflow, $stepsOf): void {
         // Assert
         expect($report)->toBe([
             'lf:workspace-sync steps' => 1,
+            'sync steps passing the workspace dir' => 1,
             'inline merge' => false,
             'computed conditions' => [],
         ]);
