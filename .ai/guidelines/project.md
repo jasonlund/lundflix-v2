@@ -638,8 +638,17 @@ LaborForest + Solo is the current path for new work.
 - **Never put computation in a workflow's bash string.** A `shell` step's `run:` is
   a string inside YAML — nothing can test it, so any logic there is unverifiable by
   construction. Route it through an artisan command and test that at `artisan()`:
-  `lf:workspace-env` derives a workspace's site/database/URL. A step should be one
-  line.
+  `lf:workspace-env` derives a workspace's site/database/URL, and
+  `lf:workspace-sync` clears LaborForest's seeded `.laborforest/` files before
+  fast-forwarding onto `origin/main`. A step should be one line.
+- **A step that must run before `composer install` calls the primary checkout's
+  artisan.** A fresh worktree has no `vendor/`, so its own `php artisan` cannot boot
+  until Composer has run — and Composer cannot move ahead of `up`'s fast-forward
+  without resolving the stale `composer.lock`. Such a step spells the binary
+  `php "{{ PROJECT_PRIMARY_DIR }}/artisan"` and passes `{{ WORKSPACE_DIR }}` as an
+  argument, because `base_path()` in that process is the *primary's* tree, never the
+  workspace's. `lf:workspace-sync` is the only one, and `LaborForestWorkflowTest`
+  pins both halves — the workspace's own artisan still may not precede Composer.
 - **The workflows never touch Solo — but the agent driving them may.** `up` creates no
   Solo state, so `down` has none to reverse, and the boundary stays where the two tools
   already draw it: LaborForest orchestrates worktrees, Solo runs processes inside one.

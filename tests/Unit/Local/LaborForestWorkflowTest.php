@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Symfony\Component\Yaml\Yaml;
 
@@ -21,13 +22,13 @@ use Symfony\Component\Yaml\Yaml;
  * unguarded destructive step past a green suite. Ordering assertions are the one
  * exception, and they too locate their steps by content before comparing index.
  *
- * Scope limit, deliberate: the `down` sweep is an allowlist of two named
- * destructive acts, not a classifier of destructiveness. A step of a third kind
- * — an `rm -rf`, a second unlink — is neither checked nor reported. (`refresh`
- * is swept wholesale instead, every step needing the guard; `up` is checked for
- * its nested `refresh` call alone.) So a green run is evidence that these two
- * acts are guarded, never that they are the only ones present. Adding a
- * destructive step to `down` means adding its matcher.
+ * Scope limit, deliberate: the destructive sweeps are allowlists of named acts —
+ * two in `down`, one in `up` — not a classifier of destructiveness. A step of an
+ * unlisted kind — an `rm -rf`, a second unlink — is neither checked nor
+ * reported. (`refresh` is swept wholesale instead, every step needing the guard;
+ * `up` is additionally checked for its nested `refresh` call.) So a green run is
+ * evidence that the listed acts are guarded, never that they are the only ones
+ * present. Adding a destructive step to either file means adding its matcher.
  */
 
 /** The guard every destructive step must carry, verbatim. */
@@ -59,14 +60,58 @@ $stepsOf = fn (array $workflow): array => collect((array) ($workflow['steps'] ??
     ->all();
 
 /**
- * The destructive acts `down` performs, each recognised by what its `run` does.
+ * A workflow's `run` strings, in declaration order — the index is the step's
+ * position, which the ordering assertions compare.
  *
- * @var array<string, Closure(string): bool>
+ * @param  array<string, mixed>  $workflow
+ * @return Collection<int, string>
+ */
+$runsOf = fn (array $workflow): Collection => collect($stepsOf($workflow))
+    ->map(fn (array $step): string => (string) ($step['run'] ?? ''))
+    ->values();
+
+/**
+ * The destructive acts each workflow performs, keyed by workflow then by act —
+ * the `run` matchers behind the identify-by-content rule above.
+ *
+ * Listed per workflow rather than as one shared set because each sweep asserts
+ * `present => true` for every act it names: a shared set would demand every act
+ * appear in every file.
+ *
+ * @var array<string, array<string, Closure(string): bool>>
  */
 $destructiveActs = [
-    'database drop' => fn (string $run): bool => preg_match('/\bDROP\s+DATABASE\b/i', $run) === 1,
-    'herd unlink' => fn (string $run): bool => preg_match('/\bherd\s+unlink\b/i', $run) === 1,
+    'up' => [
+        'workspace sync' => fn (string $run): bool => Str::contains($run, 'lf:workspace-sync'),
+    ],
+    'down' => [
+        'database drop' => fn (string $run): bool => preg_match('/\bDROP\s+DATABASE\b/i', $run) === 1,
+        'herd unlink' => fn (string $run): bool => preg_match('/\bherd\s+unlink\b/i', $run) === 1,
+    ],
 ];
+
+/**
+ * For each named act: whether the workflow still performs it, and the `run` of
+ * every step performing it without the primary-checkout guard.
+ *
+ * @param  list<array<string, mixed>>  $steps
+ * @param  array<string, Closure(string): bool>  $acts
+ * @return array<string, array{present: bool, unguarded: list<string>}>
+ */
+$guardAudit = (fn (array $steps, array $acts): array => collect($acts)
+    ->map(function (Closure $matches) use ($steps, $primaryGuard): array {
+        $hits = collect($steps)->filter(fn (array $step): bool => $matches((string) ($step['run'] ?? '')));
+
+        return [
+            'present' => $hits->isNotEmpty(),
+            'unguarded' => $hits
+                ->reject(fn (array $step): bool => ($step['if'] ?? null) === $primaryGuard)
+                ->map(fn (array $step): string => (string) ($step['run'] ?? ''))
+                ->values()
+                ->all(),
+        ];
+    })
+    ->all());
 
 describe('workflow declarations', function () use ($workflow): void {
     it('declares each workflow with the status transition it performs', function () use ($workflow): void {
@@ -110,7 +155,7 @@ describe('workflow declarations', function () use ($workflow): void {
     });
 });
 
-describe('primary-checkout guard', function () use ($workflow, $stepsOf, $primaryGuard, $destructiveActs): void {
+describe('primary-checkout guard', function () use ($workflow, $stepsOf, $primaryGuard, $destructiveActs, $guardAudit): void {
     it('guards the nested refresh call in up against the primary checkout', function () use ($workflow, $stepsOf, $primaryGuard): void {
         // Arrange
         $steps = $stepsOf($workflow('up'));
@@ -143,27 +188,28 @@ describe('primary-checkout guard', function () use ($workflow, $stepsOf, $primar
             ->and($unguarded)->toBe([]);
     });
 
-    it('guards every destructive step in down against the primary checkout', function () use ($workflow, $stepsOf, $primaryGuard, $destructiveActs): void {
-        // Each destructive act is recognised by what its `run` does, so a step
-        // added later is judged on its content rather than its position.
+    // The fast-forward deletes files, so it belongs to the same class as down's
+    // two acts: run in the primary checkout it would clear `.laborforest/` there
+    // and drag the primary's own working tree onto origin/main.
+    it('guards every destructive step in up against the primary checkout', function () use ($workflow, $stepsOf, $destructiveActs, $guardAudit): void {
+        // Arrange
+        $steps = $stepsOf($workflow('up'));
+
+        // Act
+        $report = $guardAudit($steps, $destructiveActs['up']);
+
+        // Assert
+        expect($report)->toBe([
+            'workspace sync' => ['present' => true, 'unguarded' => []],
+        ]);
+    });
+
+    it('guards every destructive step in down against the primary checkout', function () use ($workflow, $stepsOf, $destructiveActs, $guardAudit): void {
         // Arrange
         $steps = $stepsOf($workflow('down'));
 
         // Act
-        $report = collect($destructiveActs)
-            ->map(function (Closure $matches) use ($steps, $primaryGuard): array {
-                $hits = collect($steps)->filter(fn (array $step): bool => $matches((string) ($step['run'] ?? '')));
-
-                return [
-                    'present' => $hits->isNotEmpty(),
-                    'unguarded' => $hits
-                        ->reject(fn (array $step): bool => ($step['if'] ?? null) === $primaryGuard)
-                        ->map(fn (array $step): string => (string) ($step['run'] ?? ''))
-                        ->values()
-                        ->all(),
-                ];
-            })
-            ->all();
+        $report = $guardAudit($steps, $destructiveActs['down']);
 
         // Assert
         expect($report)->toBe([
@@ -184,7 +230,7 @@ describe('down.yaml failure tolerance', function () use ($workflow, $stepsOf, $d
         $tolerates = fn (string $run): bool => preg_match('/\|\|\s*(true\b|echo\b)/', $run) === 1;
 
         // Act
-        $report = collect($destructiveActs)
+        $report = collect($destructiveActs['down'])
             ->map(function (Closure $matches) use ($steps, $tolerates): array {
                 $hits = collect($steps)->filter(fn (array $step): bool => $matches((string) ($step['run'] ?? '')));
 
@@ -207,16 +253,16 @@ describe('down.yaml failure tolerance', function () use ($workflow, $stepsOf, $d
     });
 });
 
-describe('down.yaml step ordering', function () use ($workflow, $stepsOf): void {
+describe('down.yaml step ordering', function () use ($workflow, $runsOf): void {
     // `up` copies the primary's .env verbatim and only rewrites it four steps
     // later, so an `up` that aborted in between leaves DB_DATABASE=lundflix and
     // LF_SITE=lundflix-v2 in a worktree's .env. Every guard here compares
     // directories and so cannot see a stale name. LaborForest re-reads .env per
     // step, so re-deriving before the destructive steps is what makes the
     // {{ ENV_* }} they interpolate name the workspace's own resources.
-    it('derives the workspace env before either destructive step', function () use ($workflow, $stepsOf): void {
+    it('derives the workspace env before either destructive step', function () use ($workflow, $runsOf): void {
         // Arrange
-        $runs = collect($stepsOf($workflow('down')))->map(fn (array $step): string => (string) ($step['run'] ?? ''))->values();
+        $runs = $runsOf($workflow('down'));
 
         // Act
         $position = [
@@ -234,36 +280,71 @@ describe('down.yaml step ordering', function () use ($workflow, $stepsOf): void 
     });
 });
 
-describe('up.yaml step ordering', function () use ($workflow, $stepsOf): void {
+describe('up.yaml step ordering', function () use ($workflow, $runsOf): void {
     // A fresh worktree has no vendor/, so `php artisan` cannot run until Composer
     // has. This ordering was wrong on the first real `lf run up`: step 4 died with
     // "Failed opening required .../vendor/autoload.php" and aborted the other ten.
     // Nothing else can catch it — `lf validate` exits 0 regardless, and every other
     // guard here matches steps by content precisely so that position never matters.
     // Ordering is the one property that genuinely is positional.
-    it('installs Composer dependencies before the first step that runs artisan', function () use ($workflow, $stepsOf): void {
+    //
+    // Only the WORKSPACE'S OWN artisan is bound by this: a step invoking the
+    // primary checkout's binary (`php "{{ PROJECT_PRIMARY_DIR }}/artisan" …`)
+    // boots against a vendor/ that already exists, so it may — and must — precede
+    // Composer. Matching the bare literal `php artisan` would let exactly that
+    // form slip past unseen, leaving the guard green and meaningless.
+    it('installs Composer dependencies before the first step that runs the workspace\'s own artisan', function () use ($workflow, $runsOf): void {
         // Arrange
-        $runs = collect($stepsOf($workflow('up')))->map(fn (array $step): string => (string) ($step['run'] ?? ''))->values();
+        $runs = $runsOf($workflow('up'));
 
         // Act
         $position = [
             'composer install' => $runs->search(fn (string $run): bool => Str::contains($run, 'composer install')),
-            'first artisan' => $runs->search(fn (string $run): bool => Str::contains($run, 'php artisan')),
+            'first workspace artisan' => $runs->search(fn (string $run): bool => Str::contains($run, 'artisan')
+                && ! Str::contains($run, 'PROJECT_PRIMARY_DIR')),
         ];
 
         // Assert
         expect($position['composer install'])->toBeInt()
-            ->and($position['first artisan'])->toBeInt()
-            ->and($position['composer install'])->toBeLessThan($position['first artisan']);
+            ->and($position['first workspace artisan'])->toBeInt()
+            ->and($position['composer install'])->toBeLessThan($position['first workspace artisan']);
+    });
+
+    // The other half of that trade. Composer cannot move ahead of the
+    // fast-forward — it would resolve the stale worktree's composer.lock — so an
+    // artisan step genuinely does have to run before vendor/ exists, and the only
+    // artisan that can boot there is the primary checkout's.
+    it('runs any artisan step that precedes Composer install through the primary checkout\'s artisan', function () use ($workflow, $runsOf): void {
+        // Arrange
+        $runs = $runsOf($workflow('up'));
+
+        // Act
+        $beforeComposer = $runs
+            ->take((int) $runs->search(fn (string $run): bool => Str::contains($run, 'composer install')))
+            ->filter(fn (string $run): bool => Str::contains($run, 'artisan'));
+
+        $report = [
+            'runs artisan before Composer install' => $beforeComposer->isNotEmpty(),
+            'not through the primary checkout' => $beforeComposer
+                ->reject(fn (string $run): bool => Str::contains($run, '{{ PROJECT_PRIMARY_DIR }}'))
+                ->values()
+                ->all(),
+        ];
+
+        // Assert
+        expect($report)->toBe([
+            'runs artisan before Composer install' => true,
+            'not through the primary checkout' => [],
+        ]);
     });
 
     // Until `lf:workspace-env` runs, .env is still the primary's verbatim copy,
     // so both later steps would interpolate the primary's values: the database
     // step would target `lundflix`, and `herd link --secure lundflix-v2` would
     // re-point the primary's own site at this worktree.
-    it('derives the workspace env before creating the database and linking the Herd site', function () use ($workflow, $stepsOf): void {
+    it('derives the workspace env before creating the database and linking the Herd site', function () use ($workflow, $runsOf): void {
         // Arrange
-        $runs = collect($stepsOf($workflow('up')))->map(fn (array $step): string => (string) ($step['run'] ?? ''))->values();
+        $runs = $runsOf($workflow('up'));
 
         // Act
         $position = [
@@ -310,10 +391,47 @@ describe('mysql invocation', function () use ($workflow, $stepsOf): void {
     });
 });
 
-describe('up.yaml env derivation', function () use ($workflow, $stepsOf): void {
-    it('derives the workspace env through the artisan command rather than an inline sed', function () use ($workflow, $stepsOf): void {
+describe('up.yaml fast-forward', function () use ($workflow, $stepsOf): void {
+    // A bare `git merge --ff-only` aborts every run on a fresh worktree:
+    // LaborForest seeds `.laborforest/workflows/*.yaml` and
+    // `.laborforest/ignored/.gitignore` as UNTRACKED files, those same paths are
+    // TRACKED on origin/main, and --ff-only refuses to clobber them (FLIX-302).
+    // The skip check, the clearing of those seeded paths and the merge all move
+    // into `lf:workspace-sync`, where the Feature suite can actually run them —
+    // which also retires the `test "$(git rev-list …)"` condition, computation
+    // inside a workflow string that nothing in this repo can test.
+    it('fast-forwards through the artisan command rather than an inline merge', function () use ($workflow, $stepsOf): void {
         // Arrange
-        $runs = collect($stepsOf($workflow('up')))->map(fn (array $step): string => (string) ($step['run'] ?? ''));
+        $steps = collect($stepsOf($workflow('up')));
+
+        // Act
+        $report = [
+            'lf:workspace-sync steps' => $steps
+                ->filter(fn (array $step): bool => Str::contains((string) ($step['run'] ?? ''), 'lf:workspace-sync'))
+                ->count(),
+            'inline merge' => $steps
+                ->contains(fn (array $step): bool => Str::contains((string) ($step['run'] ?? ''), 'git merge')),
+            'computed conditions' => $steps
+                ->filter(fn (array $step): bool => Str::contains((string) ($step['if'] ?? ''), '$(')
+                    || Str::contains((string) ($step['unless'] ?? ''), '$('))
+                ->map(fn (array $step): string => (string) ($step['name'] ?? ''))
+                ->values()
+                ->all(),
+        ];
+
+        // Assert
+        expect($report)->toBe([
+            'lf:workspace-sync steps' => 1,
+            'inline merge' => false,
+            'computed conditions' => [],
+        ]);
+    });
+});
+
+describe('up.yaml env derivation', function () use ($workflow, $runsOf): void {
+    it('derives the workspace env through the artisan command rather than an inline sed', function () use ($workflow, $runsOf): void {
+        // Arrange
+        $runs = $runsOf($workflow('up'));
 
         // Act
         $derivation = [
