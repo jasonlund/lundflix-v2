@@ -147,4 +147,31 @@ describe('handle() null default season type', function (): void {
         // Assert
         expect($episode->fresh()->season_id)->toBe($season->id);
     });
+
+    it('clears a link to another show season when the show has no default season type', function (): void {
+        // Models TVDB moving an episode between shows: the upsert re-parents the row
+        // by `_tvdb_id` and writes the new `show_id`, leaving `season_id` pointing at
+        // the FORMER show's season. A season owned by another show cannot be this
+        // episode's season under any ordering, so it is positive evidence the link is
+        // wrong — exactly the evidence the null-default guard exists to wait for.
+        // Arrange
+        $formerShow = Show::factory()->withTvdb()->create(['_tvdb_defaultSeasonType' => 1]);
+        $formerSeason = Season::factory()->create([
+            'show_id' => $formerShow->id,
+            '_tvdb_number' => 3,
+            '_tvdb_type' => ['id' => 1, 'name' => 'Aired Order', 'type' => 'official'],
+        ]);
+        $show = Show::factory()->withTvdb()->create(['_tvdb_defaultSeasonType' => null]);
+        $episode = Episode::factory()->create([
+            'show_id' => $show->id,
+            'season_id' => $formerSeason->id,
+            '_tvdb_seasonNumber' => 3,
+        ]);
+
+        // Act
+        resolve(LinkTvdbEpisodeSeasons::class)->handle($show);
+
+        // Assert
+        expect($episode->fresh()->season_id)->toBeNull();
+    });
 });

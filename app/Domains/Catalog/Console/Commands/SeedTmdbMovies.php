@@ -51,7 +51,7 @@ final class SeedTmdbMovies extends TmdbMoviesCommand
         $this->upsertImages = $upsertImages;
         $this->reindexTouchedRows = $reindexTouchedRows;
 
-        // Both phases, in this order, because runLeg() advances the marker on any
+        // Both phases run, because runLeg() advances the marker on any
         // zero-failure run: the export scan can only reach ids the catalog does NOT
         // hold, so an insert-only seed would jump the marker to now while every UPDATE
         // inside the span it skipped stays unfetched — and silence recordCappedWindow()
@@ -64,10 +64,20 @@ final class SeedTmdbMovies extends TmdbMoviesCommand
         // actually repaired the gap. `catalog:seed-movies --fresh` is therefore the
         // operator's remedy for a marker stale past the cap; a plain seed leaves held
         // titles inside that span unfetched, so its alarm rightly persists.
-        // Assigned before the `||` so a failing insert can't short-circuit it away.
+        //
+        // Changes first, then the export scan, so the two phases are disjoint by
+        // construction rather than by de-dup bookkeeping: this leg leaves
+        // insertHeartbeatTag() at its null default, so updateChanged() refreshes HELD
+        // ids only. Running it first means it probes the pre-run held set and the scan
+        // then covers exactly the remainder. Scan-first instead, an id that is both
+        // unheld and named in the window gets stamped tmdb_synced_at by the scan, reads
+        // as held to the changes pass moments later, and is hydrated — and counted under
+        // the same heartbeat tag — a second time, so the closing total stops being the
+        // true persisted count.
+        // Assigned before the `||` so a failing phase can't short-circuit the other away.
         return $this->runLeg($marker, function () use ($export, $marker): bool {
-            $insertFailed = $this->insertNew($export);
             $changesFailed = $this->option('fresh') ? false : $this->updateChanged($marker);
+            $insertFailed = $this->insertNew($export);
 
             return $insertFailed || $changesFailed;
         });

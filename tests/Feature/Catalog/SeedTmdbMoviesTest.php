@@ -213,6 +213,25 @@ describe('catalog:seed-movies export scan', function (): void {
         expect(Movie::where('_tmdb_id', 8001)->value('_tmdb_title'))->toBe('Movie 8001');
     });
 
+    it('hydrates an id that is both unheld and changed exactly once', function (): void {
+        // Arrange
+        // The one id both phases can see: absent from the catalog, so the export scan
+        // must hydrate it, AND named in the changes window, so the changes pass probes
+        // for it. The phases are disjoint only because the changes pass runs first and
+        // sees the PRE-run held set, which does not hold 8002 — so the export scan
+        // covers exactly the remainder. Reversed, the scan's own tmdb_synced_at stamp
+        // makes the id look held to the pass that follows, and its detail is fetched,
+        // and counted under the same tag, a second time.
+        fakeTmdbSeedIdsExport([8002], changedIds: [8002]);
+
+        // Act
+        $this->artisan('catalog:seed-movies');
+
+        // Assert
+        $detail = Http::recorded(fn (Request $request): bool => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/8002'));
+        expect($detail->count())->toBe(1);
+    });
+
     it('deletes the export temp file and exits SUCCESS', function (): void {
         // Capturing the sink path pins the assertion to THIS run's temp file; globbing
         // the shared system temp dir would also see files other processes create and
@@ -230,7 +249,7 @@ describe('catalog:seed-movies export scan', function (): void {
         expect(file_exists($sinkPath))->toBeFalse();
     });
 
-    it('reads the changes feed after the export scan', function (): void {
+    it('reads the changes feed before the export scan', function (): void {
         // Arrange
         fakeTmdbMovieSeed();
 
@@ -240,13 +259,15 @@ describe('catalog:seed-movies export scan', function (): void {
         // Assert
         // The ORDER is the assertion, not just the pair: the export scan hydrates what
         // the catalog lacks and the changes pass refreshes what it holds, and only
-        // running both covers the span the run then advances the marker over.
+        // running both covers the span the run then advances the marker over. Changes
+        // first is what makes the two disjoint — it reads the pre-run held set, before
+        // the scan's stamps can make a freshly inserted id look held to it.
         $urls = Http::recorded()->map(fn (array $pair): string => (string) $pair[0]->url());
         $export = $urls->search(fn (string $url): bool => Str::contains($url, 'movie_ids'));
         $changes = $urls->search(fn (string $url): bool => Str::contains($url, '/movie/changes'));
         expect($export)->toBeInt();
         expect($changes)->toBeInt();
-        expect($export)->toBeLessThan($changes);
+        expect($changes)->toBeLessThan($export);
     });
 
     it('advances the movies marker on a clean run', function (): void {

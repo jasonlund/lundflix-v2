@@ -314,8 +314,17 @@ is what let FLIX-292 drop the crawl without weakening it. Scoping it to the chan
 episodes would have broken the two cases it exists for: a **changed default season
 type** and a **removed season** invalidate every one of the show's links, not just the
 changed episodes'. Both the seed path and the incremental path call it, so neither can
-drift. A null `_tvdb_defaultSeasonType` makes it a no-op — a null default matches zero
-seasons, so re-deriving under it would wipe every correct link rather than fix any.
+drift. A null `_tvdb_defaultSeasonType` makes the re-derivation a no-op — a null default
+matches zero seasons, so re-deriving under it would wipe every correct link rather than
+fix any.
+
+**One clearing pass runs before that no-op, and must.** An episode whose `season_id`
+belongs to a *different* show is not an unknown link, it is a wrong one: `UpsertTvdbEpisodes`
+re-parents on `_tvdb_id` (see **Per-episode refresh** above), and a re-parent rewrites
+`show_id` without touching `season_id`. So a cross-show link is cleared unconditionally,
+while the null-default guard goes on protecting links this show cannot currently re-derive.
+"Absent knowledge is not evidence the links are wrong" holds for the show's own seasons;
+it never held for another show's.
 
 ## Shared sync-command mechanics
 

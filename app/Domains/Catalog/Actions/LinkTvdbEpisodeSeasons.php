@@ -19,6 +19,17 @@ final readonly class LinkTvdbEpisodeSeasons
      */
     public function handle(Show $show): void
     {
+        // An episode re-parented onto this show (TVDB moved it, so the upsert matched
+        // globally on `_tvdb_id` and rewrote `show_id`) still carries its former show's
+        // `season_id`. The foreign key stays valid, so nothing errors — the reference is
+        // just silently wrong. A season owned by another show cannot be this episode's
+        // season under ANY ordering, so it is cleared ahead of the null-default guard:
+        // that guard withholds judgement for want of evidence, and this is evidence.
+        $show->episodes()
+            ->whereNotNull('season_id')
+            ->whereNotIn('season_id', $show->seasons()->select('id'))
+            ->update(['season_id' => null]);
+
         // A null default names no ordering to resolve against, so it matches zero
         // seasons — re-deriving under it would wipe every correct link rather than
         // fix any. Absent knowledge is not evidence the existing links are wrong.
