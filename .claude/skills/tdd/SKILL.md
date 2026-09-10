@@ -50,6 +50,12 @@ next slice → new RED plan card
 - **Minimal green.** Implement only what the slice's tests require.
 - **Gates are mandatory.** Never skip a phase. Never advance past a gate until its
   exit condition is shown (real command output, not a claim).
+- **Every phase subagent is spawned FOREGROUND.** Never pass `run_in_background`.
+  Your next act after each spawn is to block on that phase's gate, so backgrounding
+  overlaps nothing — it only makes the harness wake you on completion and nudge you
+  to narrate, adding three no-information status lines per phase and nine per slice.
+  `.claude/hooks/no-background-gated-subagents.js` denies it if you try; this rule is
+  so you never do.
 
 ## Sizing a slice
 

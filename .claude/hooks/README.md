@@ -1,6 +1,6 @@
 # Hooks
 
-Five hooks, all wired in `.claude/settings.json`, in three families:
+Six hooks, all wired in `.claude/settings.json`, in four families:
 
 - **Two `UserPromptSubmit` skill routers** nudge the agent into the right skill
   before it starts editing. Both **only remind** — they print to stdout, which
@@ -11,6 +11,9 @@ Five hooks, all wired in `.claude/settings.json`, in three families:
 - **Two `PreToolUse` guards** — one on `Bash`, one on `AskUserQuestion` — decide
   whether a tool call runs at all. Both **exit 2 to block**: the call is refused and
   the message on stderr goes back to the agent as the reason.
+- **One `PreToolUse(Agent)` guard** decides whether a subagent dispatch runs. It
+  **denies by decision**: a JSON `permissionDecision` on stdout, exit 0 in every
+  path.
 
 | Hook | Event | Fires on | Effect |
 |---|---|---|---|
@@ -19,6 +22,7 @@ Five hooks, all wired in `.claude/settings.json`, in three families:
 | `unattended-mode-notice.sh` | `UserPromptSubmit` | `permission_mode` is `bypassPermissions` — the session was started with `--dangerously-skip-permissions`, so nobody is watching | Notices → skill approval gates that only ask a human do not apply |
 | `block-destructive-git.sh` | `PreToolUse` (Bash) | A git command that destroys uncommitted work with no undo (`reset --hard/--merge/--keep`, `clean -f`, `branch -D`, `checkout .`, `restore .`, `stash drop/clear`) | Exits 2 → blocks the call; asks for a recoverable route instead |
 | `block-ask-user-question.sh` | `PreToolUse` (AskUserQuestion) | Any call to the `AskUserQuestion` picker — questions in this repo are plain markdown rounds in the chat | Exits 2 → blocks the call; names the canonical round format instead |
+| `no-background-gated-subagents.js` | `PreToolUse` (Agent) | A `run_in_background: true` dispatch of a subagent whose dispatcher blocks on a gate — `tdd-test-writer`, `tdd-implementer`, `tdd-refactorer`, `review-fixer` | Denies the call with a reason naming that agent's own gate; re-dispatch foreground |
 
 ## The two skill reminders
 
@@ -109,3 +113,33 @@ property of the machine, so any other exit would nag on every call until it land
 
 Pinned by `tests/Feature/Hooks/BlockAskUserQuestionTest.php`; the rule it enforces
 is *Asking the user a question* in `.ai/guidelines/project.md`.
+
+## The background-dispatch guard
+
+Backgrounding a subagent buys concurrency. In front of a blocking gate there is
+none to buy: the dispatcher's very next act is to wait for that phase's result, so
+`run_in_background` overlaps nothing and only makes the harness wake the
+orchestrator on completion and nudge it to narrate — three no-information status
+lines per phase, nine per `tdd` slice. The `tdd` skill and `/review:process` both
+say to dispatch foreground; a command or skill body is advisory, so this enforces it.
+
+**Why it denies rather than exiting 2.** The structured form carries a
+`permissionDecisionReason` the harness surfaces verbatim, which lets the denial name
+*which* gate the caller is about to block on — the RED/GREEN/REFACTOR gates for the
+`tdd` trio, `/review:process` Phase 3 for `review-fixer`. An `exit 2` would deliver a
+bare stderr line with nowhere to put that. The decision travels in the JSON, so the
+script **exits 0 in every path, including the deny**; a non-zero exit would surface
+as a hook error instead.
+
+A payload it cannot parse **fails OPEN** — the deliberate opposite of
+`block-destructive-git.sh`.
+
+**The guarded set is name-based** — the map at the top of the script. A new subagent
+dispatched in front of a blocking gate inherits nothing and must be added there;
+`/review:suite`'s backgrounded `coderabbit-reviewer` deliberately stays out, because
+it genuinely overlaps `/review:claude` running concurrently.
+
+Pinned by `tests/Feature/Hooks/NoBackgroundGatedSubagentsTest.php`, which also
+asserts the registration in `.claude/settings.json` — an unwired hook is inert and
+silent, so every behavior test can pass while the guard never fires; the script's own
+comments carry the fail-open rationale.

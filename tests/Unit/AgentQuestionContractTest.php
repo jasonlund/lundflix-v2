@@ -593,10 +593,14 @@ describe('picker hook wiring', function () use ($pickerTool, $hookScript): void 
         // nothing to do with whether it was documented. That is not hypothetical: this
         // guard was written reading `four`, and the unattended-mode notice made it five
         // on the same branch.
+        // A hook is not always a bash script — the background-dispatch guard is `.js` —
+        // so the row pattern takes either extension. Matching `.sh` alone would drop the
+        // `.js` rows from the count and then demand an opening number that undercounts
+        // the very table it derives from.
         // Arrange
         $readme = ToolkitFiles::read('.claude/hooks/README.md');
         $spelled = [1 => 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
-        $documented = preg_match_all('~^\|[^|\n]*\.sh[^|\n]*\|~m', $readme);
+        $documented = preg_match_all('~^\|[^|\n]*\.(?:sh|js)[^|\n]*\|~m', $readme);
 
         // Act
         $missing = ToolkitFiles::missingPatterns($readme, [
