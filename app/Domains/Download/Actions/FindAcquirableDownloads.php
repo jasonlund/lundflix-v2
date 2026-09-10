@@ -8,6 +8,7 @@ use App\Domains\Catalog\Data\UnitRef;
 use App\Domains\Catalog\Enums\UnitKind;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Download\Contracts\FindsAcquirableDownloads;
+use App\Domains\Download\Enums\Category;
 use App\Domains\Download\Models\Download;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -74,8 +75,18 @@ final readonly class FindAcquirableDownloads implements FindsAcquirableDownloads
             }
 
             if ($tmdbId !== null) {
+                // TMDB numbers movies and series in separate sequences, so one number
+                // names two unrelated works and `_tmdb_id` is not a movie-only
+                // namespace — the column is filled from a pattern spanning both types.
+                // `_provider_category` is the only record of which type a row was
+                // mirrored from, so without it a series row would be attributed by a
+                // movie's tmdb id. The imdb clause needs no such guard: imdb ids are
+                // one global namespace.
                 $query->orWhere(
-                    fn (Builder $group): Builder => $group->whereNull('_imdb_id')->where('_tmdb_id', $tmdbId),
+                    fn (Builder $group): Builder => $group
+                        ->whereNull('_imdb_id')
+                        ->where('_tmdb_id', $tmdbId)
+                        ->where('_provider_category', Category::Movies),
                 );
             }
         };

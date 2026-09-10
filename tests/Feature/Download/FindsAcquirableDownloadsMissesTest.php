@@ -8,6 +8,7 @@ use App\Domains\Catalog\Models\Episode;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Download\Contracts\FindsAcquirableDownloads;
+use App\Domains\Download\Enums\Category;
 use App\Domains\Download\Models\Download;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -67,6 +68,27 @@ describe('for() misses', function (): void {
 
         // Act
         $resolved = resolve(FindsAcquirableDownloads::class)->for(new UnitRef(UnitKind::Movie, $movieA->id));
+
+        // Assert
+        expect($resolved)->toBeNull();
+    });
+
+    it('resolves to nothing when only a television row carries the movie tmdb id', function (): void {
+        // TMDB numbers movies and series in separate sequences, so one number names
+        // two unrelated works. `_provider_category` is the only record of which type a
+        // row was mirrored from, so the tmdb id alone cannot attribute it to a movie.
+        // The imdb precedence guard is no help here: it applies only to a row that
+        // carries an imdb id, and this one does not.
+        // Arrange
+        $movie = Movie::factory()->create(['_imdb_id' => 'tt3333333', '_tmdb_id' => 550]);
+        Download::factory()->create([
+            '_imdb_id' => null,
+            '_tmdb_id' => 550,
+            '_provider_category' => Category::Tv,
+        ]);
+
+        // Act
+        $resolved = resolve(FindsAcquirableDownloads::class)->for(new UnitRef(UnitKind::Movie, $movie->id));
 
         // Assert
         expect($resolved)->toBeNull();
