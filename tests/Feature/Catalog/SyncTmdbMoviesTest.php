@@ -46,6 +46,9 @@ uses(RefreshDatabase::class);
 |   the volume runs stay fast.
 | — the empty `/movie/changes` results page, for the runs that must legitimately
 |   ingest nothing.
+| — the single-id `/movie/changes` page and minimal `{"id":N,"title":"Movie N"}`
+|   detail built by fakeTmdbGoneThenRestored() — a detail that 404s once and then
+|   succeeds is a timeline, not a payload, so no capture can supply it.
 */
 
 /**
@@ -120,6 +123,45 @@ function fakeTmdbChangedIds(array $ids, ?Closure $onDetail = null): void
             }
 
             return Http::response(json_encode(['id' => $id, 'title' => "Movie {$id}"]));
+        },
+    ]);
+}
+
+/**
+ * The two-run vanished-then-restored timeline in ONE fake: /movie/changes reports
+ * exactly $id on every run, and its detail 404s on the first request and serves a
+ * minimal body on every later one.
+ *
+ * It has to be one fake because Http::fake() APPENDS stubs rather than replacing
+ * them and the first matching stub wins — a second fake registered between the two
+ * runs could never take effect.
+ */
+function fakeTmdbGoneThenRestored(int $id): void
+{
+    $detailRequests = 0;
+
+    Http::fake([
+        '*movie_ids*' => Http::response(gzencode('')),
+        '*/movie/changes*' => Http::response(json_encode([
+            'results' => [['id' => $id]],
+            'page' => 1,
+            'total_pages' => 1,
+            'total_results' => 1,
+        ])),
+        // The path guard is load-bearing, not tidiness: buildStubHandler() maps over
+        // EVERY registered stub and only then takes the first non-null, so this
+        // closure runs for the /movie/changes request too. A bare call counter would
+        // spend its one 404 on the feed read and serve the detail on the first run.
+        '*api.themoviedb.org*' => function (Request $request) use ($id, &$detailRequests) {
+            if (! Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), "/movie/{$id}")) {
+                return Http::response('', 404);
+            }
+
+            $detailRequests++;
+
+            return $detailRequests === 1
+                ? Http::response('', 404)
+                : Http::response(json_encode(['id' => $id, 'title' => "Movie {$id}"]));
         },
     ]);
 }
@@ -674,6 +716,90 @@ describe('catalog:sync-movies refused details', function (): void {
         expect($stored->_tmdb_softcore)->toBeTrue();
         expect($stored->tmdb_synced_at)->not->toBeNull();
         expect($stored->isRefused())->toBeTrue();
+    });
+});
+
+describe('catalog:sync-movies vanished titles', function (): void {
+    it('stamps a held movie gone when its detail fetch 404s', function (): void {
+        // A title TMDB stops serving is otherwise indistinguishable from a healthy
+        // row: it keeps its tmdb_synced_at forever and no column records that our
+        // last fetch found nothing.
+        // Arrange
+        // 38702 is a changes-feed id fakeTmdbUpdateSync() serves no detail for — it
+        // re-keys the Matrix body onto 345 and 404s every other id — so the leg
+        // reaches a row it holds and TMDB answers with nothing.
+        Movie::factory()->create(['_tmdb_id' => 38702, 'tmdb_synced_at' => now()]);
+        fakeTmdbUpdateSync();
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        expect(Movie::where('_tmdb_id', 38702)->first()->tmdb_gone_at)->not->toBeNull();
+    });
+
+    it('clears the gone stamp when a later hydrate succeeds', function (): void {
+        // An upstream 404 is often temporary, so the stamp is a fact about the last
+        // fetch, not a retirement.
+        // Arrange
+        Movie::factory()->create([
+            '_tmdb_id' => 345,
+            'tmdb_synced_at' => now()->subDay(),
+            'tmdb_gone_at' => now()->subDay(),
+        ]);
+        fakeTmdbUpdateSync();
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        expect(Movie::where('_tmdb_id', 345)->first()->tmdb_gone_at)->toBeNull();
+    });
+
+    it('keeps a gone movie held, so a later run refreshes rather than inserts it', function (): void {
+        // Arrange
+        // Run one is arrangement: 38702 is held, its detail 404s, and the row is left
+        // stamped gone. Its tmdb_synced_at is captured HERE because run two
+        // legitimately restamps it — what must survive the 404 is the value below.
+        Movie::factory()->create(['_tmdb_id' => 38702, 'tmdb_synced_at' => '2026-07-01 00:00:00']);
+        fakeTmdbGoneThenRestored(38702);
+        Artisan::call('catalog:sync-movies');
+        $syncedAtAfterGoneRun = Movie::where('_tmdb_id', 38702)->first()->tmdb_synced_at;
+
+        // Act
+        // Read back as one string rather than chaining expectsOutputToContain(): the
+        // mocked writer hands each write to the first matching substring expectation,
+        // and `[new tmdb movies 0]` would shadow against the bare tag expectation.
+        Artisan::call('catalog:sync-movies');
+
+        // Assert
+        // The pair is the membership proof: syncedIdsAmong() filters on
+        // whereNotNull('tmdb_synced_at'), so a row the gone run had unstamped would
+        // come back on the INSERT side of run two instead of the refresh side.
+        // Stated as an absent insert COUNT rather than a `[new tmdb movies 0]` line:
+        // Artisan resolves one command instance for both calls, so run one's flushed
+        // zero is already the tag's last mark and run two suppresses the repeat.
+        expect($syncedAtAfterGoneRun?->toDateTimeString())->toBe('2026-07-01 00:00:00');
+        expect(Artisan::output())
+            ->toContain('  [tmdb movies 1]')
+            ->not->toContain('  [new tmdb movies 1]');
+    });
+
+    it('treats a gone 404 as a miss, so the run stays clean and the marker advances', function (): void {
+        // The guard exists to fail LATER: a stamp bolted on carelessly could start
+        // counting the 404 as a failed entity, which would hold the marker back and
+        // make every deleted upstream title alarm on every run.
+        // Arrange
+        Cache::flush();
+        Date::setTestNow('2026-07-16 12:00:00');
+        Movie::factory()->create(['_tmdb_id' => 38702, 'tmdb_synced_at' => now()]);
+        fakeTmdbUpdateSync();
+
+        // Act
+        $this->artisan('catalog:sync-movies')->assertExitCode(Command::SUCCESS);
+
+        // Assert
+        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
     });
 });
 
