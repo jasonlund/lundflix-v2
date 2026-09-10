@@ -74,9 +74,10 @@ one more thing: an auto-compaction mid-run summarizes the notice away, so `tdd` 
 and says so instead of entering plan mode for a human who isn't there, and the
 operator's next prompt re-fires the hook.
 
-**Editing.** If you rename the `tdd`, `tdd-feedback`, or `review-tdd-cross-slice`
-skill, update all three hardcoded skill names in this hook's heredoc and the row
-above.
+**Editing.** The heredoc hardcodes six skill names — `tdd`, `tdd-feedback` and
+`review-tdd-cross-slice` as the gates it lifts, and `plan-draft`, `plan-breakdown`
+and `plan-slices` as the ones it does not. Rename any of the six and you must update
+the notice text and the row above; nothing tests these names.
 
 `tests/Feature/Hooks/UnattendedModeNoticeTest.php` pins every branch above, plus
 the registration itself — a hook written and never wired is a silent failure no
