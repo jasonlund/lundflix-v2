@@ -102,7 +102,7 @@ final class PooledWindow implements Iterator
     #[Override]
     public function next(): void
     {
-        $this->cursor = array_shift($this->queue);
+        $this->advance();
     }
 
     /**
@@ -113,7 +113,7 @@ final class PooledWindow implements Iterator
     #[Override]
     public function rewind(): void
     {
-        $this->cursor = array_shift($this->queue);
+        $this->advance();
     }
 
     /**
@@ -125,10 +125,15 @@ final class PooledWindow implements Iterator
     public function valid(): bool
     {
         if ($this->cursor === null) {
-            $this->cursor = array_shift($this->queue);
+            $this->advance();
         }
 
         return $this->cursor !== null;
+    }
+
+    private function advance(): void
+    {
+        $this->cursor = array_shift($this->queue);
     }
 
     /**

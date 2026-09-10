@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Domains\Catalog\Services\PooledTransport;
+use App\Domains\Common\Support\HttpStatus;
 use GuzzleRetry\GuzzleRetryMiddleware;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
@@ -68,16 +69,6 @@ final class HttpClientServiceProvider extends ServiceProvider
     }
 
     /**
-     * The one definition of a transient HTTP status. Public because the pooled
-     * transport runs with this middleware disabled and owns its own re-queue,
-     * so it has to apply the same policy rather than restate it.
-     */
-    public static function isRetryableStatus(int $status): bool
-    {
-        return $status === 429 || $status >= 500;
-    }
-
-    /**
      * Retry only transient HTTP statuses: 429 or any 5xx. A null response is a
      * connection-level failure (retried separately via retry_on_timeout), not
      * here.
@@ -90,6 +81,6 @@ final class HttpClientServiceProvider extends ServiceProvider
             return false;
         }
 
-        return self::isRetryableStatus($response->getStatusCode());
+        return HttpStatus::isRetryable($response->getStatusCode());
     }
 }

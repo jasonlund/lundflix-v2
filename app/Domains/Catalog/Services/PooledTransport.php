@@ -8,7 +8,7 @@ use App\Domains\Catalog\Data\PooledAttempt;
 use App\Domains\Catalog\Data\TransportStats;
 use App\Domains\Catalog\Support\PooledWindow;
 use App\Domains\Catalog\Support\TokenBucket;
-use App\Providers\HttpClientServiceProvider;
+use App\Domains\Common\Support\HttpStatus;
 use GuzzleHttp\Handler\CurlMultiHandler;
 use GuzzleHttp\Promise\EachPromise;
 use GuzzleHttp\Promise\PromiseInterface;
@@ -201,7 +201,7 @@ final class PooledTransport
     private function isRetryable(Response|Throwable $result): bool
     {
         return $result instanceof Throwable
-            || HttpClientServiceProvider::isRetryableStatus($result->status());
+            || HttpStatus::isRetryable($result->status());
     }
 
     /**
