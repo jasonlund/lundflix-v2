@@ -71,10 +71,8 @@ bare stderr line with nowhere to put that. The decision travels in the JSON, so 
 script **exits 0 in every path, including the deny**; a non-zero exit would surface
 as a hook error instead.
 
-**It fails OPEN**, the deliberate opposite of `block-destructive-git.sh`. That guard
-stands between the user and destroyed work, so an unreadable payload fails closed.
-This one only suppresses cosmetic chatter, and a parse slip that denied *every*
-`Agent` dispatch would cost far more than the noise it saves.
+A payload it cannot parse **fails OPEN** — the deliberate opposite of
+`block-destructive-git.sh`.
 
 **The guarded set is name-based** — the map at the top of the script. A new subagent
 dispatched in front of a blocking gate inherits nothing and must be added there;
@@ -83,4 +81,5 @@ it genuinely overlaps `/review:claude` running concurrently.
 
 Pinned by `tests/Feature/Hooks/NoBackgroundGatedSubagentsTest.php`, which also
 asserts the registration in `.claude/settings.json` — an unwired hook is inert and
-silent, so every behavior test can pass while the guard never fires.
+silent, so every behavior test can pass while the guard never fires; the script's own
+comments carry the fail-open rationale.

@@ -182,10 +182,9 @@ describe('dispatches the guard lets through', function (): void {
 
     it('fails open on a payload it cannot parse', function (): void {
         // Truncated mid-object, so JSON.parse throws rather than yielding a shape
-        // with missing keys. Fail OPEN is the deliberate asymmetry with
-        // block-destructive-git.sh: that guard stands between the user and destroyed
-        // work, this one only suppresses chatter, so a parse slip that denied every
-        // Agent dispatch would cost far more than it saves.
+        // with missing keys. Failing open here is deliberate, not a gap to close
+        // into a denial — the hook's own comment above its catch-block exit carries
+        // why.
         // Arrange
         $stdin = '{"tool_name":"Agent","tool_input":';
 
