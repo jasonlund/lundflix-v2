@@ -24,6 +24,7 @@ final readonly class ImportImdbTitles
         'titleType',
         'primaryTitle',
         'originalTitle',
+        'isAdult',
         'startYear',
         'endYear',
         'runtimeMinutes',

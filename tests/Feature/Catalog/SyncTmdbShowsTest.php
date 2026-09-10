@@ -740,6 +740,189 @@ describe('catalog:sync-shows-tmdb candidate chunking and batching', function ():
     });
 });
 
+/*
+| The leg's answer to "attempted, and nothing came back" (FLIX-291). Before it,
+| an unresolvable row stayed tmdb_synced_at-null and was re-/find-ed on every
+| run forever — 95,340 rows, ~55% of the show universe, per run.
+*/
+describe('catalog:sync-shows-tmdb unresolvable-candidate backoff', function (): void {
+    it('defers an imdb-only row whose /find returns no tv results', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0133093', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+        fakeTmdbShowSync();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        $got = Show::firstOrFail();
+        expect($got->tmdb_unresolved_attempts)->toBe(1)
+            ->and($got->tmdb_retry_after?->toDateTimeString())->toBe('2026-07-17 12:00:00');
+    });
+
+    it('defers a candidate whose /tv detail 404s', function (): void {
+        // A 404 is a miss, not a fetch failure — the row is genuinely unresolvable
+        // today, so it earns the same backoff a /find miss does.
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 404_404, 'tmdb_synced_at' => null]);
+        fakeTmdbShowSync();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        expect(Show::firstOrFail()->tmdb_unresolved_attempts)->toBe(1);
+    });
+
+    it('leaves a resolved row at zero attempts', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
+        fakeTmdbShowSync();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        $got = Show::firstOrFail();
+        expect($got->tmdb_unresolved_attempts)->toBe(0)
+            ->and($got->tmdb_retry_after)->toBeNull();
+    });
+
+    it('does not walk a candidate whose retry floor has not passed', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->withTvdb()->create([
+            '_imdb_id' => 'tt0133093',
+            '_tmdb_id' => null,
+            'tmdb_synced_at' => null,
+            'tmdb_unresolved_attempts' => 1,
+            'tmdb_retry_after' => now()->addDay(),
+        ]);
+        fakeTmdbShowSync();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/find/'));
+    });
+
+    it('walks a candidate again once its retry floor has passed', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->withTvdb()->create([
+            '_imdb_id' => 'tt0133093',
+            '_tmdb_id' => null,
+            'tmdb_synced_at' => null,
+            'tmdb_unresolved_attempts' => 1,
+            'tmdb_retry_after' => now()->subMinute(),
+        ]);
+        fakeTmdbShowSync();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        // Walked AND re-deferred, on the escalated interval: a row that comes back
+        // and is simply re-attempted at the same cadence never converges.
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/find/tt0133093'));
+        expect(Show::firstOrFail()->tmdb_retry_after?->toDateTimeString())->toBe('2026-07-18 12:00:00');
+    });
+
+    it('ignores the retry floor with --fresh', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->withTvdb()->create([
+            '_imdb_id' => 'tt0903747',
+            '_tmdb_id' => null,
+            'tmdb_synced_at' => null,
+            'tmdb_unresolved_attempts' => 4,
+            'tmdb_retry_after' => now()->addDays(30),
+        ]);
+        fakeTmdbShowSync();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
+
+        // Assert
+        expect(Show::firstOrFail()->_tmdb_id)->toBe(1396);
+    });
+});
+
+/*
+| The other half of the backoff: a row TMDB never answered for is not
+| unresolvable, and deferring it would turn a transient outage into weeks of
+| silence. Neither signal names a row — the pool drops a failed id's key and a
+| chunk throw names nothing at all — so the whole chunk keeps its full-rate retry.
+*/
+describe('catalog:sync-shows-tmdb backoff and real failures', function (): void {
+    it('does not defer a candidate whose /tv detail fails per-id', function (): void {
+        // Arrange
+        Exceptions::fake();
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 500, 'tmdb_synced_at' => null]);
+        Http::fake([
+            '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+            '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/tv/500')
+                ? Http::response('', 500)
+                : Http::response('', 404),
+        ]);
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        $got = Show::firstOrFail();
+        expect($got->tmdb_unresolved_attempts)->toBe(0)
+            ->and($got->tmdb_retry_after)->toBeNull();
+    });
+
+    it('does not defer an imdb-only row whose /find fails per-id', function (): void {
+        // The reconcile cannot tell an empty tv_results from a lookup that never
+        // answered — both leave the row unstamped — so the failure has to reach the
+        // command, or an outage silently defers the whole imdb-only residue.
+        // Arrange
+        Exceptions::fake();
+        Show::factory()->withTvdb()->create(['_imdb_id' => 'tt0133093', '_tmdb_id' => null, 'tmdb_synced_at' => null]);
+        Http::fake([
+            '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+            '*/find/*' => Http::response('', 500),
+            '*api.themoviedb.org*' => Http::response('', 404),
+        ]);
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        $got = Show::firstOrFail();
+        expect($got->tmdb_unresolved_attempts)->toBe(0)
+            ->and($got->tmdb_retry_after)->toBeNull();
+    });
+
+    it('spares the rest of a chunk that carries one failed id', function (): void {
+        // Deliberate: neither signal is per-row, so one failure holds its whole
+        // chunk back. The rows it spares are deferred by the next run instead.
+        // Arrange
+        Exceptions::fake();
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 500, 'tmdb_synced_at' => null]);
+        Show::factory()->withTvdb()->create(['_tmdb_id' => 404_404, 'tmdb_synced_at' => null]);
+        Http::fake([
+            '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+            '*api.themoviedb.org*' => fn (Request $request) => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/tv/500')
+                ? Http::response('', 500)
+                : Http::response('', 404),
+        ]);
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        expect(Show::where('_tmdb_id', 404_404)->firstOrFail()->tmdb_unresolved_attempts)->toBe(0);
+    });
+});
+
 describe('catalog:sync-shows-tmdb heartbeat and elapsed phase lines', function (): void {
     it('beats every 1000th candidate row walked', function (): void {
         // Arrange
@@ -763,6 +946,26 @@ describe('catalog:sync-shows-tmdb heartbeat and elapsed phase lines', function (
         $this->artisan('catalog:sync-shows-tmdb')
             ->expectsOutputToContain('  [scan 1000]')
             ->expectsOutputToContain('  [tmdb shows 0]');
+    });
+
+    it('beats every 1000th candidate deferred', function (): void {
+        // The residue is otherwise invisible: the scan beat counts rows READ, so a
+        // run deferring thousands of unresolvable rows reads identically to one
+        // making progress. Every /tv/{id} 404s, so all 1001 candidates defer.
+        // Arrange
+        $rows = [];
+        for ($i = 0; $i < 1001; $i++) {
+            $rows[] = ['_tmdb_id' => 950_000 + $i];
+        }
+        Show::insert($rows);
+        Http::fake([
+            '*/tv/changes*' => Http::response('{"results":[],"page":1,"total_pages":1,"total_results":0}'),
+            '*api.themoviedb.org*' => Http::response('', 404),
+        ]);
+
+        // Act & Assert
+        $this->artisan('catalog:sync-shows-tmdb')
+            ->expectsOutputToContain('  [deferred 1000]');
     });
 
     it('prints the reindex phase line and the heartbeat', function (): void {

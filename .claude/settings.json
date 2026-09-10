@@ -36,6 +36,11 @@
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/tdd-activation-reminder.sh\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/unattended-mode-notice.sh\"",
+            "timeout": 5
           }
         ]
       }

@@ -584,20 +584,29 @@ describe('picker hook wiring', function () use ($pickerTool, $hookScript): void 
 
     it('documents the guard in the hooks README', function () use ($hookScript): void {
         // The README's table is where an operator learns which calls this repo refuses
-        // and why. A fourth hook wired in without a row makes the table quietly wrong,
-        // and the opening count is the part that goes stale silently — it still reads
-        // as a true sentence, just about a different set of hooks.
+        // and why. A hook wired in without a row makes the table quietly wrong, and the
+        // opening count is the part that goes stale silently — it still reads as a true
+        // sentence, just about a different set of hooks.
+        // The count is DERIVED from the table, never written here as a literal. A
+        // hardcoded number pins the README to whatever was true the day this test was
+        // written, so the next hook to land fails the assertion for a reason that has
+        // nothing to do with whether it was documented. That is not hypothetical: this
+        // guard was written reading `four`, and the unattended-mode notice made it five
+        // on the same branch.
         // Arrange
         $readme = ToolkitFiles::read('.claude/hooks/README.md');
+        $spelled = [1 => 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+        $documented = preg_match_all('~^\|[^|\n]*\.sh[^|\n]*\|~m', $readme);
 
         // Act
         $missing = ToolkitFiles::missingPatterns($readme, [
             'a table row naming the picker guard' => '~^\|[^|\n]*'.preg_quote(basename($hookScript), '~').'[^|\n]*\|~m',
-            'an opening count that reads four hooks rather than three' => '~\bfour\s+hooks\b~i',
+            'an opening count agreeing with the number of rows in the table' => '~\b'.($spelled[$documented] ?? 'no').'\s+hooks\b~i',
         ]);
 
         // Assert
-        expect($missing)->toBe([]);
+        expect($missing)->toBe([])
+            ->and($documented)->toBeGreaterThan(1);
     });
 });
 
