@@ -345,9 +345,8 @@ describe('generated agent guideline files', function () use ($anchor, $generated
         // commented path and then fail on a CORRECTLY regenerated tree, with no fix
         // available but deleting the assertion. Collapsing blank runs costs nothing the
         // guard needs: a stale body still differs in its words.
-        $collapseBlankLines = fn (string $text): string => (string) preg_replace('~\n{2,}~', "\n", $text);
-
         // Arrange
+        $collapseBlankLines = fn (string $text): string => (string) preg_replace('~\n{2,}~', "\n", $text);
         $section = $collapseBlankLines($guidelineSection($anchor));
         $sources = collect($generatedGuidelineFiles)
             ->mapWithKeys(fn (string $file): array => [$file => ToolkitFiles::read($file)]);
