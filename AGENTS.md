@@ -911,10 +911,18 @@ Binds every asking site, whichever rendering below it uses:
    item 6 is still item 6 two rounds on.
 2. **Every entry carries a recommendation and its reasoning.** No recommendation →
    the entry is not ready to put to the user.
-3. **Silence locks every recommendation, and nothing is re-asked.**
+3. **Silence locks every recommendation, and nothing is re-asked** — except where
+   clause 7 names.
 4. **A partial reply locks what it names; every entry it does not name stands.**
 5. **Any earlier lock is amendable by number, at any point.**
 6. **Close with one line saying silence accepts.**
+7. **One exception, and only this one: a person's own review of a diff.** In
+   `/review:process --human-round`, an item the pipeline judges wrong — or cannot
+   classify — holds the gate instead of standing. Clause 3 earns its keep because the
+   entries are usually cheap and numerous, and a machine finding dropped on silence
+   costs one re-run. A human who read the diff and asked for something is neither, so
+   dropping their request because nobody replied inverts the deference that round
+   exists to provide. That command owns the carve-out; no other site has one.
 
 Two renderings carry it. Pick by payload, not by preference: a decision you are
 putting to the user takes the **decision round**; a batch of items you have already

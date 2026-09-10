@@ -611,23 +611,37 @@ describe('picker hook wiring', function () use ($pickerTool, $hookScript): void 
 });
 
 describe('review gate silence exception', function () use ($reviewGate, $reviewGateLines, $minimumGateLines, $sectionOf): void {
-    it('leaves no `DISCUSS` bucket anywhere in the review gate', function () use ($reviewGateLines, $minimumGateLines): void {
-        // `DISCUSS` is the name of the exception, so the name goes with it. While the
-        // token is still in the file the fourth bucket still exists for any agent
-        // reading it: the frontmatter promises the command "holds for every item
-        // marked DISCUSS", the Phase 2 heading advertises the wait, the slot table
-        // routes `Fix`/`Why` by it, and the worked example shows an entry filed under
+    it('leaves no `DISCUSS` bucket outside the human round', function () use ($reviewGate, $reviewGateLines, $minimumGateLines): void {
+        // `DISCUSS` is the name of the wait, so the name goes with it wherever the wait
+        // is gone: a frontmatter promising a hold, a Phase 2 heading advertising it, a
+        // slot table routing `Fix`/`Why` by it, a worked example filing an entry under
         // it. Collapse the behavior but leave the vocabulary and the next agent
         // reinvents the wait from the words it was handed.
-        // Matched case-insensitively and on the word start, so the lowercase
-        // `discuss 6 (lean skip)` in the override example and the past-tense
-        // `Discussed` in the closing summary count too — they name the same bucket,
-        // and a token sweep that spelled out one casing would leave the other.
+        // `## The Human Round` is exempt, and that is the contract's clause 7 rather
+        // than a hole in this guard. That section triages a person's own line-by-line
+        // review, where an item the pipeline judges wrong — or cannot classify — holds
+        // the gate instead of standing on silence, because a human who read the diff is
+        // not the cheap-and-numerous entry clause 3 was written for. FLIX-300 landed
+        // that round while this ban was in review, and the two contracts are reconciled
+        // in *Asking the user a question* in `.ai/guidelines/project.md`, not here.
+        // Scoped BY SECTION, never by line number: the exemption then tracks what the
+        // prose is about, so moving or growing the section cannot silently widen it,
+        // and renaming the section fails loudly below rather than exempting nothing.
+        // Matched case-insensitively and on the word start, so a lowercase
+        // `discuss 6 (lean skip)` in an override example and a past-tense `Discussed`
+        // in a closing summary count too — they name the same bucket.
         // Arrange
-        $lines = $reviewGateLines();
+        $headings = collect(ToolkitFiles::splitLines(ToolkitFiles::read($reviewGate)))
+            ->map(fn (string $text, int $index): array => ['line' => $index + 1, 'text' => $text])
+            ->filter(fn (array $row): bool => Str::startsWith($row['text'], '## '))
+            ->values();
+        $exempt = $headings->search(fn (array $row): bool => Str::contains($row['text'], 'The Human Round'));
+        $exemptFrom = $exempt === false ? 0 : $headings->get($exempt)['line'];
+        $exemptTo = $exempt === false ? 0 : ($headings->get($exempt + 1)['line'] ?? PHP_INT_MAX);
 
         // Act
-        $offenders = collect($lines)
+        $offenders = collect($reviewGateLines())
+            ->reject(fn (array $line): bool => $line['line'] >= $exemptFrom && $line['line'] < $exemptTo)
             ->filter(fn (array $line): bool => preg_match('~\bdiscuss~i', $line['text']) === 1)
             ->map(fn (array $line): string => sprintf('%s:%d  →  %s', $line['file'], $line['line'], Str::trim($line['text'])))
             ->values()
@@ -635,7 +649,9 @@ describe('review gate silence exception', function () use ($reviewGate, $reviewG
 
         // Assert
         expect($offenders)->toBe([])
-            ->and(count($lines))->toBeGreaterThan($minimumGateLines);
+            ->and($exempt)->not->toBeFalse()
+            ->and($exemptTo)->toBeGreaterThan($exemptFrom)
+            ->and(count($reviewGateLines()))->toBeGreaterThan($minimumGateLines);
     });
 
     it('keeps no construct that holds the run for an answer', function () use ($reviewGate, $minimumGateLines): void {
