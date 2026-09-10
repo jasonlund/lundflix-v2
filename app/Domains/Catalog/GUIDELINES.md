@@ -504,24 +504,41 @@ Offenders still open: none.
 
 All four catalog syncs (`catalog:sync-movies`, `catalog:sync-shows-tmdb`,
 `catalog:sync-shows-tvdb`, `catalog:sync-episodes-tvdb`) fetch only what changed
-since their last successful run via a per-feed cache marker — no fixed rolling
+since their last successful run via a per-feed marker row — no fixed rolling
 window.
 
+- **The marker is a row in `catalog_sync_markers`, not a cache entry (FLIX-320).**
+  One row per `SyncFeed` case, keyed by the unique `feed` column holding
+  `SyncFeed::key()` (`tvdb_shows`/`tvdb_episodes`/`tmdb_shows`/`tmdb_movies`), so
+  the four feeds advance independently. Query builder only — the table has no
+  relationships and no read surface, and an Eloquent model could never be
+  `readonly`, which `tests/Unit/ArchTest.php` requires of a parentless class.
 - `SyncMarker` (`Support/`) owns read + advance. `window(SyncFeed)` derives the
   fetch interval as a `SyncWindow` VO: `since` = marker − 6h overlap (24h fallback
   when unset or unreadable), floored at `now − 14d` (TMDB's max `/changes` span;
-  TVDB matched for parity). `advance(SyncFeed, $startedAt)` persists **run-start**
-  as an ISO-8601 string via `Cache::forever` (never the Carbon itself — see the
-  scalars-only cache rule in `.ai/guidelines/project.md`) — one key per `SyncFeed`
-  case (`TvdbShows`/`TvdbEpisodes`/`TmdbShows`/`TmdbMovies`), so the four feeds
-  advance independently.
+  TVDB matched for parity). `advance(SyncFeed, $startedAt)` upserts **run-start**
+  into `marked_at` on the unique `feed`.
+- **Reads stay defensive.** `window()` degrades an unreadable `marked_at` to the
+  24h fallback rather than throwing, and `importFromCache()` — the one-shot
+  migration backfill that carried production's live `catalog:sync:marker:*` cache
+  values into the table — skips any cached value that is not a parseable string
+  (an older build's serialized Carbon comes back `__PHP_Incomplete_Class`; see
+  FLIX-287). The legacy prefix is spelled once, as a private const on `SyncMarker`,
+  and nowhere else.
+- **Only the four `SyncFeed` suffixes retired — the `catalog:sync:marker:` prefix
+  did not.** `ImdbDataset::cacheKey()` keys the three IMDb dataset markers off the
+  same string (`…:imdb_title_basics`/`_akas`/`_ratings`) and those are still live
+  cache entries. `importFromCache()` walks `SyncFeed::cases()` only, so it never
+  touches them — but a blanket sweep of the prefix would silently cost the IMDb
+  legs their markers.
 - **Zero-failure gate:** a run advances its marker only if it finished with **no**
   failed ids/chunks; `--fresh` still advances (clean baseline). A per-id hydrate
   failure counts, detected per the failure-signal rule above — a short
   `movies()`/`tvShows()` result count, or a non-empty `seriesMany()`
   `PooledResult::failedIds` — and holds the marker. Any failure → marker unchanged
-  → the next run re-covers the whole gap (idempotent upserts make that safe). A
-  cache flush just drops to the 24h fallback, not data loss.
+  → the next run re-covers the whole gap (idempotent upserts make that safe).
+  Losing the marker row drops that feed to the 24h fallback, not data loss — and
+  since FLIX-320 a cache flush no longer costs the marker at all.
 - **The 14-day cap is loud, not silent (FLIX-289).** When the floor moves `since`,
   the span between the marker and the floor is never fetched and never retried —
   permanent loss, not a deferral. `SyncWindow` therefore carries the discarded start
@@ -541,7 +558,8 @@ window.
     span are still unfetched. That is the intended escalation: ideal
     operation is the assumption, and the guard exists so a departure is noticed
     immediately instead of months later. Production carried **no**
-    `catalog:sync:marker:tmdb_movies` entry at all while every row was stamped —
+    `catalog:sync:marker:tmdb_movies` entry (the marker's then-current cache key)
+    at all while every row was stamped —
     `advance()` fires only on a zero-failure run, and one transient failure among
     ~66k hydrations was enough to block it forever.
   - **TMDB legs only so far.** The guard lives in `TmdbSyncCommand`; the TVDB legs

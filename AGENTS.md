@@ -630,12 +630,14 @@ round trip** — it returns as `__PHP_Incomplete_Class`. A `Cache::put`/`forever
 an object writes fine and can never be read back: the value is write-only.
 
 - **Cache strings, ints, bools, and arrays of those.** A timestamp goes in as
-  `->toIso8601String()` and is parsed on read (`SyncMarker`); a header goes in
-  verbatim (`ImdbDatasetMarker`).
+  `->toIso8601String()` and is parsed on read; a header goes in verbatim
+  (`ImdbDatasetMarker`).
 - **Type-check the read** whenever a stale key may predate the rule
   (`is_string($marker)`) and degrade to the no-value path. An entry poisoned by an
   older build then self-heals on the next write instead of throwing — no manual
-  `cache:forget` in the deploy.
+  `cache:forget` in the deploy. `SyncMarker::importFromCache()` is the surviving
+  example: it reads the retired `catalog:sync:marker:*` keys, and anything that
+  isn't a parseable string is skipped rather than backfilled.
 - **Never widen `serializable_classes` to rescue a call site** — it weakens a
   security default app-wide for one value that should have been a scalar.
 - **The test `array` store is `'serialize' => true` on purpose**, against the

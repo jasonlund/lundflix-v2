@@ -73,7 +73,7 @@ describe('catalog:sync-shows-tvdb updates-feed hydration and marker', function (
         expect(Show::where('_tvdb_id', 81189)->first())->not->toBeNull();
     });
 
-    it('queries /updates with since = the cached marker minus a 6h overlap', function (): void {
+    it('queries /updates with since = the stored marker minus a 6h overlap', function (): void {
         // Arrange
         Date::setTestNow('2026-07-16 12:00:00');
         $marker = now()->subHours(10)->toImmutable();
@@ -87,7 +87,7 @@ describe('catalog:sync-shows-tvdb updates-feed hydration and marker', function (
         Http::assertSent(fn (Request $request): bool => Str::contains(urldecode((string) $request->url()), 'since='.$marker->subHours(6)->timestamp));
     });
 
-    it('queries /updates with since = now minus 24h when no marker is cached', function (): void {
+    it('queries /updates with since = now minus 24h when the feed has no marker', function (): void {
         // Arrange
         Date::setTestNow('2026-07-16 12:00:00');
         fakeTvdbUpdates();
@@ -108,7 +108,7 @@ describe('catalog:sync-shows-tvdb updates-feed hydration and marker', function (
         $this->artisan('catalog:sync-shows-tvdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBe(now()->toIso8601String());
+        expect(syncMarker(SyncFeed::TvdbShows))->toBe(now()->toIso8601String());
     });
 
     it('does not advance the marker when a hydrate fails', function (): void {
@@ -128,7 +128,7 @@ describe('catalog:sync-shows-tvdb updates-feed hydration and marker', function (
         $this->artisan('catalog:sync-shows-tvdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TvdbShows))->toBeNull();
     });
 
     it('does not advance the marker when a whole chunk fails', function (): void {
@@ -150,7 +150,7 @@ describe('catalog:sync-shows-tvdb updates-feed hydration and marker', function (
         $this->artisan('catalog:sync-shows-tvdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TvdbShows->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TvdbShows))->toBeNull();
     });
 });
 

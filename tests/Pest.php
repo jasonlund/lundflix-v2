@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -85,6 +87,21 @@ expect()->extend('toBeOne', fn () => $this->toBe(1));
 function fixtureBytes(string $path): string
 {
     return file_get_contents(fixture($path));
+}
+
+/**
+ * The catalog feed's stored incremental-sync marker, as an ISO-8601 string, or
+ * null when the feed has no row yet.
+ *
+ * Reads the row directly rather than through SyncMarker so the leg tests keep
+ * observing the stored marker itself — window()'s overlap/cap arithmetic would
+ * otherwise stand between the assertion and what the run actually persisted.
+ */
+function syncMarker(SyncFeed $feed): ?string
+{
+    $markedAt = DB::table('catalog_sync_markers')->where('feed', $feed->key())->value('marked_at');
+
+    return $markedAt === null ? null : CarbonImmutable::parse($markedAt)->toIso8601String();
 }
 
 /**
