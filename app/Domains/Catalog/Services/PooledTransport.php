@@ -175,9 +175,12 @@ final class PooledTransport
     /**
      * The pacer for a configured rate, created once and reused thereafter.
      *
-     * A rate of null (or one that could never issue a token) is unpaced, and gets
-     * no bucket at all rather than a bucket that always returns a zero wait — so
-     * an unpaced batch never touches the sleep seam.
+     * A null rate is unpaced, and gets no bucket at all rather than a bucket
+     * whose every wait is zero — an unpaced batch then never reaches the sleep
+     * seam, where even a zero wait leaves a record ({@see PooledWindow::pace()}).
+     * Zero and negative fall through the same guard because neither is a rate to
+     * begin with: the token interval is 1/rate, so a bucket built on one would
+     * divide by zero the first time it was asked how long to wait.
      */
     private function bucket(?float $rate): ?TokenBucket
     {

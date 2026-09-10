@@ -12,7 +12,11 @@ use Iterator;
 use Override;
 
 /**
- * The live work queue {@see PooledTransport} rolls its window over.
+ * The live work queue {@see PooledTransport} rolls its window over, and the
+ * batch's pacer with it: this class owns the instant a slot's request is built,
+ * which is the only instant a token can be spent one-for-one with a request on
+ * the wire ({@see pace()}), so the wait belongs to it rather than to a seam of
+ * its own.
  *
  * A hand-written Iterator, because the two obvious shorthands both drop a
  * re-queue:
@@ -66,7 +70,8 @@ final class PooledWindow implements Iterator
      * A Laravel async request is a {@see LazyPromise}, so nothing leaves the
      * process until it is built — which happens here, as the window pulls the
      * slot, rather than when the slot was queued. That is what keeps the window
-     * rolling instead of handing the whole batch to curl at once.
+     * rolling instead of handing the whole batch to curl at once — and it is why
+     * {@see pace()} is waited out here, immediately before the build.
      */
     #[Override]
     public function current(): mixed
@@ -139,7 +144,11 @@ final class PooledWindow implements Iterator
      *
      * Waited through {@see Sleep} rather than a bare `usleep`, so the pacing is
      * observable to (and fakeable by) the suite instead of really costing wall
-     * clock in every test that pools.
+     * clock in every test that pools. A wait of zero returns before reaching it —
+     * an unpaced window has no bucket at all, and a paced one hands its first
+     * token out free — because a faked `Sleep::for(0)` still records into the
+     * sequence, which would leave `assertNeverSlept()` unable to pass and every
+     * other pacing assertion filtering out entries for waits nobody took.
      */
     private function pace(): void
     {

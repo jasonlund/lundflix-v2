@@ -66,9 +66,9 @@ describe('pooled() fan-out and ordering', function (): void {
 
     it('dispatches every id exactly once and in input order at concurrency 3', function (): void {
         // Arrange
-        // the ids now flow through one rolling window rather than per-chunk barriers,
-        // so there is no chunk boundary left to enforce ordering — concurrency 3 over
-        // 7 ids must still fire each id exactly once, in input order
+        // one rolling window has no boundary between batches to enforce ordering on
+        // its behalf, so concurrency 3 over 7 ids must still fire each id exactly
+        // once, in input order
         Http::fake(['*/item/*' => Http::response(['ok' => true])]);
         $host = new PoolsIdBatchesTestHost(concurrency: 3);
 

@@ -108,7 +108,7 @@ describe('seriesMany()', function (): void {
             ->and($result->failedIds)->toBe([]);
     });
 
-    it('fires one request per id and preserves input order across multiple concurrency-sized chunks', function (): void {
+    it('fires one request per id and preserves input order for a batch wider than the window', function (): void {
         config(['services.tvdb.concurrency' => 3]);
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),

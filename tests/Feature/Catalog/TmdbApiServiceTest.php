@@ -300,13 +300,13 @@ describe('movies() auth and undecodable failures', function (): void {
 | wide. Asserted through the public movies() method, so what is pinned is the
 | observable outcome and not the fan-out mechanism: with concurrency=3 and 7
 | ids, exactly 7 requests fire, every id is requested, input order is
-| preserved, and the result is keyed by every input id — including a batch
-| whose size is not a multiple of the window width. All ids reuse the
-| byte-exact movie.json fixture body, matched per-id by url.
+| preserved, and the result is keyed by every input id — for a batch far wider
+| than the window. All ids reuse the byte-exact movie.json fixture body,
+| matched per-id by url.
 */
 
-describe('movies() concurrency chunking', function (): void {
-    it('fires one request per id when the batch spans multiple concurrency-sized chunks', function (): void {
+describe('movies() concurrency window', function (): void {
+    it('fires one request per id when the batch is wider than the window', function (): void {
         config(['services.tmdb.token' => 'test-token', 'services.tmdb.concurrency' => 3]);
         Http::fake(['*/movie/*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
 
@@ -315,7 +315,7 @@ describe('movies() concurrency chunking', function (): void {
         Http::assertSentCount(7);
     });
 
-    it('requests every id in input order across the concurrency-sized chunks', function (): void {
+    it('requests every id in input order across a batch wider than the window', function (): void {
         config(['services.tmdb.token' => 'test-token', 'services.tmdb.concurrency' => 3]);
         Http::fake(['*/movie/*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
 
@@ -332,7 +332,7 @@ describe('movies() concurrency chunking', function (): void {
         ]);
     });
 
-    it('keys the result by every input id when the batch spills into a partial final chunk', function (): void {
+    it('keys the result by every input id of a batch wider than the window', function (): void {
         config(['services.tmdb.token' => 'test-token', 'services.tmdb.concurrency' => 3]);
         Http::fake(['*/movie/*' => Http::response(fixtureBytes('Catalog/tmdb/movie.json'))]);
 

@@ -76,6 +76,14 @@ helper classes under `tests/`):
 - **A class with no parent is additionally `readonly`** — `final readonly class`.
   This holds for stateless and static-only helpers too; the point is that the
   shape is predictable, not that each class earns it individually.
+  - **The one exemption: a class whose whole job is to carry mutable state**, named
+    in the arch test's `$statefulParentlessClasses` list and pinned by a staleness
+    guard as still declared, still parentless and still non-readonly. A pacer's
+    cursor, a rolling window's queue and a shared transport's 429 state cannot live
+    in a `readonly class` at all, and burying them in an `ArrayObject` behind a
+    readonly property would satisfy the letter of the rule while making the shape
+    *less* predictable — the opposite of the point. Reach for this only when the
+    mutation IS the class's purpose; a class that merely wants a cache is not it.
 
 The second rule stops at the parent because **PHP forbids a `readonly class` from
 extending a non-readonly one** (a fatal, not a warning). So everything extending a
