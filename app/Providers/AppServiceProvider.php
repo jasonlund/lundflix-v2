@@ -9,6 +9,8 @@ use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Identity\Models\User;
 use App\Domains\Notifications\Listeners\StoreSlackMessage;
+use App\Domains\PlexLibrary\Contracts\ReportsPresence;
+use App\Domains\PlexLibrary\Services\MirrorPresence;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Notifications\Events\NotificationSent;
@@ -23,7 +25,7 @@ final class AppServiceProvider extends ServiceProvider
     #[\Override]
     public function register(): void
     {
-        //
+        $this->app->bind(ReportsPresence::class, MirrorPresence::class);
     }
 
     /**
