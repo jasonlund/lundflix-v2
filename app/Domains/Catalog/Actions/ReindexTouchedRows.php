@@ -15,7 +15,7 @@ final readonly class ReindexTouchedRows
      * @param  class-string<Model>  $model
      * @param  Closure(string): void  $write
      * @return int total touched rows handed to the engine — both the searchable
-     *             share and the refused share removed from the index
+     *             share and the unsearchable share removed from the index
      */
     public function handle(string $model, DateTimeInterface $watermark, Closure $write): int
     {
@@ -25,13 +25,16 @@ final readonly class ReindexTouchedRows
         $model::query()
             ->where('updated_at', '>=', $watermark)
             ->chunkById((int) config('scout.chunk.searchable'), function (Collection $rows) use (&$reindexed, $write, $mode): void {
-                // A title TMDB reclassifies as refused is already indexed, so declining
-                // to re-add it isn't enough — it has to be deleted or it stays findable.
-                // Both macros no-op on an empty collection, so neither needs a guard.
-                [$searchable, $refused] = $rows->partition->shouldBeSearchable();
+                // A title that turns refused — or that TMDB stops serving — is already
+                // indexed, so declining to re-add it isn't enough: it has to be deleted
+                // or it stays findable. Scout's Collection searchable() macro does no
+                // shouldBeSearchable() filtering of its own, so partitioning on that one
+                // question is what removes them, and any future exclusion it grows
+                // composes here for free. Both macros no-op on an empty collection.
+                [$searchable, $unsearchable] = $rows->partition->shouldBeSearchable();
 
                 $searchable->searchable();
-                $refused->unsearchable();
+                $unsearchable->unsearchable();
 
                 $reindexed += $rows->count();
 
