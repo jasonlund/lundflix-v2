@@ -6,38 +6,41 @@ namespace App\Domains\Catalog\Services\Concerns;
 
 use App\Domains\Catalog\Data\PooledResult;
 use App\Domains\Catalog\Exceptions\PooledIdFailed;
+use App\Domains\Catalog\Services\PooledTransport;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Http;
 use Throwable;
 
 /**
  * Shared id-batch pooling skeleton for the Catalog API services (TMDB, TVDB):
- * fan out one request per id, at most `concurrency` in flight at a time, then
- * decode in input order with per-id failure aggregation. The per-service
- * differences are injected via the abstract hooks below; the invariant
- * order/404/aggregate-failure contract lives here.
+ * fan out one request per id through a single rolling window at most
+ * `concurrency` wide, then decode in input order with per-id failure
+ * aggregation. The per-service differences are injected via the abstract hooks
+ * below; the invariant order/404/aggregate-failure contract lives here.
  */
 trait PoolsIdBatches
 {
     /**
-     * Batch-fetch one request per id, fanning out one {@see Http::pool} per
-     * chunk from {@see chunkIds} so at most `concurrency` requests are in flight
-     * at once; each chunk (named after its id via {@see configure}'s shared
-     * auth/retry) is decoded and freed before the next fans out, so results
-     * still land in input order across chunk boundaries. A single id's 404
-     * decodes to null without sinking its siblings.
+     * Batch-fetch one request per id, handing the call's ids to the shared
+     * {@see PooledTransport} in one go: it rolls a single window at most
+     * `concurrency` wide over them, so a slow id holds up only the next id into
+     * its slot rather than a whole batch of siblings, and every id rides the one
+     * connection the transport holds open for the process. Results settle out of
+     * order and are decoded here in input order. A single id's 404 decodes to
+     * null without sinking its siblings.
      *
      * Request failures don't short-circuit the batch: both a connection-level
-     * failure (a pool entry that comes back as a {@see Throwable} instead of a
+     * failure (a slot that settles as a {@see Throwable} instead of a
      * {@see Response}) and the per-service failure conditions signalled by
      * {@see resolvePooled} are collected per-id, the rest are still decoded, and
      * once the loop completes any failed ids are surfaced together as the single
      * aggregate {@see pooledFailure} — reported for observability, not thrown, so
      * the batch's successful results are still returned for the callers to upsert.
-     * Auth (401) is fatal for the whole batch: {@see resolvePooled} throws it
-     * immediately rather than aggregating.
+     *
+     * Auth is fatal for the whole batch at either end, and neither end
+     * aggregates: {@see configure} may throw while the request is still being
+     * built (TVDB exchanges its key for a JWT there), and a 401 makes
+     * {@see resolvePooled} throw rather than signal a per-id failure.
      *
      * @template TKey of int|string
      *
@@ -51,44 +54,40 @@ trait PoolsIdBatches
         $results = [];
         $failedIds = [];
 
-        // Resolve and free each chunk's responses in-loop rather than
-        // accumulating them all. Every chunk's Http::pool() spins up its own
-        // curl-multi handler holding pipe fds plus one socket per in-flight
-        // request; holding all chunks' responses kept every handler alive at
-        // once, exhausting the process fd limit on a full sync (measured ~380
-        // pipe fds; a small VPS caps at ~256). Dropping the responses and
-        // forcing a GC after each chunk reclaims that chunk's handler before the
-        // next opens one, bounding live fds to a single chunk. Connection: close
-        // additionally stops each request's socket lingering in keep-alive
-        // (measured 161 ESTABLISHED → concurrency). Pooled path only —
-        // single-call paths keep their keep-alive intentionally.
-        foreach ($this->chunkIds($ids) as $chunk) {
-            $responses = Http::pool(fn (Pool $pool): array => array_map(
-                fn (int|string $id) => $build(
-                    $this->configure($pool->as((string) $id))->withHeaders(['Connection' => 'close']),
-                    $id,
-                ),
-                $chunk,
-            ));
+        $requests = [];
+        // Seeded up front so the slot for every id exists before the first
+        // callback lands: the window completes out of order, and an id whose
+        // request never settles must read as a miss rather than an undefined key.
+        $responses = [];
 
-            foreach ($chunk as $id) {
-                $response = $responses[(string) $id];
+        foreach ($ids as $id) {
+            $requests[$id] = fn (PendingRequest $request) => $build($this->configure($request), $id);
+            $responses[$id] = null;
+        }
 
-                if (! $response instanceof Response) {
-                    $failedIds[] = $id;
+        resolve(PooledTransport::class)->fetch(
+            $requests,
+            function (int|string $id, Response|Throwable $result) use (&$responses): void {
+                $responses[$id] = $result;
+            },
+            $this->poolConcurrency(),
+            $this->poolRate(),
+        );
 
-                    continue;
-                }
+        foreach ($ids as $id) {
+            $response = $responses[$id];
 
-                try {
-                    $results[$id] = $this->resolvePooled($response);
-                } catch (PooledIdFailed) {
-                    $failedIds[] = $id;
-                }
+            if (! $response instanceof Response) {
+                $failedIds[] = $id;
+
+                continue;
             }
 
-            unset($responses);
-            gc_collect_cycles();
+            try {
+                $results[$id] = $this->resolvePooled($response);
+            } catch (PooledIdFailed) {
+                $failedIds[] = $id;
+            }
         }
 
         if ($failedIds !== []) {
@@ -103,25 +102,22 @@ trait PoolsIdBatches
     }
 
     /**
-     * Split the input ids into ordered chunks sized by the configured
-     * concurrency, so each {@see pooled} fan-out dispatches at most one
-     * chunk's worth of concurrent requests. Order is preserved and the final
-     * chunk holds the remainder.
-     *
-     * @template TKey of int|string
-     *
-     * @param  array<int, TKey>  $ids
-     * @return array<int, array<int, TKey>>
-     */
-    private function chunkIds(array $ids): array
-    {
-        return array_chunk($ids, max(1, $this->poolConcurrency()));
-    }
-
-    /**
-     * The configured max concurrent requests per chunk for this service.
+     * The configured width of this service's rolling request window.
      */
     abstract private function poolConcurrency(): int;
+
+    /**
+     * Requests per second this service's pooled batches are paced at, or null to
+     * leave them unpaced.
+     *
+     * Concrete rather than abstract: a service whose ceiling nobody has measured
+     * has nothing to declare, and an unmeasured throttle could only make it
+     * slower — so unpaced is the default a service opts out of, not into.
+     */
+    private function poolRate(): ?float
+    {
+        return null;
+    }
 
     /**
      * Apply the service's shared auth and headers to a pooled pending request.

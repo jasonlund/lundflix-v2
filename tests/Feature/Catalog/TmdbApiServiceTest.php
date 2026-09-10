@@ -57,6 +57,7 @@ describe('movie() detail fetch', function (): void {
         $result = resolve(TmdbApiService::class)->movie(999999);
 
         expect($result)->toBeNull();
+        Http::assertSentCount(1);
     });
 
     it('throws TmdbRequestFailed on a successful 200 whose body decodes to null', function (): void {
@@ -73,9 +74,9 @@ describe('movie() detail fetch', function (): void {
 |--------------------------------------------------------------------------
 | movies(array $ids): pooled batch fetch of /movie/{id} details
 |--------------------------------------------------------------------------
-| Fires one request per id via Http::pool() and returns [id => array|null]
-| keyed by the input tmdb id. Http::fake() matches by URL (not pool key), so
-| each id gets a distinct url pattern in the fake map, all reusing the
+| Fires one request per id through the shared pooled transport and returns
+| [id => array|null] keyed by the input tmdb id. Http::fake() matches by URL,
+| so each id gets a distinct url pattern in the fake map, all reusing the
 | byte-exact movie.json (id 603) fixture body. A per-id 404 yields null for
 | that id without sinking the others.
 */
@@ -149,7 +150,7 @@ describe('movies() pooled batch fetch', function (): void {
 | movies(array $ids): a transport failure inside the pool reports, not throws
 |--------------------------------------------------------------------------
 | When one id's request fails at the connection/transport level and exhausts
-| retries, Http::pool() places a ConnectionException object at that slot
+| retries, the transport settles that id's slot as a ConnectionException object
 | (it does not throw). The batch must surface that as a domain
 | TmdbRequestFailed via report() — not a raw TypeError from passing the
 | exception to a Response-typed decoder — while still RETURNING the succeeding
@@ -293,14 +294,14 @@ describe('movies() auth and undecodable failures', function (): void {
 
 /*
 |--------------------------------------------------------------------------
-| movies(array $ids): chunked pooling sized by services.tmdb.concurrency
+| movies(array $ids): pooling sized by services.tmdb.concurrency
 |--------------------------------------------------------------------------
-| The batch fans out at most `concurrency` concurrent requests at a time by
-| splitting the input ids into ordered chunks of that size, dispatching one
-| Http::pool() per chunk. This is asserted through the public movies() method
-| (not the private chunkIds()): with concurrency=3 and 7 ids, exactly 7
-| requests fire, every id is requested, and input order is preserved across
-| chunks with the final partial chunk holding the remainder. All ids reuse the
+| The whole batch fans out through one rolling window at most `concurrency`
+| wide. Asserted through the public movies() method, so what is pinned is the
+| observable outcome and not the fan-out mechanism: with concurrency=3 and 7
+| ids, exactly 7 requests fire, every id is requested, input order is
+| preserved, and the result is keyed by every input id — including a batch
+| whose size is not a multiple of the window width. All ids reuse the
 | byte-exact movie.json fixture body, matched per-id by url.
 */
 
@@ -475,9 +476,9 @@ describe('findByImdbId() lookup', function (): void {
 |--------------------------------------------------------------------------
 | tvShows(array $ids): pooled batch fetch of /tv/{id} details
 |--------------------------------------------------------------------------
-| Fires one request per id via Http::pool() and returns [tmdbId => array|null]
-| keyed by the input tmdb id. Http::fake() matches by URL (not pool key), so
-| each id gets a distinct url pattern in the fake map, all reusing the
+| Fires one request per id through the shared pooled transport and returns
+| [tmdbId => array|null] keyed by the input tmdb id. Http::fake() matches by
+| URL, so each id gets a distinct url pattern in the fake map, all reusing the
 | byte-exact tv.json (id 1399) fixture body. A per-id 404 yields null for that
 | id without sinking the others.
 */
@@ -514,9 +515,9 @@ describe('tvShows() pooled batch fetch', function (): void {
 |--------------------------------------------------------------------------
 | findManyByImdbId(array $imdbIds): pooled batch /find/{id} lookups
 |--------------------------------------------------------------------------
-| Fires one /find/{imdbId}?external_source=imdb_id request per id via
-| Http::pool() and returns [imdbId => array|null] keyed by the input IMDb id.
-| Http::fake() matches by URL (not pool key), so each id gets a distinct url
+| Fires one /find/{imdbId}?external_source=imdb_id request per id through the
+| shared pooled transport and returns [imdbId => array|null] keyed by the input
+| IMDb id. Http::fake() matches by URL, so each id gets a distinct url
 | pattern in the fake map, all reusing the representative find_by_imdb.json
 | (tt0133093) fixture body. A per-id 404 yields null for that id without
 | sinking the others.

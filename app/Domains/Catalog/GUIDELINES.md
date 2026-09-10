@@ -127,8 +127,15 @@ touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
 
 ## TMDB API (`TmdbApiService`)
 
-- Batch fetch = one request per id via a single `Http::pool` per chunk, at most
-  `concurrency` in flight; responses decode in input order.
+- Batch fetch = one request per id through the shared `PooledTransport`, which
+  rolls one window at most `concurrency` wide over the whole batch on a single
+  process-wide connection; responses decode in input order.
+- **Paced by a token bucket at `services.tmdb.rate` req/s**, waited immediately
+  before each request leaves the process. A **429 halves the rate in force**, holds
+  it there 30 s, then climbs it back 2 req/s per second to the configured target.
+- **TVDB is deliberately unpaced** — nothing has measured TheTVDB's ceiling, so its
+  window width stays its only bound and an invented throttle could only slow it.
+  Unpaced is the default a service opts out of, not into.
 - **Per-id 404 → `null`** (a miss, not a failure); does not sink siblings.
 - **401 → throw immediately** — auth is fatal for the whole batch.
 - Connection-level failures and responses still failing after retries are

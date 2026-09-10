@@ -18,6 +18,10 @@ use Throwable;
  * PooledIdFailed, decodable 200 → raw body. `pooled()` is private on the trait,
  * so `fetch()` exposes it for the test to call.
  *
+ * Both configured dimensions a real service supplies — the window width and the
+ * pacing rate — are constructor arguments, so one host covers a paced service
+ * and an unpaced one.
+ *
  * The host binds an isolated base URL (a fixed const, not TMDB/TVDB) so its
  * pooled requests can't collide with a real service pattern, and its aggregate
  * failure is a plain RuntimeException naming the failed ids — the trait only
@@ -29,7 +33,7 @@ final readonly class PoolsIdBatchesTestHost
 
     private const string BASE_URL = 'https://pooled-host.test';
 
-    public function __construct(private int $concurrency = 10) {}
+    public function __construct(private int $concurrency = 10, private ?float $rate = null) {}
 
     /**
      * @param  array<int, int|string>  $ids
@@ -43,6 +47,11 @@ final readonly class PoolsIdBatchesTestHost
     private function poolConcurrency(): int
     {
         return $this->concurrency;
+    }
+
+    private function poolRate(): ?float
+    {
+        return $this->rate;
     }
 
     private function configure(PendingRequest $request): PendingRequest

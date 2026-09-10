@@ -127,6 +127,11 @@ final readonly class TmdbApiService
         return (int) config('services.tmdb.concurrency');
     }
 
+    private function poolRate(): float
+    {
+        return (float) config('services.tmdb.rate');
+    }
+
     /**
      * Per-id pooled decision for TMDB: a persistent non-404, non-401 failure is
      * collected per-id (signalled via {@see PooledIdFailed}); a 401 flows to

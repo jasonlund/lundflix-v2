@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Domains\Catalog\Services\PooledTransport;
 use GuzzleRetry\GuzzleRetryMiddleware;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
+use Override;
 use Psr\Http\Message\ResponseInterface;
 
 final class HttpClientServiceProvider extends ServiceProvider
@@ -16,6 +18,16 @@ final class HttpClientServiceProvider extends ServiceProvider
      * three times total. Fixed non-secret tunable → const, not config.
      */
     private const int MAX_RETRY_ATTEMPTS = 2;
+
+    /**
+     * One transport for the whole process, so every pooled fan-out reuses the
+     * same connections instead of re-handshaking per batch.
+     */
+    #[Override]
+    public function register(): void
+    {
+        $this->app->singleton(PooledTransport::class);
+    }
 
     /**
      * Register the global outbound-HTTP retry seam: every Laravel HTTP request
@@ -56,6 +68,16 @@ final class HttpClientServiceProvider extends ServiceProvider
     }
 
     /**
+     * The one definition of a transient HTTP status. Public because the pooled
+     * transport runs with this middleware disabled and owns its own re-queue,
+     * so it has to apply the same policy rather than restate it.
+     */
+    public static function isRetryableStatus(int $status): bool
+    {
+        return $status === 429 || $status >= 500;
+    }
+
+    /**
      * Retry only transient HTTP statuses: 429 or any 5xx. A null response is a
      * connection-level failure (retried separately via retry_on_timeout), not
      * here.
@@ -68,8 +90,6 @@ final class HttpClientServiceProvider extends ServiceProvider
             return false;
         }
 
-        $statusCode = $response->getStatusCode();
-
-        return $statusCode === 429 || $statusCode >= 500;
+        return self::isRetryableStatus($response->getStatusCode());
     }
 }

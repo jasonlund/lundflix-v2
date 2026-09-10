@@ -7,6 +7,9 @@ use App\Domains\Catalog\Console\Commands\TmdbMoviesCommand;
 use App\Domains\Catalog\Console\Commands\TmdbSyncCommand;
 use App\Domains\Catalog\Console\Commands\TvdbShowsCommand;
 use App\Domains\Catalog\Enums\ArtworkType;
+use App\Domains\Catalog\Services\PooledTransport;
+use App\Domains\Catalog\Support\PooledWindow;
+use App\Domains\Catalog\Support\TokenBucket;
 use App\Domains\PlexLibrary\Console\Commands\PlexLibraryCommand;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Collection;
@@ -69,6 +72,29 @@ $httpAbstractBases = [
  */
 $testsAbstractBases = [
     TestCase::class,
+];
+
+/**
+ * The parentless classes exempt from the `readonly` rule.
+ *
+ * An entry earns its place by holding mutable state a `readonly class` cannot:
+ * TokenBucket is a pacer, so its cursor, the rate currently in force and the
+ * instant of the last penalty all move as requests flow through it;
+ * PooledTransport owns the process's live connection handle plus the running
+ * dispatch tally it reports; and PooledWindow is the work queue the pooled
+ * window rolls over, so both the queue and the cursor into it move — and it is
+ * parentless only because implementing an interface is not extending a class.
+ *
+ * Every entry is pinned by the staleness guard below — still declared, still
+ * parentless, still non-readonly — so one that later gains `readonly` or is
+ * renamed away fails loudly rather than silently exempting nothing.
+ *
+ * @var list<class-string>
+ */
+$statefulParentlessClasses = [
+    PooledTransport::class,
+    PooledWindow::class,
+    TokenBucket::class,
 ];
 
 /**
@@ -184,10 +210,12 @@ describe('the final rule', function () use ($domainAbstractBases, $httpAbstractB
     });
 });
 
-describe('the readonly rule', function () use ($scanParentlessClasses): void {
-    it('declares every parentless class the repo owns readonly', function () use ($scanParentlessClasses): void {
+describe('the readonly rule', function () use ($scanParentlessClasses, $statefulParentlessClasses): void {
+    it('declares every parentless class the repo owns readonly', function () use ($scanParentlessClasses, $statefulParentlessClasses): void {
         // Arrange
-        $targets = $scanParentlessClasses();
+        $targets = $scanParentlessClasses()->reject(
+            fn (string $class): bool => in_array($class, $statefulParentlessClasses, true),
+        );
 
         // Act
         $violators = $targets
@@ -228,5 +256,30 @@ describe('the readonly rule', function () use ($scanParentlessClasses): void {
 
         // Assert
         expect($wronglyTargeted)->toBe([]);
+    });
+
+    it('exempts only genuinely stateful parentless classes from the readonly rule', function () use ($statefulParentlessClasses): void {
+        // Arrange
+        // the exemption list is the subject
+
+        // An entry that gains `readonly`, gains a parent, or is renamed away stops
+        // being an exemption and starts being a hole in the rule — all three read
+        // the same from inside the reject above, so pin each condition here.
+        // Act
+        $stale = collect($statefulParentlessClasses)
+            ->reject(function (string $class): bool {
+                if (! class_exists($class)) {
+                    return false;
+                }
+
+                $reflection = new ReflectionClass($class);
+
+                return $reflection->getParentClass() === false && ! $reflection->isReadOnly();
+            })
+            ->values()
+            ->all();
+
+        // Assert
+        expect($stale)->toBe([]);
     });
 });
