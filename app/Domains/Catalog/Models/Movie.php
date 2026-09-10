@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Casts\NullableDate;
+use App\Domains\Catalog\Contracts\Title;
 use App\Domains\Catalog\Database\Factories\MovieFactory;
 use App\Domains\Catalog\Models\Concerns\Refusable;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -13,13 +14,31 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Laravel\Scout\Searchable;
 
-final class Movie extends Model
+final class Movie extends Model implements Title
 {
     /** @use HasFactory<MovieFactory> */
     use HasFactory;
 
-    use Refusable, Searchable {
-        Refusable::shouldBeSearchable insteadof Searchable;
+    use Refusable, Searchable;
+
+    public function catalogId(): int
+    {
+        return $this->id;
+    }
+
+    public function displayTitle(): ?string
+    {
+        return $this->_tmdb_title;
+    }
+
+    public function imdbId(): ?string
+    {
+        return $this->_imdb_id;
+    }
+
+    public function tmdbId(): ?int
+    {
+        return $this->_tmdb_id;
     }
 
     /**
@@ -43,6 +62,22 @@ final class Movie extends Model
             'num_votes' => $this->_imdb_numVotes,
             'average_rating' => $this->_imdb_averageRating,
         ];
+    }
+
+    /**
+     * A title TMDB has stopped serving stays as a row but must not be findable —
+     * the catalog can no longer stand behind the copy it holds. The check lives
+     * here rather than in Refusable because `shows` has no `tmdb_gone_at` column,
+     * and it composes with refusal rather than replacing it: a refused title must
+     * stay out of the index even once TMDB starts serving it again.
+     *
+     * Declaring it on the class also settles the Refusable/Searchable collision —
+     * a class method outranks both traits — so Movie needs no `insteadof`, while
+     * Show, which still runs the trait's version, does.
+     */
+    public function shouldBeSearchable(): bool
+    {
+        return $this->tmdb_gone_at === null && ! $this->isRefused();
     }
 
     protected static function newFactory(): Factory
@@ -95,6 +130,7 @@ final class Movie extends Model
             '_tmdb_belongs_to_collection' => 'array',
             '_tmdb_release_dates' => 'array',
             'tmdb_synced_at' => 'datetime',
+            'tmdb_gone_at' => 'datetime',
         ];
     }
 }

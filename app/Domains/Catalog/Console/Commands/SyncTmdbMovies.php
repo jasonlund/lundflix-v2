@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\ReindexTouchedRows;
+use App\Domains\Catalog\Actions\StampGoneMovies;
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Actions\UpsertTmdbMovies;
 use App\Domains\Catalog\Services\TmdbApiService;
@@ -20,12 +21,14 @@ final class SyncTmdbMovies extends TmdbMoviesCommand
         TmdbApiService $api,
         UpsertTmdbMovies $upsertMovies,
         UpsertTmdbImages $upsertImages,
+        StampGoneMovies $stampGoneMovies,
         SyncMarker $marker,
         ReindexTouchedRows $reindexTouchedRows,
     ): int {
         $this->api = $api;
         $this->upsertMovies = $upsertMovies;
         $this->upsertImages = $upsertImages;
+        $this->stampGoneMovies = $stampGoneMovies;
         $this->reindexTouchedRows = $reindexTouchedRows;
 
         // The changes feed is the leg's only source, so its one pass is the whole

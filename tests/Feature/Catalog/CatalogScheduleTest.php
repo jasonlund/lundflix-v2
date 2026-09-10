@@ -75,3 +75,40 @@ describe('catalog:sync-imdb scheduling', function (): void {
         expect($event->expiresAt)->toBe(600);
     });
 });
+
+describe('catalog:refresh-popularity scheduling', function (): void {
+    it('registers the catalog:refresh-popularity command', function (): void {
+        // Arrange
+        $commands = Artisan::all();
+
+        // Act
+        $hasCommand = array_key_exists('catalog:refresh-popularity', $commands);
+
+        // Assert
+        expect($hasCommand)->toBeTrue();
+    });
+
+    it('schedules catalog:refresh-popularity daily at 03:00 America/Los_Angeles without overlapping', function (): void {
+        // Arrange
+        $schedule = resolve(Schedule::class);
+
+        // anchored on the trailing argument so a sibling catalog: command name can't match
+        // Act
+        $event = collect($schedule->events())->first(
+            fn ($e): bool => Str::endsWith($e->command ?? '', ' catalog:refresh-popularity'),
+        );
+
+        // 03:00 is the midpoint between catalog:sync (00:00/12:00) and catalog:sync-imdb
+        // (06:00), and it lands after TMDB publishes the day's export (08:00 UTC = 00:00 PST
+        // / 01:00 PDT), so every run reads that day's export.
+        // 360 matches catalog:sync's expiry: generous cover for a run measured in minutes,
+        // yet dead long before the next daily tick, so a SIGKILLed run can't hold the lock
+        // into the next day's run.
+        // Assert
+        expect($event)->not->toBeNull();
+        expect($event->expression)->toBe('0 3 * * *');
+        expect($event->timezone)->toBe('America/Los_Angeles');
+        expect($event->withoutOverlapping)->toBeTrue();
+        expect($event->expiresAt)->toBe(360);
+    });
+});

@@ -92,7 +92,9 @@ spreading evenly over every edge case.
   test) make it real. A seam nothing varies across is just indirection.
 
 Put the seam list at the **top of the backlog** and confirm it with the user
-alongside the testability findings.
+alongside the testability findings. Ask that round — seams and findings together —
+as a **decision round**: *Asking the user a question* in
+`.ai/guidelines/project.md`.
 
 **Source:** the seam contract is adapted from `mattpocock-skills:tdd`'s *Seams:
 where tests go* (test only at pre-agreed seams, prefer the existing public

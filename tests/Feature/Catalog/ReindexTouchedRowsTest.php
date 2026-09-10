@@ -168,6 +168,25 @@ describe('handle() refused rows', function () use ($write): void {
     });
 });
 
+describe('handle() gone rows', function () use ($write): void {
+    // Same shape as the refused removal above, on the other ground: a title TMDB
+    // has stopped serving is already indexed, so the pass has to delete it rather
+    // than merely decline to re-add it.
+    it('removes a row from the index once TMDB stops serving it', function () use ($write): void {
+        // Arrange
+        $watermark = CarbonImmutable::now()->startOfSecond()->subHour();
+        Movie::factory()->withTmdb()->create();
+        $nowGone = Movie::factory()->withTmdb()->create(['tmdb_gone_at' => now()]);
+        $capturedChunks = spyOnScoutEngine('delete');
+
+        // Act
+        new ReindexTouchedRows()->handle(Movie::class, $watermark, $write);
+
+        // Assert
+        expect(removedIds($capturedChunks()))->toBe([$nowGone->id]);
+    });
+});
+
 describe('handle() heartbeat output', function () use ($stampUpdatedAt): void {
     it('writes one heartbeat line per chunk carrying the cumulative row count', function (): void {
         // Arrange
