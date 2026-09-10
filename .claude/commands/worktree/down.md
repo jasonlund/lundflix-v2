@@ -130,36 +130,44 @@ Its failure is not tolerated on purpose: without it the drop below runs against 
 restorable from the dumps. It needs `vendor/`, so on a workspace whose `vendor/` was
 deleted the run stops there.
 
-**A non-zero exit is two answers, not one — read the line before routing.**
+**A non-zero exit is three answers, not one — read the line before routing.**
 
 - **`No down run log …`** is a read that landed early rather than a failed run: the log
   lands only when the run ends, and a `DROP DATABASE` plus a `herd unlink` can outlast 30
   seconds. Wait another minute and read again. Still no log → report that the run has left
   no verdict yet and hand it back; whether to wait longer or give up is the user's call,
   and Phase 3a's `Orphaned:` line would be inventing an outcome the log has not given.
-- **A log naming a failing step** is that abort → Phase 3a.
+- **`The down run failed at '…'`** — a log naming a failing step is that abort → Phase 3a.
+- **`The newest down run log records no successful run`** is a log too damaged to name the
+  step: a run killed mid-write leaves exactly this, and so does a failing step the log
+  never got a `name` onto. → Phase 3a, same stop. The log cannot be read as a finished
+  run, and the drop step may already have gone through, so the teardown is unverifiable —
+  and an unverifiable teardown stops rather than going on to delete the Solo project.
 - **Exit `0`** → Phase 4.
 
 ---
 
-## Phase 3a: Aborted run — report and stop
+## Phase 3a: Unfinished run — report and stop
 
-**Stop before Phase 4.** The run aborted ahead of both destructive steps, so the database
-and the Herd site are still there — deleting the Solo project now would strip the
-worktree of its processes while leaving every resource this command exists to reclaim.
+**Stop before Phase 4.** A named abort stopped ahead of both destructive steps, so the
+database and the Herd site are still there; a log that names no step cannot say whether
+either ran. Either way the teardown is unproven, and deleting the Solo project now would
+strip the worktree of its processes while leaving every resource this command exists to
+reclaim.
 
 ```
-❌ down aborted at '{step name}'
+❌ down did not complete — {step name, or "the log cannot name the step"}
 
-{step output}
+{step output, when the log carries one}
 
 Workspace: {worktree}  ·  status: error
-Orphaned:  {database}, {site URL} — the run never reached either step
+Orphaned:  {database}, {site URL} — {the run never reached either step, or "the log
+           cannot say whether either step ran"}
 Solo:      project kept
 ```
 
-Fixing the cause is not enough to retry — an aborted run leaves the workspace in `error`,
-which cannot launch a workflow:
+Fixing the cause is not enough to retry — a run that did not finish leaves the workspace
+in `error`, which cannot launch a workflow:
 
 ```
 mcp__laborforest__override-workspace-status(path: "{worktree}", status: "suspended")
