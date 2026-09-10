@@ -318,8 +318,8 @@ describe('canonical question procedure', function () use ($anchor, $guidelineSec
     });
 });
 
-describe('generated agent guideline files', function () use ($anchor, $generatedGuidelineFiles): void {
-    it('carries the anchor into both generated agent files', function () use ($anchor, $generatedGuidelineFiles): void {
+describe('generated agent guideline files', function () use ($anchor, $generatedGuidelineFiles, $guidelineSection): void {
+    it('carries the whole section into both generated agent files', function () use ($anchor, $generatedGuidelineFiles, $guidelineSection): void {
         // `CLAUDE.md` and `AGENTS.md` are regenerated from the guideline source by
         // `php artisan boost:install --guidelines`, and they — not the source — are
         // what an agent loads at session start. Skipping the regeneration leaves the
@@ -328,18 +328,27 @@ describe('generated agent guideline files', function () use ($anchor, $generated
         // and invisible to the agents it governs. That silent half-landing is the
         // failure this ticket exists to stop, so the generated copies are pinned
         // rather than assumed.
+        // The whole section is compared, never the heading alone. A heading-only check
+        // reports nothing when the BODY goes stale — which is the likelier half to
+        // rot, because a section gets rewritten far more often than it gets renamed.
+        // This very branch is the proof: the body was rewritten from one round
+        // template into a contract plus two renderings under an untouched heading, so
+        // a heading-only guard would have passed on generated copies still teaching
+        // the superseded rule.
         // Arrange
+        $section = $guidelineSection($anchor);
         $sources = collect($generatedGuidelineFiles)
             ->mapWithKeys(fn (string $file): array => [$file => ToolkitFiles::read($file)]);
 
         // Act
-        $missing = $sources
-            ->reject(fn (string $source): bool => Str::contains($source, $anchor))
+        $stale = $sources
+            ->reject(fn (string $source): bool => Str::contains($source, $section))
             ->keys()
             ->all();
 
         // Assert
-        expect($missing)->toBe([])
+        expect($stale)->toBe([])
+            ->and(Str::length($section))->toBeGreaterThan(200)
             ->and($sources->map(fn (string $source): int => ToolkitFiles::lineCount($source))->min())
             ->toBeGreaterThan(100);
     });
@@ -540,13 +549,18 @@ describe('picker hook wiring', function () use ($pickerTool, $hookScript): void 
         // script by hand proves the script, not the wiring. So this reads the decoded
         // settings rather than grepping the raw file — a substring match would pass on
         // an entry parked under the wrong event, or on a line left behind in prose.
+        // Each level is shape-checked before it is walked. The file is valid JSON by
+        // the time it is decoded, but nothing makes its SHAPE ours: an entry edited
+        // down to a string still decodes, and indexing it would abort the Act with a
+        // TypeError. That reports a broken settings file as a crashed test, when the
+        // finding the reader needs is that the hook is not registered.
         // Arrange
         $settings = json_decode(ToolkitFiles::read('.claude/settings.json'), true, 512, JSON_THROW_ON_ERROR);
 
         // Act
         $registered = collect($settings['hooks']['PreToolUse'] ?? [])
-            ->filter(fn (array $entry): bool => ($entry['matcher'] ?? null) === $pickerTool)
-            ->flatMap(fn (array $entry): array => $entry['hooks'] ?? [])
+            ->filter(fn (mixed $entry): bool => is_array($entry) && ($entry['matcher'] ?? null) === $pickerTool)
+            ->flatMap(fn (array $entry): array => is_array($entry['hooks'] ?? null) ? $entry['hooks'] : [])
             ->pluck('command')
             ->filter(fn (mixed $command): bool => is_string($command) && Str::contains($command, $hookScript))
             ->values()

@@ -81,8 +81,9 @@ Situations that generate work and then merge onto the flow.
 - **`codebase-design`** — the vocabulary layer beneath planning, tdd, and review:
   module, interface, depth, **seam**, adapter, leverage, locality.
 - **Asking the user a question** — not a skill but a `project.md` section: the one
-  round format every skill and command asks in, and the silence contract that makes
-  an unanswered question lock at its recommendation.
+  contract every skill and command asks under, the two renderings that carry it (the
+  decision round, and the disposition list `/review:process` uses), and the silence
+  contract that makes an unanswered question lock at its recommendation.
 
 ## Subagents (`.claude/agents/`)
 
