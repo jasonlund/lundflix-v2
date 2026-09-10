@@ -261,7 +261,7 @@ with your reason when you are ready to decide it yourself.
 ## Phase 3: Dispatch — parallel, foreground
 
 Every fixer is a foreground `Agent` call. A `PreToolUse` hook
-(`~/.claude/hooks/no-bg-review-fixer.js`) denies a backgrounded `review-fixer`, so each
+(`.claude/hooks/no-background-gated-subagents.js`) denies a backgrounded `review-fixer`, so each
 result returns inside the dispatching turn and the harness never wakes you mid-flow.
 
 Group the dispatched items into **waves where no two items share a target file** — the
