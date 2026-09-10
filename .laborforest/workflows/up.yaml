@@ -5,16 +5,29 @@ sort_order: 0
 steps:
   # LaborForest cuts a worktree from the *local* base branch and never fetches, so
   # a stale primary silently produces stale branches. Fetching here rather than
-  # asking anyone to keep the primary current means its freshness stops mattering.
+  # asking anyone to keep the primary current means its *branch* freshness stops
+  # mattering; its code still does — the next step runs the primary's artisan.
   - name: 'Fetch from origin'
     type: shell
     run: 'git fetch origin --prune'
-  # Skipped once the branch carries its own commits: fast-forwarding is only ever
-  # correct while it is still level with main.
+  # A bare `git merge --ff-only` aborts on any worktree whose base is behind
+  # origin — the normal case: LaborForest seeds `.laborforest/workflows/*.yaml`
+  # and `.laborforest/ignored/.gitignore` untracked, origin/main tracks those
+  # same paths, and the merge refuses to clobber them (FLIX-302).
+  #
+  # Clearing them and merging are one command: LaborForest rewrites the seeded
+  # `.gitignore` whenever it touches the workspace, so a separate delete step
+  # would be undone before the merge ran. The ahead-of-upstream skip moved in
+  # too, out of a `$(…)` condition string nothing can test.
+  #
+  # It is the PRIMARY checkout's artisan — a fresh worktree has no vendor/ until
+  # Composer installs below, and Composer cannot precede the fast-forward without
+  # resolving the stale composer.lock — so the workspace comes in as an argument.
+  # Carries down's guard: deleting files is destructive.
   - name: 'Fast-forward onto origin/main'
     type: shell
-    unless: 'test "$(git rev-list --count origin/main..HEAD)" -gt 0'
-    run: 'git merge --ff-only origin/main'
+    if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
+    run: 'php "{{ PROJECT_PRIMARY_DIR }}/artisan" lf:workspace-sync "{{ WORKSPACE_DIR }}"'
   - name: 'Copy .env from the primary checkout'
     type: shell
     if: 'test "{{ WORKSPACE_DIR }}" != "{{ PROJECT_PRIMARY_DIR }}"'
