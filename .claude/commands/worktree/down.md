@@ -128,8 +128,17 @@ site appears in step **output**, not in the exit code. `lf:run-log` surfaces tho
 Its failure is not tolerated on purpose: without it the drop below runs against a stale
 `.env`, which after an aborted `up` still names `lundflix`, and those rows are not
 restorable from the dumps. It needs `vendor/`, so on a workspace whose `vendor/` was
-deleted the run stops there. A non-zero exit from `lf:run-log down` is that abort →
-Phase 3a.
+deleted the run stops there.
+
+**A non-zero exit is two answers, not one — read the line before routing.**
+
+- **`No down run log …`** is a read that landed early rather than a failed run: the log
+  lands only when the run ends, and a `DROP DATABASE` plus a `herd unlink` can outlast 30
+  seconds. Wait another minute and read again. Still no log → report that the run has left
+  no verdict yet and hand it back; whether to wait longer or give up is the user's call,
+  and Phase 3a's `Orphaned:` line would be inventing an outcome the log has not given.
+- **A log naming a failing step** is that abort → Phase 3a.
+- **Exit `0`** → Phase 4.
 
 ---
 

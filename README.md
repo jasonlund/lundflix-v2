@@ -130,8 +130,9 @@ they do and what to reach for when the MCP is unavailable.
   secured Herd site (`https://lf-<branch>.test`), migrate, then reseed via
   `refresh`. Each workspace is isolated, so one branch's migrations never touch
   another's schema.
-- **Run** → open the worktree in Solo; `solo.yml` declares `npm:dev` (auto-starts once
-  trusted), `Horizon`, `Queue`, and `Pint`.
+- **Run** → open the worktree in Solo; `solo.yml` declares `npm:dev`, `Horizon`,
+  `Queue`, and `Pint`. All four start stopped — trust them in Solo's UI, then start
+  the ones you want.
 - **Reset** → `lf run refresh`: `migrate:fresh` → `db:seed` → `db:import`, which
   restores the committed catalog dumps when `database/dumps/` holds any. Re-runnable
   against a working workspace. **That directory is currently empty**, and `db:import`
@@ -235,9 +236,9 @@ worktree is one MCP call, and only trusting its processes needs a human.
   **Add project** in Solo's UI. Remove it there when you're done either way.
 - **Trusting — only you can do this.** New or changed YAML commands start
   **untrusted**, and every Solo start/restart tool is scoped to trusted commands, so a
-  freshly registered project sits with all four processes stopped — `npm:dev` included,
-  despite its `auto_start: true`. Trust them in the Solo UI or they will not run —
-  otherwise a registered worktree would run its `solo.yml` commands unreviewed.
+  freshly registered project sits with all four processes stopped. Trust them in the
+  Solo UI or they will not run — otherwise a registered worktree would run its
+  `solo.yml` commands unreviewed.
   The gate is deliberate — see "Local worktree tooling: LaborForest + Solo" in
   `.ai/guidelines/project.md` for why it stays a manual click.
 - Solo reads the worktree's committed `solo.yml` and syncs those processes in. Only
@@ -330,9 +331,10 @@ Starts the PHP server, queue worker, log tailer (Pail), and Vite dev server
 together. Visit the app at the URL printed by `php artisan serve`.
 
 In a worktree, Herd serves the PHP app and only Vite needs starting:
-`https://lf-<branch>.test` under LaborForest (Solo's `npm:dev` process auto-starts it,
-but only once you've trusted the project's commands — see [Adding a worktree to
-Solo](#adding-a-worktree-to-solo) if Vite isn't running), or
+`https://lf-<branch>.test` under LaborForest (start Solo's `npm:dev` process — every
+committed process starts stopped, and none can start until you've trusted the project's
+commands, so see [Adding a worktree to Solo](#adding-a-worktree-to-solo) if Vite isn't
+running), or
 `https://<workspace>.test` in a Conductor workspace (the Run button).
 
 ### Running tests

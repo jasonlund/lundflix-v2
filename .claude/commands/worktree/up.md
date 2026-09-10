@@ -50,14 +50,21 @@ no `vendor/` until the workflow's Composer step succeeds, so artisan cannot boot
 
 1. `mcp__linear-server__get_issue` for each id. The **first** id's title is the branch
    title; the ids go in comma-separated.
-2. **Strip the title to `[A-Za-z0-9 ]` before you substitute it.** An apostrophe —
-   `Fix the reviewer's comment bar` — closes the single quote, bash never runs the
-   command, and `$BRANCH` is empty for the worktree path and `add-workspace` below.
-   `Str::slug` discards every character outside that set anyway, so the branch is
-   identical either way.
-3. Capture the branch, title sanitized:
+2. **Strip the single quote `'` from the title before you substitute it — and nothing
+   else.** An apostrophe — `Fix the reviewer's comment bar` — closes the single quote,
+   bash never runs the command, and `$BRANCH` is empty for the worktree path and
+   `add-workspace` below. It is also the *only* character that can do that: single
+   quotes don't interpolate, so `$`, a backtick and `"` are all safe inside them. And
+   `Str::slug` drops an apostrophe anyway, so the branch is identical either way.
+   **A wider sanitize is not free.** `Str::slug` keeps `-` as its separator, converts
+   `_` to it, and maps `@` to `at` — so stripping the title to `[A-Za-z0-9 ]` silently
+   degrades most branches: `Sync @ scale` derives `sync-at-scale` untouched but
+   `sync-scale` stripped, and `Multi-slice PRs` derives `multi-slice-prs` untouched
+   but `multislice-prs` stripped.
+3. Capture the branch, apostrophes removed:
    ```bash
-   BRANCH=$(php artisan lf:branch-name FLIX-301,FLIX-302 'Fix the reviewers comment bar')
+   # Linear title: Fix the reviewer's multi-slice bar  →  only the ' comes out
+   BRANCH=$(php artisan lf:branch-name FLIX-301,FLIX-302 'Fix the reviewers multi-slice bar')
    ```
    `lf:branch-name` prints the bare branch and nothing else, so `$(…)` captures it
    exactly. It owns the shape — the ids, then a title slug of at most 20 characters cut
@@ -168,8 +175,8 @@ Path:      {worktree}
 Solo:      registered in workspace "{workspace}"
 
 One step left, and only you can take it: `solo.yml` commands start **untrusted**, so
-every process sits stopped — `npm:dev` included, despite its `auto_start: true`. Trust
-them in Solo's UI and the dev server starts.
+all four processes sit stopped. Trust them in Solo's UI, then start the ones you want —
+`npm:dev` is the one that serves Vite.
 ```
 
 ---
