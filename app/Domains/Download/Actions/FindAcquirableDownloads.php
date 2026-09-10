@@ -18,8 +18,8 @@ final readonly class FindAcquirableDownloads implements FindsAcquirableDownloads
     #[Override]
     public function for(UnitRef $unit): ?int
     {
-        return match ($unit->kind()) {
-            UnitKind::Movie => $this->forMovie($unit->id()),
+        return match ($unit->kind) {
+            UnitKind::Movie => $this->forMovie($unit->id),
             // Episode identity is not mirrored onto a row yet, so there is nothing to
             // match an episode on. FLIX-313 lands that identity and replaces this arm.
             UnitKind::Episode => null,

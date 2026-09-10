@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domains\Catalog\Data\UnitRef;
+use App\Domains\Catalog\Enums\UnitKind;
 use App\Domains\Catalog\Models\Episode;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
@@ -32,7 +33,7 @@ describe('for() misses', function (): void {
         Download::factory()->create(['_imdb_id' => null, '_tmdb_id' => 707]);
 
         // Act
-        $resolved = resolve(FindsAcquirableDownloads::class)->for(UnitRef::movie($movie->id));
+        $resolved = resolve(FindsAcquirableDownloads::class)->for(new UnitRef(UnitKind::Movie, $movie->id));
 
         // Assert
         expect($resolved)->toBeNull();
@@ -49,7 +50,7 @@ describe('for() misses', function (): void {
         ]);
 
         // Act
-        $resolved = resolve(FindsAcquirableDownloads::class)->for(UnitRef::episode($episode->id));
+        $resolved = resolve(FindsAcquirableDownloads::class)->for(new UnitRef(UnitKind::Episode, $episode->id));
 
         // Assert
         expect($resolved)->toBeNull();
@@ -65,7 +66,7 @@ describe('for() misses', function (): void {
         Download::factory()->create(['_imdb_id' => 'tt2222222', '_tmdb_id' => 111]);
 
         // Act
-        $resolved = resolve(FindsAcquirableDownloads::class)->for(UnitRef::movie($movieA->id));
+        $resolved = resolve(FindsAcquirableDownloads::class)->for(new UnitRef(UnitKind::Movie, $movieA->id));
 
         // Assert
         expect($resolved)->toBeNull();

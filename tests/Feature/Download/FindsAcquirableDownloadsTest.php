@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domains\Catalog\Data\UnitRef;
+use App\Domains\Catalog\Enums\UnitKind;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Download\Contracts\FindsAcquirableDownloads;
 use App\Domains\Download\Models\Download;
@@ -25,7 +26,7 @@ describe('for() movie resolution', function (): void {
         Download::factory()->create(['_imdb_id' => 'tt9999999', '_tmdb_id' => null]);
 
         // Act
-        $resolved = resolve(FindsAcquirableDownloads::class)->for(UnitRef::movie($movie->id));
+        $resolved = resolve(FindsAcquirableDownloads::class)->for(new UnitRef(UnitKind::Movie, $movie->id));
 
         // Assert
         expect($resolved)->toBe($matching->id);
@@ -38,7 +39,7 @@ describe('for() movie resolution', function (): void {
         Download::factory()->create(['_imdb_id' => null, '_tmdb_id' => 909]);
 
         // Act
-        $resolved = resolve(FindsAcquirableDownloads::class)->for(UnitRef::movie($movie->id));
+        $resolved = resolve(FindsAcquirableDownloads::class)->for(new UnitRef(UnitKind::Movie, $movie->id));
 
         // Assert
         expect($resolved)->toBe($matching->id);
@@ -53,7 +54,7 @@ describe('for() movie resolution', function (): void {
         Download::factory()->create(['_imdb_id' => 'tt8888888', '_provider_availability' => 99]);
 
         // Act
-        $resolved = resolve(FindsAcquirableDownloads::class)->for(UnitRef::movie($movie->id));
+        $resolved = resolve(FindsAcquirableDownloads::class)->for(new UnitRef(UnitKind::Movie, $movie->id));
 
         // Assert
         expect($resolved)->toBe($mostAvailable->id);
@@ -72,7 +73,7 @@ describe('for() movie resolution', function (): void {
 
         // Act
         $resolved = array_map(
-            fn (): ?int => resolve(FindsAcquirableDownloads::class)->for(UnitRef::movie($movie->id)),
+            fn (): ?int => resolve(FindsAcquirableDownloads::class)->for(new UnitRef(UnitKind::Movie, $movie->id)),
             [1, 2, 3],
         );
 
