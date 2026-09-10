@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
+use App\Domains\Catalog\Actions\StampGoneMovies;
 use App\Domains\Catalog\Actions\UpsertTmdbMovies;
 use App\Domains\Catalog\Data\SyncWindow;
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
 use Illuminate\Database\Eloquent\Builder;
+use Override;
 
 /**
  * Everything the two movie legs share — the marker feed, the table, the changes
@@ -22,6 +24,8 @@ use Illuminate\Database\Eloquent\Builder;
 abstract class TmdbMoviesCommand extends TmdbSyncCommand
 {
     protected UpsertTmdbMovies $upsertMovies;
+
+    protected StampGoneMovies $stampGoneMovies;
 
     protected function feed(): SyncFeed
     {
@@ -77,5 +81,19 @@ abstract class TmdbMoviesCommand extends TmdbSyncCommand
     protected function payloadTitle(array $payload): ?string
     {
         return $payload['title'] ?? null;
+    }
+
+    /**
+     * The movies leg's opt-in of the base's no-op seam: `movies` carries a
+     * tmdb_gone_at column, so this is the one leg with somewhere to put the
+     * answer. {@see StampGoneMovies} owns what the two writes mean.
+     *
+     * @param  list<int>  $goneIds
+     * @param  list<int>  $presentIds
+     */
+    #[Override]
+    protected function recordGoneIds(array $goneIds, array $presentIds): void
+    {
+        $this->stampGoneMovies->handle(collect($goneIds), collect($presentIds));
     }
 }
