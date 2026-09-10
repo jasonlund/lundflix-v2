@@ -96,6 +96,11 @@ already-started tickets are untouched (forward-only makes re-entry a no-op). Thi
 fires on **both** paths below: it is an MCP write, not a human gate, and an
 unattended run is exactly when nobody is around to move the ticket by hand.
 
+Plan approval is the harness's own gate, not a question round — on either path
+below. Anything you ask *around* it — a seam deviation, an ambiguous slice — goes
+in a **decision round**: *Asking the user a question* in
+`.ai/guidelines/project.md`.
+
 **The card always carries the same seven fields** — the behavior slice, **the seam
 these tests run against** (and whether it already exists), the **list of tests** you
 intend to write, the target stack (Laravel or React), the files involved, the
@@ -179,8 +184,10 @@ finish the backend cycle(s) before starting the frontend cycle(s).
   and the four dependency categories that decide how a seam gets faked.
 - GREEN and BLUE run automatically once RED is confirmed, in both modes — their
   gates are correctness gates, not permission gates. To make them stop-and-show
-  too, add an `AskUserQuestion` gate before each; that is an **attended-only**
-  addition, since an unattended run has nobody to answer it.
+  too, gate each on a **decision round** asking whether to proceed (*Asking the user
+  a question* in `.ai/guidelines/project.md`) and wait for the answer before
+  spawning; that is an **attended-only** addition, since an unattended run has
+  nobody to answer it.
 - Two hooks touch this loop, both `UserPromptSubmit` — `tdd-activation-reminder.sh`
   nudges the skill on new-feature prompts, and `unattended-mode-notice.sh` prints
   the `[unattended-mode]` notice Step 1 forks on. See `.claude/hooks/README.md`.

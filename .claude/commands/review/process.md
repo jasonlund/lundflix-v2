@@ -1,6 +1,6 @@
 ---
 name: review:process
-description: Third stage after /review:claude → /review:add. Collects un-resolved PR feedback (GitHub inline threads, review-body findings, general comments, Conductor diff-comments), triages it against the Linear ticket and the PR head, presents one numbered list where every item carries your recommendation and its reasoning, takes a reply of overrides and holds for every item marked DISCUSS, dispatches a foreground fixer per approval (parallel file-disjoint waves, test-first, no commit), then replies to and resolves everything it considered and prompts to commit/push.
+description: Third stage after /review:claude → /review:add. Collects un-resolved PR feedback (GitHub inline threads, review-body findings, general comments, Conductor diff-comments), triages it against the Linear ticket and the PR head, presents one numbered list where every item carries your recommendation and its reasoning, takes a reply of overrides while silence accepts every recommendation, dispatches a foreground fixer per approval (parallel file-disjoint waves, test-first, no commit), then replies to and resolves everything it considered and prompts to commit/push.
 ---
 
 # Process Review Feedback
@@ -195,26 +195,37 @@ go straight to Phase 5.
      path-scoped rule for its config (e.g. `.coderabbit.yaml`).
 
 Items marked `in`, every item with no file or line, the already-fixed items, the
-out-of-scope BLOCKING holds, and every `CONVERSATION` item go to Phase 2. Skips and
+out-of-scope BLOCKING items, and every `CONVERSATION` item go to Phase 2. Skips and
 dismissals go straight to Phase 5.
 
 ---
 
-## Phase 2: The Gate — one list, one reply, `DISCUSS` waits
+## Phase 2: The Gate — one list, one reply, silence accepts
 
 Present every item once, each carrying your recommendation and the reasoning behind it.
-One reply settles the list, except the items you marked `DISCUSS` — those hold the run
-until the user rules on each.
+One reply settles the whole list: every recommendation stands unless an override names
+its number.
 
-**Number the items globally `1..N`. A number is assigned once and stays with its item for
-the whole run**, including the Phase 6 summary.
+This list is a **disposition list** — the rendering *Asking the user a question* in
+`.ai/guidelines/project.md` defines for a batch of already-triaged items. The contract
+there binds it, numbering included.
 
-Group by your recommendation — `APPROVE` (clear fix, just do it), `DISCUSS` (a judgment
-call you want the user's eyes on), `SKIP` (you would drop it) — then `ALREADY FIXED` (the
-head resolves it, so it needs a reply and no work) and the out-of-scope BLOCKING holds,
-each last under its own header. Sort by severity inside each group. `DISCUSS` names a
-recommendation, `CONSIDER` names a severity; keep the two apart. Print only the groups
-that have items.
+**Number the items globally `1..N`. A number is assigned once and keeps naming that item
+for the rest of the session** — the Phase 6 summary, and any later round. A delta round
+(`/review:run` Stage 5) **continues** the sequence rather than restarting at `1`, so the
+user can still amend item 6 by number two rounds on.
+
+Group by your recommendation — `APPROVE` (worth fixing, so do it) and `SKIP` (you would
+drop it) — then `ALREADY FIXED` (the head resolves it, so it needs a reply and no work)
+and the out-of-scope BLOCKING items, each last under its own header. Sort by severity
+inside each group. Severity — `BLOCKING`, `CONSIDER`, `NIT` — is orthogonal to the
+bucket, so a `CONSIDER` item is free to land in `APPROVE`. Print only the groups that
+have items.
+
+**Every item gets a side, including the close calls.** A close call you would rather put
+to the user still goes in `APPROVE` or `SKIP`, filed by the way you lean, with the lean
+written out in `Why` (below). You lose the option to defer; the user gains a list they
+can settle in one reply, or in none.
 
 In `--human-round`, the `CONVERSATION` group prints after every group above, in the
 order the reviewer wrote its items.
@@ -231,7 +242,7 @@ APPROVE
    Fix:   Add `_tmdb_id` to the conflict key in the `upsert()` call.
    Why:   The table has no unique index, so nothing else stops the duplicates.
 
-DISCUSS
+SKIP
 
 6. [CONSIDER] Route the crosswalk parse through `SourceId`. (coderabbit)
    app/Domains/Catalog/Actions/ImportImdbTitles.php:141
@@ -239,8 +250,6 @@ DISCUSS
           normalizer that every other crosswalk parse site calls.
    Fix:   Replace the inline guard with `SourceId::imdb($raw)`.
    Why:   The guard predates `SourceId` and this PR leaves the file alone. I lean skip.
-
-SKIP
 
 7. [NIT] Rename `$res` to `$response`. (coderabbit)
    app/Domains/Catalog/Services/TmdbApiService.php:52
@@ -292,14 +301,15 @@ disposition; `Fix` joins them wherever a change is on the table:
 | Slot | Appears on | Holds |
 | --- | --- | --- |
 | `Issue:` | every item | Up to two sentences: what the code does, then what goes wrong. |
-| `Fix:` | `APPROVE`, `DISCUSS`, out-of-scope holds | One sentence naming the concrete change. |
-| `Why:` | `APPROVE`, `DISCUSS`, `SKIP`, out-of-scope holds | One sentence carrying the reason for your recommendation. |
+| `Fix:` | `APPROVE`, out-of-scope BLOCKING, and a close-call `SKIP` | One sentence naming the concrete change. |
+| `Why:` | `APPROVE`, `SKIP`, out-of-scope BLOCKING | One sentence carrying the reason for your recommendation. |
 | `Answer:` | `ANSWER` | Up to two sentences answering the item, plus the evidence the question asks for. |
 | `Fixed:` | `ALREADY FIXED` | The commit that resolved it, and what that commit changed. |
 
-A `DISCUSS` item and an out-of-scope hold close `Why` with the reasoning behind your lean
-and then state it — **"I lean approve"** or **"I lean skip"**. The lean is your argument,
-not the outcome: these are the items that wait for the user's word (below).
+A close call — and every out-of-scope BLOCKING item is one — closes `Why` with the
+reasoning and then states the lean it is filed on: **"I lean approve"** or **"I lean
+skip"**. The lean is your argument for that filing, so the user can overturn one number
+instead of re-deriving the call.
 
 **Those sentence counts are the whole verbosity budget.** Six lines is a long item.
 
@@ -318,28 +328,29 @@ a trip to the file.
 
 The full spec is *How Findings Are Written* in `.claude/skills/review-pipeline/SKILL.md`.
 
-Then prompt once, as plain text: your `APPROVE` and `SKIP` recommendations **stand by
-default**, so the user replies only with overrides, as `<approve|skip> <numbers>` lines.
-In `--human-round` the grammar carries the conversational dispositions too —
+Then prompt once, as plain text. The list above is the disposition list's entries; this
+prompt is the closing line the contract asks for. Every recommendation **stands by
+default**, so the user replies only with overrides, as `<approve|skip> <numbers>` lines,
+and the close says so outright — silence accepts what you recommended. In
+`--human-round` the grammar carries the conversational dispositions too —
 `<approve|skip|answer|acknowledge|ticket> <numbers>` — so one override line moves a
-`CONVERSATION` item the way it moves any other.
-**A `DISCUSS` item is the exception — name its numbers to settle it.** Close the prompt by
-listing the numbers still owed, so what blocks the run is on screen:
+`CONVERSATION` item the way it moves any other:
 
 ```
 Approve/skip stand as recommended — reply only with overrides.
-Waiting on: 6, 9.
+No reply accepts every recommendation above.
 ```
 
 Stop and wait.
 
 **Final buckets = your recommendations + the user's overrides.** Apply each override
 line, moving exactly the numbers it names; a later override for the same number wins. An
-unnamed `APPROVE`, `SKIP`, or `ALREADY FIXED` number keeps your recommendation. A bare
-number list (`1 4`) approves those.
+unnamed `APPROVE`, `SKIP`, or `ALREADY FIXED` number keeps your recommendation, and an
+unnamed out-of-scope BLOCKING number takes the lean written on it. A bare number list
+(`1 4`) approves those.
 
 ```
-recommended:  approve 1 2 4 · skip 3 5 · discuss 6 (lean skip) · already fixed 7
+recommended:  approve 1 2 4 · skip 3 5 6 (6 lean skip) · already fixed 7
 user:         skip 2 · approve 6
 final:        approve 1 4 6 · skip 2 3 5 · already fixed 7
 ```
@@ -352,15 +363,10 @@ Phase 5. **Already fixed** stands unless the user approves the number — read t
 override as "the head does not resolve this", so re-read the file before dispatching,
 and say what you find either way.
 
-**A `DISCUSS` item ends only when the user names it.** Silence leaves it open, so a reply
-that settles every other number still owes you these. Say which numbers remain and wait
-again. Where the user asks about an item rather than ruling on it, answer in the item's
-own slots — `Issue`, `Fix`, `Why` — so the answer reads like the entry it belongs to, and
-add the evidence the question asks for. Then re-prompt for the numbers still owed.
-
-The run holds here until every `DISCUSS` number is settled. That wait is the point of the
-bucket: put an item in `DISCUSS` when you want the user's judgment, and put it in `SKIP`
-with your reason when you are ready to decide it yourself.
+Where the user asks about an item rather than ruling on it, answer in the item's own
+slots — `Issue`, `Fix`, `Why` — so the answer reads like the entry it belongs to, and add
+the evidence the question asks for. That answer is a fresh round in the same format, so it
+closes the same way: the item stands as filed unless the next reply overrides it.
 
 ---
 
@@ -405,7 +411,7 @@ has returned and every blocker is settled.
 
 Every item you considered gets a reply — fixed, skipped, dismissed as a false positive, or
 out of scope. Resolving is what stops a future run reconsidering it, so out-of-scope items
-get their reply and resolve too, even though they were never presented.
+get their reply and resolve too, whether or not they reached the gate.
 
 - **Fixed** → a one-line summary of the change.
 - **Already fixed** → the commit that resolved it and what that commit changed, so the
@@ -416,8 +422,8 @@ get their reply and resolve too, even though they were never presented.
 - **Ticketed** → the point is captured, and goes to the Phase 6 batch where a ticket opens
   only on the user's approval. No id exists yet, so the reply names none — and it is owed
   the same whether that batch opens the ticket or the user declines it.
-- **Out of scope** → the out-of-scope rationale, and for a BLOCKING hold, how the user
-  chose to handle it.
+- **Out of scope** → the out-of-scope rationale, and for a BLOCKING item, whether the run
+  fixed it or left it.
 
 Mechanics by source:
 
@@ -481,13 +487,11 @@ Summarize the run:
 ✅ Processed review feedback on PR #{number}
 - Addressed: {count}
 - Already fixed before this run (replied, no work): {count}
-- Discussed and settled with you: {count} ({addressed}/{skipped})
 - Skipped: {count}
 - Dismissed (false positive): {count}
 - Reinforcements applied (registry/config edits to stop re-flags): {list}
 - Tickets opened from the batch: {list}
-- Out of scope — skipped (PR didn't touch this code): {count}
-- Out of scope — BLOCKING, decided in the gate: {count} ({addressed}/{skipped})
+- Out of scope — skipped at triage (PR didn't touch this code): {count}
 - Human threads left open for the reviewer: {count}   # only with --leave-human-open
 - Files changed: {list}
 - Tests: {pass/fail summary} · Pint: {clean/fixed}
