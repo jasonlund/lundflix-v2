@@ -182,6 +182,37 @@ describe('handle() column mapping', function (): void {
     });
 });
 
+describe('handle() refusal flags', function (): void {
+    it('persists the adult and softcore flags raw', function (): void {
+        // Arrange
+        $payload = tmdbPayload(['id' => 603, 'adult' => true, 'softcore' => true]);
+
+        // Act
+        resolve(UpsertTmdbMovies::class)->handle([$payload]);
+
+        // Assert
+        $movie = Movie::query()->where('_tmdb_id', 603)->firstOrFail();
+        expect($movie->_tmdb_adult)->toBeTrue()
+            ->and($movie->_tmdb_softcore)->toBeTrue();
+    });
+
+    // Null is load-bearing: `Refusable::notRefused()` reads a null flag as "unknown,
+    // not refused", so a mapper defaulting an absent flag to false would silently
+    // change what the read filter means. The helper payload carries neither key.
+    it('leaves the refusal flags null when the payload omits them', function (): void {
+        // Arrange
+        $payload = tmdbPayload(['id' => 603]);
+
+        // Act
+        resolve(UpsertTmdbMovies::class)->handle([$payload]);
+
+        // Assert
+        $movie = Movie::query()->where('_tmdb_id', 603)->firstOrFail();
+        expect($movie->_tmdb_adult)->toBeNull()
+            ->and($movie->_tmdb_softcore)->toBeNull();
+    });
+});
+
 describe('handle() search indexing', function (): void {
     it('passes nothing to the search engine while still upserting the movie', function (): void {
         // Arrange

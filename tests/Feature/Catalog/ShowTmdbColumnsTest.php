@@ -64,6 +64,40 @@ describe('shows _tmdb_* persistence and casts', function (): void {
     });
 });
 
+/**
+ * The bookkeeping behind the hydrate leg's backoff (FLIX-291). App-owned, so
+ * unprefixed: TMDB reports neither of them.
+ */
+describe('shows tmdb retry bookkeeping columns', function (): void {
+    it('starts a new show at zero unresolved attempts and no retry floor', function (): void {
+        // Arrange
+        $show = Show::factory()->withTvdb()->make();
+
+        // Act
+        $show->save();
+
+        // Assert
+        $fresh = Show::query()->findOrFail($show->id);
+        expect($fresh->tmdb_unresolved_attempts)->toBe(0)
+            ->and($fresh->tmdb_retry_after)->toBeNull();
+    });
+
+    it('casts the retry bookkeeping columns when fetched fresh', function (): void {
+        // Arrange
+        $show = Show::factory()->withTvdb()->create([
+            'tmdb_unresolved_attempts' => 3,
+            'tmdb_retry_after' => now()->addDays(4),
+        ]);
+
+        // Act
+        $fresh = Show::query()->findOrFail($show->id);
+
+        // Assert
+        expect($fresh->tmdb_unresolved_attempts)->toBeInt()
+            ->and($fresh->tmdb_retry_after)->toBeInstanceOf(Carbon::class);
+    });
+});
+
 describe('shows _tmdb_id and _imdb_id constraints', function (): void {
     it('creates a show with a null imdb_id', function (): void {
         // Arrange & Act

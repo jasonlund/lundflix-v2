@@ -49,6 +49,22 @@ describe('TMDB sync probe composite indexes', function (): void {
     });
 });
 
+describe('TMDB shows hydrate candidate index', function (): void {
+    it('indexes shows on tmdb_synced_at and tmdb_retry_after together', function (): void {
+        // The hydrate walk filters on both — unsynced rows whose backoff has elapsed —
+        // and it is the walk this ticket exists to shrink, so the composite is what
+        // keeps a deferred row cheap to skip rather than cheap to re-read.
+        // Arrange
+        // pure schema assertion — the migration chain RefreshDatabase runs is the setup
+
+        // Act
+        $indexes = tmdbProbeIndexes('shows');
+
+        // Assert
+        expect($indexes->pluck('columns')->all())->toContain(['tmdb_synced_at', 'tmdb_retry_after']);
+    });
+});
+
 describe('TMDB sync probe single-column indexes', function (): void {
     it('keeps the unique single-column _tmdb_id index on movies and shows', function (): void {
         // Arrange
