@@ -32,14 +32,23 @@ the second is the one that rots:
   are what made ~94% of the movies export sweep unpersistable.
 - **Every read path carries the filter, and that is not optional.** `Refusable`
   gives `Movie` and `Show` an `isRefused()` and a `notRefused()` query scope, and
-  overrides Scout's `shouldBeSearchable()` (resolved `insteadof Searchable` in each
-  model). A new listing, API surface, or export **must** apply `notRefused()` —
-  nothing enforces it but this line, because the rows are really there.
-- **A row that becomes refused must leave the index, not merely stop entering it.**
-  `ReindexTouchedRows` partitions each chunk and calls `unsearchable()` on the
-  refused share; Scout's *Collection* `searchable()` macro does no
-  `shouldBeSearchable()` filtering of its own (only its *builder* macro does), so
-  the partition is load-bearing rather than belt-and-braces.
+  overrides Scout's `shouldBeSearchable()`. A new listing, API surface, or export
+  **must** apply `notRefused()` — nothing enforces it but this line, because the
+  rows are really there.
+- **A row that stops being searchable must leave the index, not merely stop entering
+  it.** `ReindexTouchedRows` partitions each chunk **on `shouldBeSearchable()`** and
+  calls `unsearchable()` on the share that fails it; Scout's *Collection*
+  `searchable()` macro does no `shouldBeSearchable()` filtering of its own (only its
+  *builder* macro does), so the partition is load-bearing rather than
+  belt-and-braces. It asks the searchability question rather than `isRefused()` so a
+  new exclusion composes for free — which is how **gone titles** (below) leave the
+  index without a second branch.
+- **A model that adds its own exclusion declares `shouldBeSearchable()` itself.**
+  `Movie` does, for gone titles, and its method delegates to the trait's public
+  `isRefused()` — so refusal behaves identically whether or not a row is also gone.
+  A class-declared method resolves the `Refusable`/`Searchable` collision on its
+  own, so `Movie` needs no `insteadof`; `Show`, which still runs the trait's
+  version, does.
 
 ## IMDb dataset streaming (`ImdbDatasetService`)
 
@@ -184,6 +193,56 @@ Only `catalog:sync-movies` opts in. **`catalog:sync-shows-tmdb` must not**: TVDB
 the sole creator of `shows` rows (see below), so an unheld `/tv/changes` id would
 create a show with no TVDB identity. That leg's own residue is handled by the
 backoff below, not by discovery.
+
+### A vanished title is stamped gone (`recordGoneIds()`, FLIX-322)
+
+`syncChunk()` already knows which ids 404'd — they are the null-valued keys of the
+`hydrate()` results map — so it hands both halves to `recordGoneIds($gone, $present)`.
+The base's body is **empty**, the same opt-in shape as `insertHeartbeatTag()` above
+and for the same reason: only `TmdbMoviesCommand` overrides it, stamping
+`movies.tmdb_gone_at` on the 404s and clearing it on the served ids.
+
+- **`shows` gets no gone column, ever.** It records the same upstream silence as a
+  deferred candidate (`tmdb_unresolved_attempts` / `tmdb_retry_after`, ADR-0005), and
+  two mechanisms for one condition is how two mechanisms drift. A shared default
+  rather than an opt-in one is what would have leaked it there.
+- **The stamp never touches `tmdb_synced_at`,** so a gone row still reads as held to
+  the membership probe and a later run *refreshes* it instead of rediscovering it.
+- **Cleared on success, not a retirement.** An upstream 404 is usually temporary; the
+  stamp is a fact about the last fetch. The clear is guarded `whereNotNull`, so a
+  healthy row isn't rewritten every run.
+- **A 404 is still a miss, not a failure.** Stamping touches neither the shortfall
+  count nor `failedEntities`, so it can never hold the marker — otherwise every
+  deleted upstream title would alert on every run.
+- **Unlike the defer write, this one goes through the Eloquent builder, not
+  `toBase()`** — `updated_at` *must* move, because becoming gone changes what the
+  search index should hold, and `ReindexTouchedRows` finds the row by that watermark.
+- The read side is the searchability partition above; there is no listing filter yet
+  because the catalog has no read surface.
+
+### A hydrate batch's artwork is one write (`UpsertTmdbImages`, FLIX-322)
+
+`handle(Collection $titles, array $images)` takes a **whole hydrate batch** — titles
+and raw payloads both keyed by TMDB id — and writes it with `Media::upsert()` on
+`media`'s existing `unique(['mediable_type','mediable_id','_tmdb_file_path'])`. It
+replaced a per-image `updateOrCreate` (~2 queries per image, across 3.4 M media rows
+on the sync hot path); the cost now tracks the batch, not the image count.
+
+- **Deactivation stays scoped to the batch's own titles,** grouped by morph type. A
+  deactivate by artwork type across the table would blank every other title's
+  artwork — the one way this shape destroys production data, and the reason
+  `UpsertTmdbImagesTest` carries an explicit out-of-batch guard.
+- **The write chunks at 1,000 media rows, independently of the 250-title hydrate
+  batch.** 250 titles × ~100 images × ~10 columns is far past MySQL's 65,535
+  placeholder ceiling.
+- **`upsert()` bypasses casts,** so `type` is written as its backing `ArtworkType`
+  value and the timestamps are supplied by hand — one stamp for the whole batch
+  rather than one per chunk.
+- **The update list names only this source's columns,** so a TMDB write never
+  clobbers the `_tvdb_*` artwork columns sharing the row.
+- **Every image is stored — no cap, no popularity gate.** The payload bytes are
+  already spent and the disk is trivial; the round trips were the cost, and they are
+  gone.
 
 ## Sync ordering (`catalog:sync-shows-tmdb`)
 
@@ -417,6 +476,27 @@ the size of the thing the change is attached to?** The feed was already
 marker-windowed and the leg already touched only changed shows — both audits a
 window-and-membership check passes — yet the amplification sat one level down, in what
 each touched row then cost to refresh.
+
+**Carve-out (FLIX-321): `catalog:refresh-popularity` is O(catalog) on purpose.** It
+streams both TMDB daily id exports in full every day and bulk-writes
+`_tmdb_popularity` on every held row they list — cost proportional to the catalog,
+which the rule above would otherwise read as an offender. It is not one, and the
+reason is that the first question has no answer here: **popularity is not a change
+event.** TMDB staff are explicit that `/changes` tracks data changes only, so the
+feed never lists a title because its popularity moved. There is no incremental
+endpoint to prefer, so the value sat frozen at seed time for nearly the whole
+catalog until this leg existed. The exports are the only source carrying it for
+every id.
+
+What keeps the exception cheap enough to earn: **zero API calls** (the exports come
+off the file host, never `api.themoviedb.org`), ~310 bulk statements a run, and no
+`updated_at` stamp — `BulkCaseUpdate` is called with `$touch: false`, because
+`_tmdb_popularity` is not in `toSearchableArray()` and stamping it would turn an
+O(catalog) write into an O(catalog) reindex for a value the index never holds.
+
+The precedent this sets is narrow: a full sweep is defensible only when no
+incremental source for the value exists **at all** — not when one exists and is
+merely inconvenient — and only when the sweep costs no upstream requests.
 
 Offenders still open: none.
 

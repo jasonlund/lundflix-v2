@@ -121,6 +121,20 @@ abstract class TmdbSyncCommand extends Command
     }
 
     /**
+     * Note which of a hydrate batch's ids TMDB answered with nothing and which it
+     * served, so a leg can record that its last fetch found a title vanished.
+     *
+     * A no-op by default, for the same reason insertHeartbeatTag() is: only a leg
+     * whose table has somewhere to put the answer may record one. `shows` already
+     * records "TMDB answered with nothing" as a deferral (tmdb_unresolved_attempts /
+     * tmdb_retry_after, ADR-0005), and two mechanisms for one condition drift.
+     *
+     * @param  list<int>  $goneIds  ids the hydrate 404'd
+     * @param  list<int>  $presentIds  ids the hydrate served a payload for
+     */
+    protected function recordGoneIds(array $goneIds, array $presentIds): void {}
+
+    /**
      * The changes feed for the window. A generator, so nothing is requested
      * until updateChanged() iterates it.
      *
@@ -501,6 +515,17 @@ abstract class TmdbSyncCommand extends Command
         // A null is a 404 miss, dropped here rather than treated as a failure.
         $payloads = array_values(array_filter($results));
 
+        $presentIds = array_column($payloads, 'id');
+
+        // Read off the same map, before the empty-payload return: a batch TMDB
+        // answered nothing for is precisely the one with the most to record.
+        // Neither list touches $failed or $missing — a vanished title is still a
+        // miss, and counting it would hold the marker back on every run.
+        $this->recordGoneIds(
+            array_keys(array_filter($results, static fn (?array $payload): bool => $payload === null)),
+            $presentIds,
+        );
+
         if ($payloads === []) {
             return $failed;
         }
@@ -511,13 +536,33 @@ abstract class TmdbSyncCommand extends Command
             $this->beatEvery($tag, self::HYDRATE_BEAT, suffix: $this->payloadTitle($payload) ?? '—');
         }
 
+        $this->upsertArtwork($payloads, $presentIds);
+
+        return $failed;
+    }
+
+    /**
+     * Persist the batch's artwork, re-reading the rows the upsert just wrote so
+     * each payload's images reach the title they belong to.
+     *
+     * @param  list<array<string, mixed>>  $payloads
+     * @param  list<int>  $presentIds  the ids those payloads were served for
+     */
+    private function upsertArtwork(array $payloads, array $presentIds): void
+    {
         $models = $this->query()
-            ->whereIn('_tmdb_id', array_column($payloads, 'id'))
+            ->whereIn('_tmdb_id', $presentIds)
             // UpsertTmdbImages only reaches ->media(); a full hydrate would carry
             // $attributes AND $original for every row in the chunk.
             ->select(['id', '_tmdb_id'])
             ->get()
             ->keyBy('_tmdb_id');
+
+        // Both maps are keyed by TMDB id and narrowed to the titles that actually
+        // carry artwork: a title passed with an empty payload would have its
+        // existing art deactivated as stale.
+        $titles = [];
+        $images = [];
 
         foreach ($payloads as $payload) {
             if (! isset($payload['images'])) {
@@ -527,10 +572,13 @@ abstract class TmdbSyncCommand extends Command
             $model = $models->get($payload['id']);
 
             if ($model instanceof Movie || $model instanceof Show) {
-                $this->upsertImages->handle($model, $payload['images']);
+                $titles[$payload['id']] = $model;
+                $images[$payload['id']] = $payload['images'];
             }
         }
 
-        return $failed;
+        if ($titles !== []) {
+            $this->upsertImages->handle(collect($titles), $images);
+        }
     }
 }

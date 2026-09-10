@@ -60,6 +60,17 @@ instant it becomes a candidate again, on a doubling interval. Deferred, never
 retired: an unresolvable row is usually only unresolvable *today*. See
 [ADR-0005](docs/adr/0005-unresolvable-rows-are-deferred-not-retired.md).
 
+**Gone title**:
+A title the catalog already holds whose detail fetch a source answers with a 404 —
+it was there, and now it is not. Distinct from a deferred candidate, which was
+never resolved in the first place: a gone title keeps its `*_synced_at` stamp and
+still reads as held, so a later run refreshes it rather than rediscovering it. It
+leaves the search index while the stamp stands, and the stamp is cleared the
+moment the source serves it again — a fact about the last fetch, not a
+retirement. Recorded on `movies.tmdb_gone_at` only; `shows` records the same
+upstream silence as a deferred candidate, and two mechanisms for one condition
+drift.
+
 **Crosswalk id**:
 A third-party identifier for a title that SQL must key on (`_imdb_id`,
 `_tmdb_id`, `_tvdb_id`). Unlike other source-owned columns it is normalized at

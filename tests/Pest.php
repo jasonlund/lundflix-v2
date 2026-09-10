@@ -14,6 +14,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Laravel\Scout\EngineManager;
 use Laravel\Scout\Engines\Engine;
@@ -34,6 +35,21 @@ pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->beforeEach(function (): void {
         Http::preventStrayRequests();
+    })
+    // Teardown, not the test body, so a failed expectation still leaves no litter
+    // behind — pathWithoutJq() writes outside the project and nothing else reaps it.
+    ->afterEach(function (): void {
+        $registry = jqFreePathRegistry();
+
+        foreach ($registry as $dir) {
+            foreach ((array) glob($dir.'/*') as $link) {
+                unlink((string) $link);
+            }
+
+            rmdir((string) $dir);
+        }
+
+        $registry->exchangeArray([]);
     })
     ->in('Feature', 'Browser');
 
@@ -86,6 +102,39 @@ function syncMarker(SyncFeed $feed): ?string
     $markedAt = DB::table('catalog_sync_markers')->where('feed', $feed->key())->value('marked_at');
 
     return $markedAt === null ? null : CarbonImmutable::parse($markedAt)->toIso8601String();
+}
+
+/**
+ * The temp directories pathWithoutJq() has created but not yet removed. A
+ * registry rather than a glob over the temp dir: sibling workspaces run their
+ * own copy of this suite against the same /tmp, and a glob would delete a
+ * concurrent run's directory out from under it mid-test.
+ */
+function jqFreePathRegistry(): ArrayObject
+{
+    static $paths = null;
+
+    return $paths ??= new ArrayObject;
+}
+
+/**
+ * A PATH holding only the externals a hook needs (`cat`, `grep`) and NOT jq,
+ * so "jq is missing from this machine" can be reproduced deterministically on
+ * macOS and CI alike — both ship jq, just from different directories, so
+ * trimming PATH to a known prefix would not remove it.
+ */
+function pathWithoutJq(): string
+{
+    $dir = sys_get_temp_dir().'/jq-free-path-'.uniqid('', true);
+    mkdir($dir, 0777, true);
+
+    foreach (['cat', 'grep'] as $binary) {
+        symlink(Str::trim(Process::run('command -v '.$binary)->output()), $dir.'/'.$binary);
+    }
+
+    jqFreePathRegistry()->append($dir);
+
+    return $dir;
 }
 
 /**

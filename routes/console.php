@@ -22,4 +22,11 @@ Schedule::command('catalog:sync')->twiceDaily(0, 12)->timezone('America/Los_Ange
 // clears a stale lock 14h before the next daily start.
 Schedule::command('catalog:sync-imdb')->dailyAt('06:00')->timezone('America/Los_Angeles')->withoutOverlapping(600);
 
+// 03:00 sits between catalog:sync (00:00/12:00) and catalog:sync-imdb (06:00), so the ~1.2M movie
+// + ~230k series id scan contends with neither, and after TMDB's export (08:00 UTC = 00:00 PST / 01:00 PDT) lands.
+// Daily because TMDB recalculates popularity daily and the changes feed never reports it; a run
+// makes no API calls — it reads only the id exports from the file host.
+// 6h is generous cover for a run of minutes and still clears a stale lock 18h before the next daily start.
+Schedule::command('catalog:refresh-popularity')->dailyAt('03:00')->timezone('America/Los_Angeles')->withoutOverlapping(360);
+
 Schedule::command('plex:sync')->everyMinute()->withoutOverlapping(30);

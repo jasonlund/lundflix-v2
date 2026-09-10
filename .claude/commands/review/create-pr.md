@@ -6,9 +6,10 @@ description: First stage of the review loop — lint the dirty files, commit and
 # Create PR
 
 You are running the **first** stage of the review loop:
-**`/review:create-pr`** (lint → commit → push → open PR) → `/review:human` (human-facing
-summary + ticket-scope check) → `/review:suite` or `/review:claude` (generate findings)
-→ `/review:add` (post them) → `/review:process` (act on them).
+**`/review:create-pr`** (lint → commit → push → open PR) → `/review:debrief`
+(plain-language account of the branch + ticket-scope check) → `/review:suite` or
+`/review:claude` (generate findings) → `/review:add` (post them) →
+`/review:process` (act on them).
 
 Your job is to leave a clean, pushed branch with one open PR against `main`,
 titled and described so a reviewer (human or `/review:claude`) can pick it up with no
@@ -175,7 +176,7 @@ Branch pushed · {N} commit(s) · lint clean · tests green
 
 View: {PR URL}
 
-Next: /review:human
+Next: /review:debrief
 ```
 
 ## Notes
