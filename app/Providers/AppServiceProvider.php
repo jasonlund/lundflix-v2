@@ -6,6 +6,10 @@ namespace App\Providers;
 
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
+use App\Domains\Download\Actions\FindAcquirableDownloads;
+use App\Domains\Download\Actions\QueueDownload;
+use App\Domains\Download\Contracts\FindsAcquirableDownloads;
+use App\Domains\Download\Contracts\QueuesDownload;
 use App\Domains\Identity\Models\User;
 use App\Domains\Notifications\Listeners\StoreSlackMessage;
 use Illuminate\Database\Eloquent\Model;
@@ -22,7 +26,8 @@ final class AppServiceProvider extends ServiceProvider
     #[\Override]
     public function register(): void
     {
-        //
+        $this->app->bind(FindsAcquirableDownloads::class, FindAcquirableDownloads::class);
+        $this->app->bind(QueuesDownload::class, QueueDownload::class);
     }
 
     /**
