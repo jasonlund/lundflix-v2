@@ -13,7 +13,7 @@ call is made by a subagent in isolated context.
 - **PR number** — positional arg, or auto-detected from the current branch.
 - **Ticket ID** — `FLIX-XXX`, positional arg, or extracted from the branch name /
   PR title. It names the PR in the report header; the spec axis itself belongs to
-  `/review:human`.
+  `/review:debrief`.
 
 ```
 /review:claude                 # auto-detect PR + ticket from branch
@@ -185,7 +185,7 @@ Write every line in Simplified Technical English (rules in
 
 ## Spec — does it do what the ticket asked?
 
-`/review:human` Phase 3 owns the spec axis. This review covers standards only.
+`/review:debrief` Phase 3 owns the spec axis. This review covers standards only.
 
 ## Blocking Issues (must fix before merge)
 

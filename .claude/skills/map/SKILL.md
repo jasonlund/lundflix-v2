@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Map
 
-You don't remember 34 toolkit files — 12 skills, 10 commands, 12 subagents, this
+You don't remember 35 toolkit files — 12 skills, 11 commands, 12 subagents, this
 skill among them — so ask. This page names all of them and when to reach for each.
 It carries no description into the agent's context and fires nothing on its own.
 
@@ -27,7 +27,7 @@ rough ticket ─/plan:run──▶ plan-draft ─▶ plan-breakdown ─▶ plan-
                               review-tdd-cross-slice (multi-slice PRs only)
                                                               │
                                                               ▼
-             /review:run ─▶ create-pr ─▶ human ─▶ suite ─▶ process ─▶ delta
+      /review:run ─▶ create-pr ─▶ debrief ─▶ human ─▶ suite ─▶ process ─▶ delta
 ```
 
 **Planning — `/plan:run`** orchestrates all three with gates, so reach for the
@@ -46,14 +46,20 @@ individual skills only when you're re-entering partway:
 subagent so tests can't be retrofitted. `tdd-laravel-testing` and
 `tdd-react-testing` carry the stack conventions; the subagents read them.
 
-**Review — `/review:run`** chains the five stages with approval gates:
-`/review:create-pr` (lint, commit, push, open) → `/review:human` (orientation pass
-for you) → `/review:suite` → `/review:process` (fix the approved items) → delta.
+**Review — `/review:run`** chains the six stages with approval gates:
+`/review:create-pr` (lint, commit, push, open) → `/review:debrief` (what the
+branch did, checked against the ticket) → `/review:human` (a person reads the
+diff before any engine does) → `/review:suite` → `/review:process` (fix the
+approved items) → delta.
 Standalone when you want one piece: `/review:claude` (multi-agent analysis),
 `/review:suite` (that plus CodeRabbit), and **`/review:add`** — posts a
 `/review:claude` report to the PR as one review, inline where the file/line is in
 the diff. `/review:suite` calls `add` for you; run it yourself after a bare
 `/review:claude`.
+**`/review:human`** is the human read of the branch — it prints the Linear diff
+link, waits for a person to review the diff and submit, then hands the submitted
+comments to `/review:process`. It runs as the loop's third stage, and standalone
+whenever you want the read on its own.
 
 ## On-ramps
 

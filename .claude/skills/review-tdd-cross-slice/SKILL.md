@@ -58,7 +58,10 @@ content.** Concretely:
    `tdd-feedback` runs its branch verbatim:
    - **PRECONDITION GATE** — run the **full** suite PR-wide; show it GREEN *now*
      (whole PR, not one slice).
-   - on approval → **`tdd-refactorer` only**, behavior-preserving, two hats.
+   - on approval → **`tdd-refactorer` only**, behavior-preserving, two hats. In an
+     unattended session that approval is skipped by the same fork `tdd` Step 1
+     defines (an `[unattended-mode]` notice in context); the two green gates around
+     it are correctness gates and always fire.
    - **POST GATE** — full suite still green (subagent shows the run).
    - A test breaks → it tested implementation, not behavior; fix the test, flag it.
 

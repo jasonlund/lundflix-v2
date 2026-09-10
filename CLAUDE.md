@@ -87,6 +87,23 @@ readonly.
 Anonymous migration classes are the one structural exclusion — they can't be named,
 and the arch targets (`Database\Factories`, `Database\Seeders`) don't reach them.
 
+### Import every class, including global ones
+
+**A class name is written bare and imported with a `use` statement — never inlined
+as a leading-backslash FQCN.** This holds for global classes and PHP's own
+attributes too: `use Override;` then `#[Override]`, not `#[\Override]`; `use
+Throwable;` then `catch (Throwable $e)`, not `catch (\Throwable $e)`.
+
+One import block at the top of the file is the only place a reader has to look to
+learn what a class depends on, and a `\`-prefixed name in the body hides that
+dependency from it.
+
+**Adopted 2026-09-09 and not yet swept.** The repo currently carries ~20
+`#[\Override]` sites written before this rule; they are wrong and are being
+corrected in their own ticket, so a leading backslash you meet in existing code is
+debt, not precedent. Nothing enforces this yet — no Rector rule and no arch test —
+so it holds by review until one exists.
+
 ### Action classes
 
 Single-purpose actions live in `App\Domains\{Domain}\Actions`.
@@ -657,8 +674,17 @@ LaborForest + Solo is the current path for new work.
 - **Never put computation in a workflow's bash string.** A `shell` step's `run:` is
   a string inside YAML — nothing can test it, so any logic there is unverifiable by
   construction. Route it through an artisan command and test that at `artisan()`:
-  `lf:workspace-env` derives a workspace's site/database/URL. A step should be one
-  line.
+  `lf:workspace-env` derives a workspace's site/database/URL, and
+  `lf:workspace-sync` clears LaborForest's seeded `.laborforest/` files before
+  fast-forwarding onto `origin/main`. A step should be one line.
+- **A step that must run before `composer install` calls the primary checkout's
+  artisan.** A fresh worktree has no `vendor/`, so its own `php artisan` cannot boot
+  until Composer has run — and Composer cannot move ahead of `up`'s fast-forward
+  without resolving the stale `composer.lock`. Such a step spells the binary
+  `php "{{ PROJECT_PRIMARY_DIR }}/artisan"` and passes `{{ WORKSPACE_DIR }}` as an
+  argument, because `base_path()` in that process is the *primary's* tree, never the
+  workspace's. `lf:workspace-sync` is the only one, and `LaborForestWorkflowTest`
+  pins both halves — the workspace's own artisan still may not precede Composer.
 - **The workflows never touch Solo — but the agent driving them may.** `up` creates no
   Solo state, so `down` has none to reverse, and the boundary stays where the two tools
   already draw it: LaborForest orchestrates worktrees, Solo runs processes inside one.
