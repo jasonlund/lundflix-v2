@@ -17,8 +17,35 @@ use Illuminate\Support\Str;
  * worse than a string that admits what it is.
  *
  * Every test passes --dir so the command can never read this worktree's live
- * .laborforest/ignored/logs; afterEach sweeps the whole family up again.
+ * .laborforest/ignored/logs; afterEach deletes the directories it made.
  */
+/**
+ * Records a directory runLogDir() just created; called with no argument, hands
+ * back everything recorded since the last such call and forgets it.
+ *
+ * afterEach deletes exactly these paths. The obvious alternative — globbing
+ * `lundflix-run-logs-*` out of the shared system temp directory — deletes the
+ * fixtures a parallel worker is mid-test on, since every worker names its
+ * directories from the same family.
+ *
+ * @return list<string>
+ */
+function trackedRunLogDirs(?string $created = null): array
+{
+    static $dirs = [];
+
+    if ($created !== null) {
+        $dirs[] = $created;
+
+        return $dirs;
+    }
+
+    $tracked = $dirs;
+    $dirs = [];
+
+    return $tracked;
+}
+
 /**
  * A throwaway log directory seeded with $files (filename => YAML contents).
  *
@@ -34,6 +61,8 @@ use Illuminate\Support\Str;
 function runLogDir(array $files): string
 {
     $dir = sys_get_temp_dir().'/lundflix-run-logs-'.uniqid('', true);
+
+    trackedRunLogDirs($dir);
 
     File::ensureDirectoryExists($dir);
 
@@ -71,7 +100,7 @@ function failedRunLog(string $workflow, string $step): string
 }
 
 afterEach(function (): void {
-    foreach (File::glob(sys_get_temp_dir().'/lundflix-run-logs-*') ?: [] as $dir) {
+    foreach (trackedRunLogDirs() as $dir) {
         File::deleteDirectory($dir);
     }
 });
@@ -121,6 +150,27 @@ describe('lf:run-log verdict reporting', function (): void {
         // Assert
         expect($exitCode)->toBe(Command::FAILURE);
         expect(Artisan::output())->toContain('Install Composer dependencies');
+    });
+
+    // The advice is the half an operator acts on, and it has to hold for whichever
+    // workflow ran: `down` tears a workspace down rather than building one, so a
+    // failed `down` leaves nothing part-built to finish — and re-running it on a
+    // workspace stuck in `error` just repeats the abort.
+    it('closes a failed run with advice that assumes nothing about what the workflow was doing', function (): void {
+        // Arrange
+        $dir = runLogDir([
+            '20260909T180000Z_lundflix-v2-flix-303_down.yaml' => failedRunLog('down', 'Drop MySQL database'),
+        ]);
+
+        // Act
+        $exitCode = Artisan::call('lf:run-log', ['workflow' => 'down', '--dir' => $dir]);
+
+        // Assert
+        $output = Artisan::output();
+        expect($exitCode)->toBe(Command::FAILURE);
+        expect($output)
+            ->toContain('fix the cause before running the workflow again.')
+            ->not->toContain('part-built');
     });
 });
 

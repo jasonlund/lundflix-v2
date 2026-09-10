@@ -87,6 +87,12 @@ describe('command version control', function () use ($newlyCommittedCommandPaths
         $process->run();
 
         // Assert
+        // Check the exit status before reading the output: a git that failed for
+        // an environment reason (not a repository, git absent, a bad path
+        // argument) prints nothing, which parses as "none of these are tracked"
+        // and blames the command files for a broken machine.
+        expect($process->isSuccessful())->toBeTrue($process->getErrorOutput());
+
         $tracked = collect(explode("\0", $process->getOutput()))->filter()->values()->all();
         expect(collect($newlyCommittedCommandPaths)
             ->reject(fn (string $path): bool => in_array($path, $tracked, true))
@@ -128,8 +134,14 @@ describe('/map coverage', function () use ($scanCommands): void {
         $map = ToolkitFiles::read('.claude/skills/map/SKILL.md');
 
         // Act
+        // Match the slash-prefixed address a reader actually types, not the bare
+        // string: `review:add` as a substring is satisfied by any prose that
+        // happens to mention it, so the loose form would pass a command /map
+        // discusses but never lists. `\B` before the `/` keeps the leading
+        // backtick and bold markers /map writes them in from disqualifying the
+        // match, while `\b` after pins the whole name.
         $unlisted = collect($commands)
-            ->reject(fn (array $c): bool => Str::contains($map, $c['command']))
+            ->reject(fn (array $c): bool => preg_match('/\B\/'.preg_quote($c['command'], '/').'\b/', $map) === 1)
             ->map(fn (array $c): string => sprintf('%s  →  /%s is not named in /map', $c['path'], $c['command']))
             ->values()
             ->all();

@@ -50,9 +50,14 @@ no `vendor/` until the workflow's Composer step succeeds, so artisan cannot boot
 
 1. `mcp__linear-server__get_issue` for each id. The **first** id's title is the branch
    title; the ids go in comma-separated.
-2. Capture the branch:
+2. **Strip the title to `[A-Za-z0-9 ]` before you substitute it.** An apostrophe —
+   `Fix the reviewer's comment bar` — closes the single quote, bash never runs the
+   command, and `$BRANCH` is empty for the worktree path and `add-workspace` below.
+   `Str::slug` discards every character outside that set anyway, so the branch is
+   identical either way.
+3. Capture the branch, title sanitized:
    ```bash
-   BRANCH=$(php artisan lf:branch-name FLIX-301,FLIX-302 'Consolidate the worktree lifecycle')
+   BRANCH=$(php artisan lf:branch-name FLIX-301,FLIX-302 'Fix the reviewers comment bar')
    ```
    `lf:branch-name` prints the bare branch and nothing else, so `$(…)` captures it
    exactly. It owns the shape — the ids, then a title slug of at most 20 characters cut
@@ -91,7 +96,12 @@ repair from.
 2. **That name resolves to nothing → HALT and list the workspace names that do exist.**
    Workspace assignment is create-time only, so a project created in the wrong one
    cannot be moved afterwards.
-3. `mcp__solo__create_project(path: <worktree>, name: $BRANCH, workspace_id: <resolved id>)`.
+3. `mcp__solo__list_projects` returns a bare array; find the entry whose `path` is the
+   worktree. **One exists → skip creation**, report `Solo: project already registered
+   ({branch})` and go to Phase 4. A retry after Phase 6a re-enters here with that
+   registration still in place, and a second `create_project` for the same path either
+   errors out — halting before the workflow runs — or leaves a duplicate.
+4. `mcp__solo__create_project(path: <worktree>, name: $BRANCH, workspace_id: <resolved id>)`.
 
 ---
 

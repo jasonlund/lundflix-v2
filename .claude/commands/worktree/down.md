@@ -39,11 +39,18 @@ so a worktree with a deleted `vendor/` still reports.
 
 ## Phase 1: Status gate
 
+`suspended` is not one state — read `php artisan lf:run-log down --dir
+<worktree>/.laborforest/ignored/logs` to tell its three apart. A `down` whose drop step
+failed still exits 0 and still ends `suspended` (`ending_status: suspended`), so the one
+workspace whose database survived teardown lands here too.
+
 | State | Do |
 | --- | --- |
 | `ready` | Phase 2 |
-| `suspended` | Nothing to tear down — a workspace that was never brought up, or one already down, has no database, no Herd site and no logs. Say that, name the GUI removal step from Phase 5, and STOP |
-| `error` | STOP. Report the failing step from `php artisan lf:run-log up --dir <worktree>/.laborforest/ignored/logs`, plus `mcp__laborforest__override-workspace-status(path: "<worktree>", status: "suspended")` — leave clearing it to the user |
+| `suspended`, `No down run log …` | Never brought up: no database, no Herd site, nothing to tear down. Say that, name the GUI removal step from Phase 5, and STOP |
+| `suspended`, log carries `[orphaned …]` | The last teardown left that database or site behind. `down` runs only from `ready`, so `mcp__laborforest__override-workspace-status(path: "<worktree>", status: "ready")`, then Phase 2 to retry the drop |
+| `suspended`, clean log | Already down, nothing orphaned. Name the GUI removal step from Phase 5 and STOP |
+| `error` | STOP. Read the verdict with `php artisan lf:run-log down --dir <worktree>/.laborforest/ignored/logs` — an aborted `down` lands in `error` too, and `lf:run-log` globs `*_{workflow}.yaml`, so asking for `up` here answers with the earlier successful provision. Fall back to `up` **only** on `No down run log …`. Report the failing step, plus `mcp__laborforest__override-workspace-status(path: "<worktree>", status: "suspended")` — leave clearing it to the user |
 
 ---
 
@@ -57,17 +64,25 @@ sync with origin, so read git directly.
 git -C <worktree> fetch origin --prune
 git -C <worktree> status --porcelain
 git -C <worktree> for-each-ref --format='%(upstream:track)' refs/heads/<branch>
-git -C <worktree> log --oneline --grep=<FLIX-NNN> origin/main
+gh pr list --head <branch> --state merged --json number,mergedAt
 ```
 
 - **Clean** — `status --porcelain` prints nothing. A `??` line counts as dirty: new
   domain files are routinely untracked, and those are exactly the ones worth keeping.
-- **Merged** — the upstream reads `[gone]` **and** the `--grep` finds a squash commit on
-  `origin/main`. Both halves are required. A squash merge rewrites the branch into one
-  new commit, so `git branch -r --contains HEAD` finds nothing and every branch commit
-  reads as "ahead" — `--contains` alone calls merged work unmerged every time.
-- **No `FLIX-NNN` in the branch** — the merge half cannot be evaluated, so it counts as
-  unmerged and the gate refuses.
+- **Merged** — the upstream reads `[gone]` **and** `gh pr list` returns a non-empty
+  array. Both halves are required. A squash merge rewrites the branch into one new
+  commit, so `git branch -r --contains HEAD` finds nothing and every branch commit reads
+  as "ahead" — `--contains` alone calls merged work unmerged every time.
+- **Ask about this branch, not this ticket.** `git log --grep=<FLIX-NNN> origin/main`
+  searches every commit message in the whole history with an unanchored pattern, so
+  nothing ties a hit to the branch in hand: a ticket that ships in more than one PR
+  (`origin/main` already carries `FLIX-267/284:` and `FLIX-295:`) marks every later
+  branch for it merged forever, and a short id matches a longer one — `FLIX-30` inside
+  `FLIX-303:`. Pair either with a `[gone]` upstream and an unmerged branch passes the
+  gate. `--head <branch>` cannot: `gh` is already this pipeline's tool, and it answers
+  for this branch alone.
+- **`gh` cannot answer** — unauthenticated, or the repo unresolvable — the merge half
+  cannot be evaluated, so it counts as unmerged and the gate refuses.
 
 ### Both hold → Phase 3.
 
@@ -81,7 +96,7 @@ an explicit instruction to tear down anyway, never on your own reading of the ev
 🚫 Refusing to tear down {branch}
 
 Clean tree: ❌ {N} uncommitted file(s), {M} untracked
-Merged:     ✅ squash commit {sha} on origin/main
+Merged:     ✅ PR #{number}, merged {mergedAt}
 
 Teardown drops `{database}` and unlinks {site URL}. Tell me to tear it down anyway and
 I will.
@@ -102,12 +117,49 @@ verdict:
 php artisan lf:run-log down --dir <worktree>/.laborforest/ignored/logs
 ```
 
-**Teardown is best-effort and exits 0 by design.** A destructive step that fails reports
-`[orphaned …]` and exits 0, because a non-zero exit would force the workspace to `error`
-and LaborForest offers **Remove** only on a suspended one — a failing step would make
-the worktree permanently undeletable. So an orphaned database or site appears in step
-**output**, not in the exit code. `lf:run-log` surfaces those `[orphaned …]` lines;
-carry every one into the report.
+**The two destructive steps are best-effort and exit 0 by design.** A drop or unlink that
+fails reports `[orphaned …]` and exits 0, because a non-zero exit would force the
+workspace to `error` and LaborForest offers **Remove** only on a suspended one — a
+failing step would make the worktree permanently undeletable. So an orphaned database or
+site appears in step **output**, not in the exit code. `lf:run-log` surfaces those
+`[orphaned …]` lines; carry every one into the report.
+
+**The first step, `Derive workspace env values`, is the exception — it aborts the run.**
+Its failure is not tolerated on purpose: without it the drop below runs against a stale
+`.env`, which after an aborted `up` still names `lundflix`, and those rows are not
+restorable from the dumps. It needs `vendor/`, so on a workspace whose `vendor/` was
+deleted the run stops there. A non-zero exit from `lf:run-log down` is that abort →
+Phase 3a.
+
+---
+
+## Phase 3a: Aborted run — report and stop
+
+**Stop before Phase 4.** The run aborted ahead of both destructive steps, so the database
+and the Herd site are still there — deleting the Solo project now would strip the
+worktree of its processes while leaving every resource this command exists to reclaim.
+
+```
+❌ down aborted at '{step name}'
+
+{step output}
+
+Workspace: {worktree}  ·  status: error
+Orphaned:  {database}, {site URL} — the run never reached either step
+Solo:      project kept
+```
+
+Fixing the cause is not enough to retry — an aborted run leaves the workspace in `error`,
+which cannot launch a workflow:
+
+```
+mcp__laborforest__override-workspace-status(path: "{worktree}", status: "suspended")
+```
+
+`suspended` is the state **Remove** needs, so it is the right call when the user is
+giving up on the resources. Retrying the teardown instead wants `"ready"` — the status
+`down` runs from — after the cause is fixed (a missing `vendor/` → `composer install`).
+Name both and let the user pick; leave the override to them.
 
 ---
 
@@ -123,7 +175,7 @@ Name it in the report.
 
 ---
 
-## Phase 5: Report
+## Phase 5: Success report
 
 ```
 ✅ {branch} is down  ·  status: suspended

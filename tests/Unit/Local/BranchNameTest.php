@@ -27,6 +27,74 @@ describe('derive() ticket ids', function (): void {
         // Assert
         expect($branch)->toBe('flix-303-flix-302-consolidate-the');
     });
+
+    it('normalizes an id padded with the whitespace a comma-separated list leaves', function (): void {
+        // Arrange
+        // `explode(',', 'FLIX-303, FLIX-302')` hands the second id over with a leading space
+        $title = 'Consolidate the lifecycle';
+
+        // Act
+        $branch = BranchName::derive(['FLIX-303', ' FLIX-302'], $title);
+
+        // Assert
+        expect($branch)->toBe('flix-303-flix-302-consolidate-the');
+    });
+});
+
+describe('derive() empty parts', function (): void {
+    it('drops an empty ticket id rather than opening the name with a hyphen', function (): void {
+        // Arrange
+        // `lf:branch-name '' 'Title'` passes Symfony's presence check, so `explode()` yields ['']
+        $title = 'Consolidate the lifecycle';
+
+        // Act
+        $branch = BranchName::derive([''], $title);
+
+        // Assert
+        expect($branch)
+            ->toBe('consolidate-the')
+            ->not->toStartWith('-');
+    });
+
+    it('drops an empty ticket id between real ones rather than doubling a hyphen', function (): void {
+        // Arrange
+        // a trailing comma — `explode(',', 'FLIX-303,')` — yields a final empty id
+        $title = 'Consolidate the lifecycle';
+
+        // Act
+        $branch = BranchName::derive(['FLIX-303', ''], $title);
+
+        // Assert
+        expect($branch)
+            ->toBe('flix-303-consolidate-the')
+            ->not->toContain('--');
+    });
+
+    it('keeps the ticket ids alone when the title slugs away to nothing', function (): void {
+        // Arrange
+        // punctuation and emoji carry no ascii to slug, so the title's whole share is empty
+        $title = '🎬 !!!';
+
+        // Act
+        $branch = BranchName::derive(['FLIX-303'], $title);
+
+        // Assert
+        expect($branch)
+            ->toBe('flix-303')
+            ->not->toEndWith('-');
+    });
+
+    it('derives nothing at all when neither the ids nor the title survive slugging', function (): void {
+        // Arrange
+        // no part to name the branch after — an empty capture fails at the caller, a bare `-` would not
+        $title = '!!!';
+
+        // Act
+        $branch = BranchName::derive([''], $title);
+
+        // Assert
+        expect($branch)->toBe('');
+    });
 });
 
 describe('derive() title budget', function (): void {

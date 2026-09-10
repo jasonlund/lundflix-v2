@@ -9,8 +9,11 @@ use Illuminate\Support\Str;
 final readonly class BranchName
 {
     /**
-     * The title's share of the ≤ 40-character branch convention, leaving room for the
-     * ticket ids that prefix it.
+     * The title slug's whole share of the name, beside the ticket ids that prefix it.
+     * Nothing downstream trims further — `WorkspaceName`'s 40-character cut guards the
+     * workspace slug, not this — so this budget is what keeps a Linear title from
+     * running past 60 characters into the worktree directory, Herd site and database
+     * name derived from the branch.
      */
     private const int MAX_TITLE_LENGTH = 20;
 
@@ -19,11 +22,20 @@ final readonly class BranchName
      */
     public static function derive(array $ticketIds, string $title): string
     {
+        // Slugging each id (rather than just lowercasing it) absorbs the space
+        // `explode(',', 'FLIX-303, FLIX-302')` leaves on every id past the first.
         $ids = collect($ticketIds)
-            ->map(fn (string $id): string => Str::lower($id))
+            ->map(fn (string $id): string => Str::slug($id))
+            ->reject(fn (string $id): bool => $id === '')
             ->implode('-');
 
-        return $ids.'-'.self::titleSlug($title);
+        // A part that slugs away to nothing is dropped rather than joined, so neither an
+        // empty ticket id nor an unsluggable title can leave a leading, doubled or
+        // trailing hyphen. Both empty derives '', which fails visibly where the caller
+        // captures it — a lone `-` would pass for a branch name.
+        return collect([$ids, self::titleSlug($title)])
+            ->reject(fn (string $part): bool => $part === '')
+            ->implode('-');
     }
 
     private static function titleSlug(string $title): string

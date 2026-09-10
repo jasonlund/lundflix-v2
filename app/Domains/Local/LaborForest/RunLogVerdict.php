@@ -6,6 +6,7 @@ namespace App\Domains\Local\LaborForest;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -33,7 +34,15 @@ final readonly class RunLogVerdict
 
     public static function from(string $yaml): self
     {
-        $log = (array) Yaml::parse($yaml);
+        try {
+            $log = (array) Yaml::parse($yaml);
+        } catch (ParseException) {
+            // A fragment cut mid-write (unterminated quote, dangling block scalar)
+            // does not parse at all, and is the same unreadable document as one that
+            // parses into a shape we can't read — never a success either way.
+            return new self(false, null, []);
+        }
+
         $steps = self::stepsIn($log);
 
         // The shape a run killed mid-write leaves on disk; see stepsIn() for why an
@@ -43,9 +52,14 @@ final readonly class RunLogVerdict
         }
 
         $failed = $steps->first(static fn (array $step): bool => self::stepFailed($step));
-        $failedStep = $failed === null ? null : (string) $failed['name'];
+        // A half-written step can lack `name` entirely; an absent or empty one reads
+        // as "no name to report", never as a failure against an empty string.
+        $failedName = $failed === null ? '' : (string) ($failed['name'] ?? '');
+        $failedStep = $failedName === '' ? null : $failedName;
 
-        $succeeded = ($log['status'] ?? null) === 'success' && $failedStep === null;
+        // Success turns on whether a step failed, NOT on whether one could be named —
+        // a nameless failing step nulls `failedStep` and would otherwise pass as clean.
+        $succeeded = ($log['status'] ?? null) === 'success' && $failed === null;
 
         return new self($succeeded, $failedStep, self::orphansIn($steps));
     }

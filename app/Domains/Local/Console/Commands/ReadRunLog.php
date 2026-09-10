@@ -29,9 +29,6 @@ final class ReadRunLog extends Command
         return $exitCode;
     }
 
-    /**
-     * Emit the verdict of the newest matching log and return the exit code for it.
-     */
     private function report(string $workflow, string $directory): int
     {
         $path = $this->newestLog($directory, $workflow);
@@ -97,6 +94,10 @@ final class ReadRunLog extends Command
             ? "The newest {$workflow} run log records no successful run"
             : "The {$workflow} run failed at '{$failedStep}'";
 
-        return $cause.'; the workspace is part-built, so fix the cause and run the workflow again.';
+        // The consequence stays workflow-neutral, and stops at "fix the cause": `down`
+        // tears a workspace down rather than building one, so naming a part-built
+        // workspace misdirects half the callers — and re-running `down` on a workspace
+        // its own abort left in `error` only repeats the abort.
+        return $cause.'; fix the cause before running the workflow again.';
     }
 }
