@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Data\PooledResult;
 use App\Domains\Catalog\Services\PooledTransport;
 use Carbon\CarbonInterval;
 use Illuminate\Http\Client\ConnectionException;
@@ -197,10 +198,10 @@ describe('pooled() shared transport', function (): void {
         Http::fake(['*/item/*' => Http::response(['ok' => true])]);
         $first = new PoolsIdBatchesTestHost;
         $second = new PoolsIdBatchesTestHost;
+        $fetch = fn (PoolsIdBatchesTestHost $host, array $ids): PooledResult => $host->fetch($ids);
 
         // Act
-        $first->fetch([1, 2, 3]);
-        $second->fetch([4, 5]);
+        array_map($fetch, [$first, $second], [[1, 2, 3], [4, 5]]);
 
         // Assert
         expect(resolve(PooledTransport::class)->stats()->dispatched)->toBe(5);

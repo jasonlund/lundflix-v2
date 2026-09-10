@@ -112,4 +112,73 @@ describe('penalize() back-off', function (): void {
         $now = 60.0;
         expect($bucket->rate())->toEqualWithDelta(40.0, 0.0001);
     });
+
+    it('a burst of 429s at one instant halves the rate once', function (): void {
+        // Arrange
+        $now = 0.0;
+        $bucket = new TokenBucket(40.0, function () use (&$now): float {
+            return $now;
+        });
+
+        // Act
+        foreach (range(1, 8) as $ignored) {
+            $bucket->penalize();
+        }
+
+        // Assert
+        expect($bucket->rate())->toEqualWithDelta(20.0, 0.0001);
+    });
+
+    it('spaces the token after a burst of 429s at the halved rate', function (): void {
+        // Arrange
+        $now = 0.0;
+        $bucket = new TokenBucket(40.0, function () use (&$now): float {
+            return $now;
+        });
+        foreach (range(1, 8) as $ignored) {
+            $bucket->penalize();
+        }
+        $bucket->waitFor();
+
+        // Act
+        $actual = $bucket->waitFor();
+
+        // Assert
+        expect($actual)->toEqualWithDelta(0.05, 0.0001);
+    });
+
+    it('a 429 inside the hold neither cuts again nor extends the hold', function (): void {
+        // Arrange
+        $now = 0.0;
+        $bucket = new TokenBucket(40.0, function () use (&$now): float {
+            return $now;
+        });
+        $bucket->penalize();
+        $now = 10.0;
+
+        // Act
+        $bucket->penalize();
+
+        // The first penalty's hold ends at 30 s, so 35 s is 5 s into the climb from
+        // the single cut; a second cut, or a hold restarted at 10 s, would read lower.
+        // Assert
+        $now = 35.0;
+        expect($bucket->rate())->toEqualWithDelta(30.0, 0.0001);
+    });
+
+    it('a 429 after the hold has expired halves the rate in force again', function (): void {
+        // Arrange
+        $now = 0.0;
+        $bucket = new TokenBucket(40.0, function () use (&$now): float {
+            return $now;
+        });
+        $bucket->penalize();
+        $now = 35.0;
+
+        // Act
+        $bucket->penalize();
+
+        // Assert
+        expect($bucket->rate())->toEqualWithDelta(15.0, 0.0001);
+    });
 });

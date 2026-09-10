@@ -76,6 +76,10 @@ final class TokenBucket
     /**
      * Record upstream push-back (a 429) against the current rate.
      *
+     * One push-back event is one multiplicative decrease, so a 429 inside an
+     * earlier penalty's hold is ignored: a whole window refused by one limiter trip
+     * settles as a burst of 429s, and compounding them would collapse the rate.
+     *
      * The hold is rate state measured against the clock, never a sleep: this pacer
      * fronts one shared connection, so pausing here would stall every in-flight
      * stream rather than just the caller that was pushed back.
@@ -85,6 +89,10 @@ final class TokenBucket
         $rate = $this->rate();
 
         if ($rate === null) {
+            return;
+        }
+
+        if ($this->penalizedAt !== null && $this->now() - $this->penalizedAt < self::PENALTY_HOLD_SECONDS) {
             return;
         }
 

@@ -133,6 +133,7 @@ touching it. A bulk update bypasses Eloquent's casts, so `array`-cast columns
 - **Paced by a token bucket at `services.tmdb.rate` req/s**, waited immediately
   before each request leaves the process. A **429 halves the rate in force**, holds
   it there 30 s, then climbs it back 2 req/s per second to the configured target.
+  Further 429s inside the hold cut nothing, so a burst halves the rate once.
 - **TVDB is deliberately unpaced** — nothing has measured TheTVDB's ceiling, so its
   window width stays its only bound and an invented throttle could only slow it.
   Unpaced is the default a service opts out of, not into.
