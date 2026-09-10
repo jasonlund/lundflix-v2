@@ -37,6 +37,26 @@ describe('catalog:sync scheduling', function (): void {
     });
 });
 
+describe('catalog:seed-movies scheduling', function (): void {
+    it('registers catalog:seed-movies on no schedule', function (): void {
+        // The full-export scan is an operator remedy, run by hand when a marker has
+        // gone stale past its cap — a schedule entry would put the 1.23M-row scan
+        // back on every tick, which is the whole thing this split removes.
+        // Arrange
+        $schedule = resolve(Schedule::class);
+
+        // anchored on the trailing argument, matching how the scheduled entries above
+        // are found, so a sibling command name can't match
+        // Act
+        $event = collect($schedule->events())->first(
+            fn ($e): bool => Str::endsWith($e->command ?? '', ' catalog:seed-movies'),
+        );
+
+        // Assert
+        expect($event)->toBeNull();
+    });
+});
+
 describe('catalog:sync-imdb scheduling', function (): void {
     it('schedules catalog:sync-imdb daily at 06:00 America/Los_Angeles without overlapping', function (): void {
         // Arrange

@@ -33,13 +33,16 @@ abstract class ImdbSyncCommand extends Command
     use SkipsUnchangedDataset;
 
     /**
-     * The largest --batch any feed accepts, and the one bound an operator can
-     * actually breach: the batch sizes both the pre-filter's id probe and the
-     * write buffer, and the widest write (titles, 7 columns) spends 15 bindings a
-     * row plus the update's WHERE IN id against MySQL's 65,535 placeholder cap —
-     * about 4369 rows. Rounded down for headroom, since a global scope or a new
-     * column spends bindings the arithmetic above does not see. A feed writing
-     * fewer columns has room to raise it by overriding {@see maxBatchSize()}.
+     * The default --batch ceiling, and the one bound an operator can actually
+     * breach: the batch sizes both the pre-filter's id probe and the write buffer,
+     * and a fully-matched batch spends its whole width on one bulk CASE update
+     * against MySQL's 65,535 placeholder cap. This figure suits the narrow feeds:
+     * `BulkCaseUpdate` spends 2 bindings per column per matched row plus 1 for the
+     * WHERE IN id, so ratings' 2 columns cost 5 a row — 4000 × 5 + 1 for the
+     * per-statement updated_at = 20,001 placeholders, about 3x under the cap — and
+     * akas' 1 column costs 3 a row, 12,001, about 5x under. A feed wide enough for
+     * the cap to bind carries its own lower ceiling by overriding {@see maxBatchSize()};
+     * {@see SyncImdbTitles} is the one that does.
      */
     private const int MAX_BATCH_SIZE = 4000;
 
@@ -70,8 +73,6 @@ abstract class ImdbSyncCommand extends Command
         } finally {
             @unlink($path);
         }
-
-        $this->reportSummary();
 
         // Silent on a normal run: the stream's tail probe batch already marked
         // this exact total, so the dedupe swallows it. It earns its place for the
@@ -166,25 +167,7 @@ abstract class ImdbSyncCommand extends Command
     }
 
     /**
-     * The entries of a batch this feed actually writes. Defaults to all of them;
-     * a feed that withholds some overrides.
-     *
-     * @param  array<string, mixed>  $rows
-     * @return array<string, mixed>
-     */
-    protected function writable(array $rows): array
-    {
-        return $rows;
-    }
-
-    /**
-     * A closing line about what the run withheld, printed before the elapsed
-     * line. Silent unless a feed has something to account for.
-     */
-    protected function reportSummary(): void {}
-
-    /**
-     * Persist the writable share of the buffer and reset it.
+     * Persist the buffer and reset it.
      *
      * The entries arrive already catalog-matched — the membership probe runs
      * upstream, in the streaming pre-filter — so this is purely write batching.
@@ -195,12 +178,6 @@ abstract class ImdbSyncCommand extends Command
     {
         $rows = $batch;
         $batch = [];
-
-        if ($rows === []) {
-            return;
-        }
-
-        $rows = $this->writable($rows);
 
         if ($rows === []) {
             return;

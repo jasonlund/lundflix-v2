@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
@@ -23,23 +24,29 @@ uses(RefreshDatabase::class);
 | Fixtures (byte-exact real TheTVDB v4 slices)
 |--------------------------------------------------------------------------
 | catalog:sync-episodes-tvdb pulls the /updates?type=episodes feed since the
-| TvdbEpisodes marker (6h overlap, 24h no-marker fallback, 14d cap), reduces it
-| to distinct seriesIds, keeps only shows already seeded (episodes_synced_at not
-| null), and re-runs SeedTvdbEpisodes per show.
+| TvdbEpisodes marker (6h overlap, 24h no-marker fallback, 14d cap), keeps each
+| record's `recordId` (the changed episode) AND `seriesId`, resolves the series
+| that already have a seeded show (episodes_synced_at not null), and hands those
+| shows' changed episode ids to RefreshTvdbEpisodes — which fetches ONLY those
+| ids via GET /episodes/{id}. The whole-catalog /series/{id}/episodes crawl is
+| gone, so its absence is asserted directly.
 |
 | tests/Fixtures/Catalog/tvdb/login.json — POST /login → data.token JWT;
 |   every fake map answers it because Http::preventStrayRequests() is global.
 | tests/Fixtures/Catalog/tvdb/episode_updates.json + episode_updates_page2.json —
-|   the /updates?type=episodes feed, chained p0 → p1 → null via links.next.
-|   Each record carries `seriesId`: 434847 ×2, 469484 ×2 on page 0; 371082 ×2 on
-|   page 1. Distinct seriesIds across the walk: 434847, 469484, 371082.
-| tests/Fixtures/Catalog/tvdb/series_episodes_page1.json + series_episodes_page2.json —
-|   a series' /episodes/default listing, chained via links.next; 3 + 3 = 6
-|   episodes total per walked show.
+|   the /updates?type=episodes feed, chained p0 → p1 → null via links.next:
+|     page 0: recordId 9786562, 9786563   → seriesId 434847
+|             recordId 11846050, 11846051 → seriesId 469484
+|     page 1: recordId 9256455, 9256456   → seriesId 371082
+|   So one seeded show 434847 yields exactly 2 episodes; all three seeded, 6.
+| tests/Fixtures/Catalog/tvdb/episode_{recordId}.json — a real GET /episodes/{id}
+|   body per id above, the full {"status":"success","data":{…}} envelope
+|   (seasonNumber 1 for 434847/469484, 3 for 371082). Each id has its own
+|   capture, so an episode fetched for the wrong show cannot pass unnoticed.
 |
-| Both the /updates and /episodes walks page via `links.next` ending in
-| `&page=1`, so the two fakes are keyed on distinct URL segments (/updates vs
-| /series/.../episodes) and each branches page=1 → its own page 2.
+| The /updates walk pages via `links.next` ending in `&page=1`, so the feed fake
+| branches page=1 → its own page 2, while the per-episode fake keys off the id
+| trailing the request URL.
 */
 
 function fakeTvdbEpisodes(): void
@@ -49,9 +56,9 @@ function fakeTvdbEpisodes(): void
         '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
             ? Http::response(fixtureBytes('Catalog/tvdb/episode_updates_page2.json'))
             : Http::response(fixtureBytes('Catalog/tvdb/episode_updates.json')),
-        '*api4.thetvdb.com/v4/series/*/episodes*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
-            ? Http::response(fixtureBytes('Catalog/tvdb/series_episodes_page2.json'))
-            : Http::response(fixtureBytes('Catalog/tvdb/series_episodes_page1.json')),
+        '*api4.thetvdb.com/v4/episodes/*' => fn (Request $request) => Http::response(
+            fixtureBytes('Catalog/tvdb/episode_'.Str::afterLast($request->url(), '/').'.json'),
+        ),
     ]);
 }
 
@@ -70,11 +77,13 @@ function loggedShowSelects(): array
 }
 
 /**
- * One /updates record in TheTVDB's real wire shape, varying only the ids.
+ * One /updates record in TheTVDB's real wire shape, varying only the ids. Both
+ * ids are `mixed` because the malformed-record tests need to hand each of them
+ * free text, which is what a real feed occasionally ships.
  *
  * @return array<string, mixed>
  */
-function tvdbEpisodeUpdateRecord(int $recordId, mixed $seriesId): array
+function tvdbEpisodeUpdateRecord(mixed $recordId, mixed $seriesId): array
 {
     return [
         'recordType' => '',
@@ -90,18 +99,18 @@ function tvdbEpisodeUpdateRecord(int $recordId, mixed $seriesId): array
 }
 
 /**
- * The happy-path fakes with the per-show /episodes fetch 500ing: the feed itself
- * still drains cleanly, so every seeded show the walk reaches fails on its own
- * fetch and the run ends with failures to report.
+ * The happy-path fakes with every per-episode fetch 500ing: the feed itself
+ * still drains cleanly, so each changed episode id the run resolves fails on its
+ * own fetch and the run ends with failures to report.
  */
-function fakeTvdbEpisodesWithFailingShowFetch(): void
+function fakeTvdbEpisodesWithFailingEpisodeFetch(): void
 {
     Http::fake([
         '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
         '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
             ? Http::response(fixtureBytes('Catalog/tvdb/episode_updates_page2.json'))
             : Http::response(fixtureBytes('Catalog/tvdb/episode_updates.json')),
-        '*api4.thetvdb.com/v4/series/*/episodes*' => Http::response('', 500),
+        '*api4.thetvdb.com/v4/episodes/*' => Http::response('', 500),
     ]);
 }
 
@@ -111,7 +120,7 @@ beforeEach(function (): void {
 });
 
 describe('catalog:sync-episodes-tvdb feed hydration and marker window', function (): void {
-    it('hydrates a seeded show that appears in the episodes feed', function (): void {
+    it('hydrates only the changed episodes of a seeded show that appears in the episodes feed', function (): void {
         // Arrange
         fakeTvdbEpisodes();
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
@@ -120,7 +129,13 @@ describe('catalog:sync-episodes-tvdb feed hydration and marker window', function
         $this->artisan('catalog:sync-episodes-tvdb');
 
         // Assert
-        $this->assertDatabaseCount('episodes', 6);
+        // The feed names exactly two changed episodes for 434847, and that is the
+        // whole cost of the run: the show's other episodes are never touched, and
+        // the whole-catalog /series/{id}/episodes crawl is not made at all.
+        $this->assertDatabaseCount('episodes', 2);
+        $this->assertDatabaseHas('episodes', ['_tvdb_id' => 9786562]);
+        $this->assertDatabaseHas('episodes', ['_tvdb_id' => 9786563]);
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/'));
     });
 
     it('queries /updates with type=episodes and since = now minus 24h when no marker is cached', function (): void {
@@ -163,17 +178,14 @@ describe('catalog:sync-episodes-tvdb feed hydration and marker window', function
         expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBe(now()->toIso8601String());
     });
 
-    it('does not advance the marker when an episodes fetch fails', function (): void {
+    it('does not advance the marker when a changed episode fetch fails', function (): void {
         // Arrange
+        // The pooled fetch retries through the global retry middleware before it
+        // gives up on an id, so the backoff sleeps are faked away.
+        Sleep::fake();
         Date::setTestNow('2026-07-16 12:00:00');
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
-                ? Http::response(fixtureBytes('Catalog/tvdb/episode_updates_page2.json'))
-                : Http::response(fixtureBytes('Catalog/tvdb/episode_updates.json')),
-            '*api4.thetvdb.com/v4/series/*/episodes*' => Http::response('', 500),
-        ]);
+        fakeTvdbEpisodesWithFailingEpisodeFetch();
 
         // Act
         $this->artisan('catalog:sync-episodes-tvdb');
@@ -193,8 +205,11 @@ describe('catalog:sync-episodes-tvdb feed record selection', function (): void {
         $this->artisan('catalog:sync-episodes-tvdb');
 
         // Assert
+        // Named by episode id, not series id: the run now asks for episodes, so an
+        // unseeded series shows up as its changed ids never being fetched.
         $this->assertDatabaseCount('episodes', 0);
-        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/469484/episodes'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/11846050'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/11846051'));
     });
 
     it('exits SUCCESS', function (): void {
@@ -205,7 +220,7 @@ describe('catalog:sync-episodes-tvdb feed record selection', function (): void {
         $this->artisan('catalog:sync-episodes-tvdb')->assertExitCode(0);
     });
 
-    it('processes a show once when its seriesId repeats in the feed', function (): void {
+    it('fetches each changed episode exactly once when its series repeats across feed records', function (): void {
         // Arrange
         fakeTvdbEpisodes();
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
@@ -214,13 +229,13 @@ describe('catalog:sync-episodes-tvdb feed record selection', function (): void {
         $this->artisan('catalog:sync-episodes-tvdb');
 
         // Assert
-        // 434847 carries two records on feed page 0; the /episodes walk itself pages
-        // via page=1, so those follow-ups are excluded to count processings, not calls.
-        expect(Http::recorded(fn (Request $request): bool => Str::contains($request->url(), '/series/434847/episodes')
-            && ! Str::contains($request->url(), 'page=1'))->count())->toBe(1);
+        // 434847 carries two records on feed page 0. A per-record fetch would ask
+        // for each id as many times as its series appears; the drain dedupes first.
+        expect(Http::recorded(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9786562'))->count())->toBe(1)
+            ->and(Http::recorded(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9786563'))->count())->toBe(1);
     });
 
-    it('processes a show whose seriesId appears only on a later feed page', function (): void {
+    it('fetches episodes whose series appears only on a later feed page', function (): void {
         // Arrange
         fakeTvdbEpisodes();
         Show::factory()->create(['_tvdb_id' => 371082, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
@@ -229,25 +244,41 @@ describe('catalog:sync-episodes-tvdb feed record selection', function (): void {
         $this->artisan('catalog:sync-episodes-tvdb');
 
         // Assert
-        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series/371082/episodes'));
+        $this->assertDatabaseCount('episodes', 2);
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9256455'));
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9256456'));
     });
 
-    it('skips feed records with a missing or non-numeric seriesId', function (): void {
+    it('skips a feed record whose recordId or seriesId is missing or non-numeric', function (): void {
         // Arrange
-        // Synthetic feed body: a record missing `seriesId` entirely, and one carrying
-        // free text, are malformed inputs a byte-exact real capture can't provide.
-        // Records otherwise keep TheTVDB's real /updates shape.
+        // Synthetic feed body: records missing an id entirely, or carrying free text
+        // where an id belongs, are malformed inputs a byte-exact real capture can't
+        // provide. Records otherwise keep TheTVDB's real /updates shape. Both ids
+        // are load-bearing now, so each is broken in turn while a well-formed
+        // sibling of the same seeded series rides alongside.
+        //
+        // The free-text seriesId is the seeded show's own id with junk appended, not
+        // bare text: it is the only shape that discriminates here. A bare (int) cast
+        // resolves "434847abc" to the seeded show and fetches 9256456, while
+        // SourceId's ctype_digit gate rejects it — so dropping the guard fails the
+        // assertion below. Bare "abc" would not: it casts to 0, and no show carries
+        // _tvdb_id 0. That is also why the missing-key seriesId record can prove only
+        // that an absent key is tolerated rather than fatal — null casts to 0 too, so
+        // no seriesId value can give it teeth. Both recordId records do discriminate
+        // on their own: either would ask for the unstubbed /episodes/0.
         $body = json_encode(['status' => 'success', 'data' => [
-            Arr::except(tvdbEpisodeUpdateRecord(9786562, 0), 'seriesId'),
-            tvdbEpisodeUpdateRecord(9786563, 'abc'),
-            tvdbEpisodeUpdateRecord(9786564, 434847),
+            Arr::except(tvdbEpisodeUpdateRecord(9256455, 371082), 'seriesId'),
+            tvdbEpisodeUpdateRecord(9256456, '434847abc'),
+            Arr::except(tvdbEpisodeUpdateRecord(0, 434847), 'recordId'),
+            tvdbEpisodeUpdateRecord('abc', 434847),
+            tvdbEpisodeUpdateRecord(9786562, 434847),
         ], 'links' => ['prev' => null, 'self' => '/updates', 'next' => null]]);
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
             '*api4.thetvdb.com/v4/updates*' => Http::response($body),
-            '*api4.thetvdb.com/v4/series/*/episodes*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
-                ? Http::response(fixtureBytes('Catalog/tvdb/series_episodes_page2.json'))
-                : Http::response(fixtureBytes('Catalog/tvdb/series_episodes_page1.json')),
+            '*api4.thetvdb.com/v4/episodes/9786562*' => Http::response(fixtureBytes('Catalog/tvdb/episode_9786562.json')),
+            '*api4.thetvdb.com/v4/episodes/9256455*' => Http::response(fixtureBytes('Catalog/tvdb/episode_9256455.json')),
+            '*api4.thetvdb.com/v4/episodes/9256456*' => Http::response(fixtureBytes('Catalog/tvdb/episode_9256456.json')),
         ]);
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
 
@@ -255,54 +286,37 @@ describe('catalog:sync-episodes-tvdb feed record selection', function (): void {
         $this->artisan('catalog:sync-episodes-tvdb')->assertExitCode(0);
 
         // Assert
-        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series/434847/episodes'));
-        // page=1 follow-ups are excluded: the /episodes page-2 fixture is a real
-        // capture whose links.next names its own (different) series id.
-        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/')
-            && ! Str::contains($request->url(), 'page=1')
-            && ! Str::contains($request->url(), '/series/434847/'));
+        $this->assertDatabaseCount('episodes', 1);
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9786562'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9256455'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9256456'));
     });
 
-    it('skips a feed record whose seriesId would truncate to a different real show', function (): void {
+    it('skips a feed record whose ids would truncate to different real records', function (): void {
         // Arrange
-        // Synthetic feed body: a decimal, an exponential, and a slug-appended
-        // seriesId are malformed inputs a byte-exact real capture can't provide.
-        // Each is numeric-ish enough to survive a bare is_numeric() guard and then
-        // truncate under (int) to a plausible but wrong id — "70327.5" → 70327,
-        // "1e5" → 100000, "1335814-slug" → 1335814 — so all three truncations are
-        // seeded shows here, and crawling any of them is the defect. Records
-        // otherwise keep TheTVDB's real /updates shape.
+        // Synthetic feed body: a decimal, an exponential and a slug-appended id are
+        // malformed inputs a byte-exact real capture can't provide. Each is
+        // numeric-ish enough to survive a bare is_numeric() guard and then truncate
+        // under (int) into a plausible but wrong id — "70327.5" → 70327, "1e5" →
+        // 100000, "1335814-slug" → 1335814 — so every truncation target is a seeded
+        // show here, and fetching for any of them is the defect. The last record
+        // breaks the OTHER id: 9786563 is a real episode of the same seeded show, so
+        // a truncated recordId would fetch a genuinely wrong episode rather than
+        // erroring. Records otherwise keep TheTVDB's real /updates shape.
         $body = json_encode(['status' => 'success', 'data' => [
-            tvdbEpisodeUpdateRecord(9786562, '70327.5'),
-            tvdbEpisodeUpdateRecord(9786563, '1e5'),
-            tvdbEpisodeUpdateRecord(9786564, '1335814-slug'),
-            tvdbEpisodeUpdateRecord(9786565, 434847),
+            tvdbEpisodeUpdateRecord(9256455, '70327.5'),
+            tvdbEpisodeUpdateRecord(9256456, '1e5'),
+            tvdbEpisodeUpdateRecord(11846050, '1335814-slug'),
+            tvdbEpisodeUpdateRecord('9786563.5', 434847),
+            tvdbEpisodeUpdateRecord(9786562, 434847),
         ], 'links' => ['prev' => null, 'self' => '/updates', 'next' => null]]);
-        // One /episodes capture replayed for every show would collide on the globally
-        // unique episodes._tvdb_id, so each page's ids are offset by the series the walk
-        // is currently on — otherwise a truncated id crawling a second show would abort
-        // the run on a constraint violation instead of reaching the assertion below.
-        $currentSeries = 0;
+        // Only the well-formed record's episode is stubbed. Http::preventStrayRequests()
+        // is global, so a truncation that slipped through would abort the run rather
+        // than reach the assertions — either way it cannot pass silently.
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
             '*api4.thetvdb.com/v4/updates*' => Http::response($body),
-            '*api4.thetvdb.com/v4/series/*/episodes*' => function (Request $request) use (&$currentSeries) {
-                $isFollowUp = Str::contains($request->url(), 'page=1');
-
-                if (! $isFollowUp) {
-                    $currentSeries = (int) Str::before(Str::after($request->url(), '/series/'), '/');
-                }
-
-                $payload = json_decode(fixtureBytes($isFollowUp
-                    ? 'Catalog/tvdb/series_episodes_page2.json'
-                    : 'Catalog/tvdb/series_episodes_page1.json'), true);
-                $payload['data']['episodes'] = array_map(
-                    fn (array $episode): array => [...$episode, 'id' => $episode['id'] + $currentSeries, 'seriesId' => $currentSeries],
-                    $payload['data']['episodes'],
-                );
-
-                return Http::response(json_encode($payload));
-            },
+            '*api4.thetvdb.com/v4/episodes/9786562*' => Http::response(fixtureBytes('Catalog/tvdb/episode_9786562.json')),
         ]);
         collect([70327, 100000, 1335814, 434847])->each(fn (int $tvdbId) => Show::factory()->create([
             '_tvdb_id' => $tvdbId,
@@ -311,20 +325,21 @@ describe('catalog:sync-episodes-tvdb feed record selection', function (): void {
         ]));
 
         // Act
-        $this->artisan('catalog:sync-episodes-tvdb');
+        $this->artisan('catalog:sync-episodes-tvdb')->assertExitCode(0);
 
         // Assert
-        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/series/434847/episodes'));
-        // page=1 follow-ups are excluded: the /episodes page-2 fixture is a real
-        // capture whose links.next names its own (different) series id.
-        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/')
-            && ! Str::contains($request->url(), 'page=1')
-            && ! Str::contains($request->url(), '/series/434847/'));
+        $this->assertDatabaseCount('episodes', 1);
+        Http::assertSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9786562'));
+        // the three truncated-seriesId records, then the truncated-recordId one
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9256455'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9256456'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/11846050'));
+        Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/episodes/9786563'));
     });
 });
 
-describe('catalog:sync-episodes-tvdb show lookup and walk', function (): void {
-    it('looks up feed shows in chunks of 1000 ids', function (): void {
+describe('catalog:sync-episodes-tvdb show lookup', function (): void {
+    it('looks up feed series in chunks of 1000 ids', function (): void {
         // Arrange
         // Synthetic feed body: a >1000-record page is a structural input a committed
         // real fixture can't practically provide. No shows are seeded, so the run
@@ -351,7 +366,7 @@ describe('catalog:sync-episodes-tvdb show lookup and walk', function (): void {
             ->and(count($selects[1]['bindings']))->toBe(1);
     });
 
-    it('walks the matched shows in primary-key pages of 200', function (): void {
+    it('reads only the columns the episode refresh needs from a matched show', function (): void {
         // Arrange
         fakeTvdbEpisodes();
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
@@ -361,26 +376,8 @@ describe('catalog:sync-episodes-tvdb show lookup and walk', function (): void {
         $this->artisan('catalog:sync-episodes-tvdb');
 
         // Assert
-        // Pagination shape only, on unquoted substrings: identifier quoting differs
-        // between the sqlite test DB and MySQL, while the compiled `limit` inlines
-        // its integer identically in both dialects.
-        expect(loggedShowSelects()[0]['query'])
-            ->toContain('order by')
-            ->toContain('limit 200');
-    });
-
-    it('reads only the columns the seeding action needs from a matched show', function (): void {
-        // Arrange
-        fakeTvdbEpisodes();
-        Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
-        DB::enableQueryLog();
-
-        // Act
-        $this->artisan('catalog:sync-episodes-tvdb');
-
-        // Assert
-        // SeedTvdbEpisodes reads `_tvdb_id` (the /episodes fetch) and
-        // `_tvdb_defaultSeasonType` (season resolution) off each walked show; a
+        // RefreshTvdbEpisodes reads `_tvdb_id` (to attribute each payload to a show)
+        // and `_tvdb_defaultSeasonType` (season resolution) off each matched show; a
         // wildcard select drags every other column of the row through memory.
         expect(loggedShowSelects()[0]['query'])
             ->toContain('_tvdb_defaultSeasonType')
@@ -388,41 +385,13 @@ describe('catalog:sync-episodes-tvdb show lookup and walk', function (): void {
             ->not->toContain('select *');
     });
 
-    it('processes every matched show exactly once while stamping the rows it walks', function (): void {
+    it('stamps episodes_synced_at on every show whose episodes it refreshed', function (): void {
         // Arrange
-        // Each show is stamped mid-walk (SeedTvdbEpisodes ends on an
-        // episodes_synced_at update), so a skipped or re-processed row surfaces here.
-        // The stamps start a day behind run-start so the re-stamp is observable.
+        // Each touched show is re-stamped as the refresh persists its episodes, so a
+        // skipped show surfaces here. The stamps start a day behind run-start so the
+        // re-stamp is observable.
         Date::setTestNow('2026-07-16 12:00:00');
-        // One /episodes capture replayed for every show would collide on the globally
-        // unique episodes._tvdb_id, so each page's ids are offset by the series the
-        // walk is currently on — the real records' wire shape, varying only the ids.
-        // The offset is tracked across pages because the page-2 fixture's links.next
-        // is followed under the capture's own (different) series id.
-        $currentSeries = 0;
-        Http::fake([
-            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
-            '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
-                ? Http::response(fixtureBytes('Catalog/tvdb/episode_updates_page2.json'))
-                : Http::response(fixtureBytes('Catalog/tvdb/episode_updates.json')),
-            '*api4.thetvdb.com/v4/series/*/episodes*' => function (Request $request) use (&$currentSeries) {
-                $isFollowUp = Str::contains($request->url(), 'page=1');
-
-                if (! $isFollowUp) {
-                    $currentSeries = (int) Str::before(Str::after($request->url(), '/series/'), '/');
-                }
-
-                $body = json_decode(fixtureBytes($isFollowUp
-                    ? 'Catalog/tvdb/series_episodes_page2.json'
-                    : 'Catalog/tvdb/series_episodes_page1.json'), true);
-                $body['data']['episodes'] = array_map(
-                    fn (array $episode): array => [...$episode, 'id' => $episode['id'] + $currentSeries, 'seriesId' => $currentSeries],
-                    $body['data']['episodes'],
-                );
-
-                return Http::response(json_encode($body));
-            },
-        ]);
+        fakeTvdbEpisodes();
         collect([434847, 469484, 371082])->each(fn (int $tvdbId) => Show::factory()->create([
             '_tvdb_id' => $tvdbId,
             'episodes_synced_at' => now()->subDay(),
@@ -433,12 +402,9 @@ describe('catalog:sync-episodes-tvdb show lookup and walk', function (): void {
         $this->artisan('catalog:sync-episodes-tvdb');
 
         // Assert
-        // page=1 follow-ups are excluded to count processings, not calls.
-        expect(Http::recorded(fn (Request $request): bool => Str::contains($request->url(), '/episodes')
-            && ! Str::contains($request->url(), 'page=1'))->count())->toBe(3)
-            ->and(Show::query()->pluck('episodes_synced_at')->map->toDateTimeString()->all())
+        expect(Show::query()->pluck('episodes_synced_at')->map->toDateTimeString()->all())
             ->toBe(array_fill(0, 3, now()->toDateTimeString()));
-        $this->assertDatabaseCount('episodes', 18);
+        $this->assertDatabaseCount('episodes', 6);
     });
 });
 
@@ -451,7 +417,7 @@ describe('catalog:sync-episodes-tvdb progress output', function (): void {
         $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('Reading the episodes update feed…');
     });
 
-    it('announces the show walk before seeding episodes', function (): void {
+    it('announces the episode refresh before syncing episodes', function (): void {
         // Arrange
         fakeTvdbEpisodes();
 
@@ -487,48 +453,36 @@ describe('catalog:sync-episodes-tvdb progress output', function (): void {
 
     it('emits a source-prefixed episode-count heartbeat once the running total crosses 100', function (): void {
         // Arrange
-        // Synthetic feed body: 17 distinct seriesIds (the committed capture carries 3)
-        // is a structural input a real fixture can't practically provide — 17 shows ×
-        // 6 episodes is the smallest set that crosses a 100-episode beat.
-        $seriesIds = array_map(fn (int $offset): int => $offset * 1000, range(1, 17));
+        // Synthetic feed body: 102 changed episodes of one series (the committed
+        // capture carries 6 across three) is a structural input a real fixture can't
+        // practically provide, and is the smallest set that crosses a 100 beat.
+        $recordIds = array_map(fn (int $offset): int => 9786562 + $offset, range(0, 101));
         $body = json_encode(['status' => 'success', 'data' => array_map(
-            fn (int $seriesId): array => tvdbEpisodeUpdateRecord(9786562 + $seriesId, $seriesId),
-            $seriesIds,
+            fn (int $recordId): array => tvdbEpisodeUpdateRecord($recordId, 434847),
+            $recordIds,
         ), 'links' => ['prev' => null, 'self' => '/updates', 'next' => null]]);
-        // One /episodes capture replayed for every show would collide on the globally
-        // unique episodes._tvdb_id, so each page's ids are offset by the series the walk
-        // is currently on. The offset is tracked across pages because the page-2
-        // fixture's links.next is followed under the capture's own (different) series id.
-        $currentSeries = 0;
+        // One /episodes capture replayed for every id would collide on the globally
+        // unique episodes._tvdb_id, so each response's `id` is taken from the id the
+        // request asked for, and its `seriesId` pinned to the one seeded show — the
+        // real record's wire shape, varying only the ids.
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
             '*api4.thetvdb.com/v4/updates*' => Http::response($body),
-            '*api4.thetvdb.com/v4/series/*/episodes*' => function (Request $request) use (&$currentSeries) {
-                $isFollowUp = Str::contains($request->url(), 'page=1');
-
-                if (! $isFollowUp) {
-                    $currentSeries = (int) Str::before(Str::after($request->url(), '/series/'), '/');
-                }
-
-                $payload = json_decode(fixtureBytes($isFollowUp
-                    ? 'Catalog/tvdb/series_episodes_page2.json'
-                    : 'Catalog/tvdb/series_episodes_page1.json'), true);
-                $payload['data']['episodes'] = array_map(
-                    fn (array $episode): array => [...$episode, 'id' => $episode['id'] + $currentSeries, 'seriesId' => $currentSeries],
-                    $payload['data']['episodes'],
-                );
+            '*api4.thetvdb.com/v4/episodes/*' => function (Request $request) {
+                $payload = json_decode(fixtureBytes('Catalog/tvdb/episode_9786562.json'), true);
+                $payload['data'] = [
+                    ...$payload['data'],
+                    'id' => (int) Str::afterLast($request->url(), '/'),
+                    'seriesId' => 434847,
+                ];
 
                 return Http::response(json_encode($payload));
             },
         ]);
-        collect($seriesIds)->each(fn (int $tvdbId) => Show::factory()->create([
-            '_tvdb_id' => $tvdbId,
-            'episodes_synced_at' => now(),
-            '_tvdb_defaultSeasonType' => 1,
-        ]));
+        Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
 
-        // The 17th show takes the total to 102, the first crossing of a 100 boundary;
-        // the shows before it must stay silent, or the beat is per show, not per 100.
+        // The batch takes the total to 102, the first crossing of a 100 boundary; a
+        // run of 6 episodes must stay silent, or the beat is per batch, not per 100.
         // The half-rename guard has to be `[episodes ` — bracket AND trailing space —
         // because the prefixed line `[tvdb episodes 102]` itself contains the substring
         // `episodes 102]`, so a naked `episodes` guard would reject the very line it
@@ -545,15 +499,15 @@ describe('catalog:sync-episodes-tvdb progress output', function (): void {
 describe('catalog:sync-episodes-tvdb run-closing output', function (): void {
     it('reports its exact final count on a run that never reaches the beat interval', function (): void {
         // Arrange
-        // The happy-path fake walks exactly one seeded show, whose /episodes crawl pages
-        // 3 + 3 = 6 episodes — far short of the 100-episode beat interval, which is why
-        // nothing is printed today. The count is pinned to the observed run (the sibling
-        // `Synced 6 episodes` line), not to the interval arithmetic.
+        // The happy-path fake refreshes the two changed episodes of one seeded show —
+        // far short of the 100-episode beat interval, which is why nothing is printed
+        // before the flush. The count is pinned to the observed run (the sibling
+        // `Synced 2 episodes` line), not to the interval arithmetic.
         fakeTvdbEpisodes();
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
 
         // Act & Assert
-        $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('  [tvdb episodes 6]');
+        $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('  [tvdb episodes 2]');
     });
 
     it('ends the run with a Done. line', function (): void {
@@ -571,9 +525,9 @@ describe('catalog:sync-episodes-tvdb index silence and elapsed phase lines', fun
     |--------------------------------------------------------------------------
     | Index silence & elapsed phase lines
     |--------------------------------------------------------------------------
-    | The leg writes no searchable content — SeedTvdbEpisodes ends on an
+    | The leg writes no searchable content — the refresh ends on an
     | `episodes_synced_at` stamp, whose model save the `Searchable` trait syncs to
-    | the engine inline, once per show walked. That bookkeeping traffic is what the
+    | the engine inline, once per show touched. That bookkeeping traffic is what the
     | leg must suppress, and there is no reindex phase to pair it with: nothing the
     | engine cares about changed. The tests below freeze the clock, which pins both
     | phases' elapsed readings at `0s`.
@@ -607,13 +561,27 @@ describe('catalog:sync-episodes-tvdb index silence and elapsed phase lines', fun
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
 
         // Act & Assert
+        $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('Synced 2 episodes in 0s');
+    });
+
+    it('counts every seeded show\'s changed episodes in the synced-episodes line', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTvdbEpisodes();
+        collect([434847, 469484, 371082])->each(fn (int $tvdbId) => Show::factory()->create([
+            '_tvdb_id' => $tvdbId,
+            'episodes_synced_at' => now(),
+            '_tvdb_defaultSeasonType' => 1,
+        ]));
+
+        // Act & Assert
         $this->artisan('catalog:sync-episodes-tvdb')->expectsOutputToContain('Synced 6 episodes in 0s');
     });
 
     it('a window matching no seeded shows still prints both completion lines and exits 0', function (): void {
         // Arrange
         // A quiet window, not a failed one: the feed's shows are all unseeded, so no
-        // show is walked, yet both phases still report and the run exits clean.
+        // episode is fetched, yet both phases still report and the run exits clean.
         Date::setTestNow('2026-07-16 12:00:00');
         fakeTvdbEpisodes();
 
@@ -625,34 +593,60 @@ describe('catalog:sync-episodes-tvdb index silence and elapsed phase lines', fun
     });
 });
 
-describe('catalog:sync-episodes-tvdb failed-show run outcome', function (): void {
-    it('exits FAILURE when a show\'s episodes fetch failed', function (): void {
+describe('catalog:sync-episodes-tvdb failed-episode run outcome', function (): void {
+    it('exits FAILURE when a changed episode\'s fetch failed', function (): void {
         // Arrange
+        Sleep::fake();
         Date::setTestNow('2026-07-16 12:00:00');
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
-        fakeTvdbEpisodesWithFailingShowFetch();
+        fakeTvdbEpisodesWithFailingEpisodeFetch();
 
         // Act & Assert
         $this->artisan('catalog:sync-episodes-tvdb')->assertExitCode(Command::FAILURE);
     });
 
-    it('closes the run with the failed show count and the marker consequence', function (): void {
+    it('closes the run with the failed episode count and the marker consequence', function (): void {
         // Arrange
-        // One seeded show is walked and its /episodes fetch 500s, so the run's failure
-        // count is 1 — the catch is per show, not per episode or per HTTP attempt.
+        // One seeded show contributes two changed episode ids and both 500, so the
+        // run's failure count is 2 — a failure is now one unfetchable episode, not
+        // one show and not one HTTP attempt.
+        Sleep::fake();
         Date::setTestNow('2026-07-16 12:00:00');
         Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
-        fakeTvdbEpisodesWithFailingShowFetch();
+        fakeTvdbEpisodesWithFailingEpisodeFetch();
 
         // Act
         $this->artisan('catalog:sync-episodes-tvdb')
-            ->expectsOutputToContain('1 shows failed; marker not advanced.')
-            ->doesntExpectOutputToContain('  1 shows failed')
+            ->expectsOutputToContain('2 episodes failed; marker not advanced.')
+            ->doesntExpectOutputToContain('  2 episodes failed')
             ->run();
 
         // Assert
         // The consequence the line claims, proven alongside the line itself.
         expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBeNull();
+    });
+
+    it('treats a 404 episode as a miss rather than a failure', function (): void {
+        // Arrange
+        // TheTVDB 404s an episode it deleted since the feed named it — a settled
+        // upstream answer, so the window IS fully covered and the marker may move.
+        Date::setTestNow('2026-07-16 12:00:00');
+        Show::factory()->create(['_tvdb_id' => 434847, 'episodes_synced_at' => now(), '_tvdb_defaultSeasonType' => 1]);
+        Http::fake([
+            '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
+            '*api4.thetvdb.com/v4/updates*' => fn (Request $request) => Str::contains($request->url(), 'page=1')
+                ? Http::response(fixtureBytes('Catalog/tvdb/episode_updates_page2.json'))
+                : Http::response(fixtureBytes('Catalog/tvdb/episode_updates.json')),
+            '*api4.thetvdb.com/v4/episodes/9786562*' => Http::response('', 404),
+            '*api4.thetvdb.com/v4/episodes/9786563*' => Http::response(fixtureBytes('Catalog/tvdb/episode_9786563.json')),
+        ]);
+
+        // Act
+        $this->artisan('catalog:sync-episodes-tvdb')->assertExitCode(0)->run();
+
+        // Assert
+        expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBe(now()->toIso8601String());
+        $this->assertDatabaseCount('episodes', 1);
     });
 });
 

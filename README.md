@@ -183,6 +183,13 @@ aborts with `There are no commands defined in the "lf" namespace` and every late
 reports `skip_reason: aborted`. Merge `main` into the branch first, then clear the
 `error` status and re-run.
 
+**`up` also depends on the primary checkout's *code*, not just its branches.** Its
+fast-forward step runs the primary's `php artisan lf:workspace-sync`, so a workspace
+whose `up.yaml` expects that command while `~/Sites/lundflix-v2` predates it aborts
+with the same `There are no commands defined in the "lf" namespace` — from the primary
+this time, not the workspace. A `git pull` there is the whole fix; no `composer
+install` is needed.
+
 **Two limits.** There is **no `remove-workspace` tool** — `remove-project` removes a
 whole project, not one workspace — so final removal stays a GUI action after `down`.
 And enabling this grants more than worktrees: with Read only off and shell execution
