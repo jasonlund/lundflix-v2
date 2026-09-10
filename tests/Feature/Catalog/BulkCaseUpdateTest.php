@@ -382,3 +382,122 @@ describe('handle() updated_at watermark', function (): void {
             ->and(Movie::query()->find($unmatched->id)->updated_at->toDateTimeString())->toBe($stale);
     });
 });
+
+describe('handle() key column and stamp opt-out', function (): void {
+    it('keys the match and the CASE on _tmdb_id when given that key column', function (): void {
+        // Arrange
+        $first = Movie::factory()->create(['_tmdb_id' => 603, '_tmdb_popularity' => 1.0]);
+        $second = Movie::factory()->create(['_tmdb_id' => 604, '_tmdb_popularity' => 2.0]);
+
+        // Act
+        $matchedIds = resolve(BulkCaseUpdate::class)->handle(
+            Movie::query(),
+            [
+                603 => ['_tmdb_popularity' => 88.5],
+                604 => ['_tmdb_popularity' => 12.25],
+            ],
+            ['_tmdb_popularity'],
+            keyColumn: '_tmdb_id',
+        );
+
+        // Assert
+        expect(Movie::query()->find($first->id)->_tmdb_popularity)->toBe(88.5)
+            ->and(Movie::query()->find($second->id)->_tmdb_popularity)->toBe(12.25)
+            ->and($matchedIds)->toEqualCanonicalizing([603, 604]);
+    });
+
+    it('keys the match and the CASE on _imdb_id when no key column is given', function (): void {
+        // The guard that widening the signature did not move the default: every
+        // existing caller omits the argument and must keep keying on _imdb_id.
+        // Arrange
+        $first = Movie::factory()->create(['_imdb_id' => 'tt0000001', '_imdb_numVotes' => 1]);
+        $second = Movie::factory()->create(['_imdb_id' => 'tt0000002', '_imdb_numVotes' => 2]);
+
+        // Act
+        $matchedIds = resolve(BulkCaseUpdate::class)->handle(
+            Movie::query(),
+            [
+                'tt0000001' => ['_imdb_numVotes' => 2252453],
+                'tt0000002' => ['_imdb_numVotes' => 987654],
+            ],
+            ['_imdb_numVotes'],
+        );
+
+        // Assert
+        expect(Movie::query()->find($first->id)->_imdb_numVotes)->toBe(2252453)
+            ->and(Movie::query()->find($second->id)->_imdb_numVotes)->toBe(987654)
+            ->and($matchedIds)->toEqualCanonicalizing(['tt0000001', 'tt0000002']);
+    });
+
+    it('leaves updated_at untouched when the stamp is opted out', function (): void {
+        // A fresh row's updated_at is already the frozen now, so the stale value has
+        // to be forced on before the act or the assertion passes either way.
+        // Arrange
+        $this->freezeTime();
+        $stale = '2020-01-01 00:00:00';
+        $movie = Movie::factory()->create(['_imdb_id' => 'tt0000001', '_imdb_numVotes' => 1]);
+        Movie::query()->whereKey($movie->id)->toBase()->update(['updated_at' => $stale]);
+
+        // Act
+        resolve(BulkCaseUpdate::class)->handle(
+            Movie::query(),
+            ['tt0000001' => ['_imdb_numVotes' => 2252453]],
+            ['_imdb_numVotes'],
+            touch: false,
+        );
+
+        // The stale precondition must differ from the frozen now, and the column
+        // must really have been written — a no-op update would satisfy the
+        // updated_at assertion on its own.
+        // Assert
+        $fresh = Movie::query()->find($movie->id);
+        expect($stale)->not->toBe(now()->toDateTimeString())
+            ->and($fresh->updated_at->toDateTimeString())->toBe($stale)
+            ->and($fresh->_imdb_numVotes)->toBe(2252453);
+    });
+
+    it('writes every column to its correct value with the stamp opted out', function (): void {
+        // Every SET placeholder's binding goes into the query's single 'join' slot in
+        // SET-clause order, so dropping the updated_at binding removes one entry from
+        // that slot. If the remaining bindings shift by one the statement still
+        // compiles and reads correctly, but the ratings land in the vote columns —
+        // hence the exact sql and bindings, not just the resulting rows.
+        // Arrange
+        $this->freezeTime();
+        $first = Movie::factory()->create(['_imdb_id' => 'tt0000001', '_imdb_numVotes' => 1, '_imdb_averageRating' => 1.0]);
+        $second = Movie::factory()->create(['_imdb_id' => 'tt0000002', '_imdb_numVotes' => 2, '_imdb_averageRating' => 2.0]);
+        DB::enableQueryLog();
+
+        // Act
+        resolve(BulkCaseUpdate::class)->handle(
+            Movie::query(),
+            [
+                'tt0000001' => ['_imdb_numVotes' => 2252453, '_imdb_averageRating' => 8.7],
+                'tt0000002' => ['_imdb_numVotes' => 987654, '_imdb_averageRating' => 9.2],
+            ],
+            ['_imdb_numVotes', '_imdb_averageRating'],
+            touch: false,
+        );
+
+        // Assert
+        $update = preparedBulkUpdate();
+        $freshFirst = Movie::query()->find($first->id);
+        $freshSecond = Movie::query()->find($second->id);
+        expect($update['sql'])->toBe(
+            'update "movies" set "_imdb_numVotes" = CASE _imdb_id WHEN ? THEN ? WHEN ? THEN ? END, '
+            .'"_imdb_averageRating" = CASE _imdb_id WHEN ? THEN ? WHEN ? THEN ? END '
+            .'where "_imdb_id" in (?, ?)'
+        )
+            ->and($update['bindings'])->toBe([
+                'tt0000001', 2252453,
+                'tt0000002', 987654,
+                'tt0000001', 8.7,
+                'tt0000002', 9.2,
+                'tt0000001', 'tt0000002',
+            ])
+            ->and($freshFirst->_imdb_numVotes)->toBe(2252453)
+            ->and($freshFirst->_imdb_averageRating)->toBe(8.7)
+            ->and($freshSecond->_imdb_numVotes)->toBe(987654)
+            ->and($freshSecond->_imdb_averageRating)->toBe(9.2);
+    });
+});

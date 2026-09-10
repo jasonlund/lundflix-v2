@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Casts\NullableDate;
+use App\Domains\Catalog\Contracts\Title;
 use App\Domains\Catalog\Database\Factories\MovieFactory;
 use App\Domains\Catalog\Models\Concerns\Refusable;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -13,12 +14,32 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Laravel\Scout\Searchable;
 
-final class Movie extends Model
+final class Movie extends Model implements Title
 {
     /** @use HasFactory<MovieFactory> */
     use HasFactory;
 
     use Refusable, Searchable;
+
+    public function catalogId(): int
+    {
+        return $this->id;
+    }
+
+    public function displayTitle(): ?string
+    {
+        return $this->_tmdb_title;
+    }
+
+    public function imdbId(): ?string
+    {
+        return $this->_imdb_id;
+    }
+
+    public function tmdbId(): ?int
+    {
+        return $this->_tmdb_id;
+    }
 
     /**
      * @return MorphMany<Media, $this>

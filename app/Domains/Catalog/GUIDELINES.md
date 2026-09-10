@@ -477,6 +477,27 @@ marker-windowed and the leg already touched only changed shows — both audits a
 window-and-membership check passes — yet the amplification sat one level down, in what
 each touched row then cost to refresh.
 
+**Carve-out (FLIX-321): `catalog:refresh-popularity` is O(catalog) on purpose.** It
+streams both TMDB daily id exports in full every day and bulk-writes
+`_tmdb_popularity` on every held row they list — cost proportional to the catalog,
+which the rule above would otherwise read as an offender. It is not one, and the
+reason is that the first question has no answer here: **popularity is not a change
+event.** TMDB staff are explicit that `/changes` tracks data changes only, so the
+feed never lists a title because its popularity moved. There is no incremental
+endpoint to prefer, so the value sat frozen at seed time for nearly the whole
+catalog until this leg existed. The exports are the only source carrying it for
+every id.
+
+What keeps the exception cheap enough to earn: **zero API calls** (the exports come
+off the file host, never `api.themoviedb.org`), ~310 bulk statements a run, and no
+`updated_at` stamp — `BulkCaseUpdate` is called with `$touch: false`, because
+`_tmdb_popularity` is not in `toSearchableArray()` and stamping it would turn an
+O(catalog) write into an O(catalog) reindex for a value the index never holds.
+
+The precedent this sets is narrow: a full sweep is defensible only when no
+incremental source for the value exists **at all** — not when one exists and is
+merely inconvenient — and only when the sweep costs no upstream requests.
+
 Offenders still open: none.
 
 ## Incremental sync markers (`SyncMarker` / `SyncFeed`)
