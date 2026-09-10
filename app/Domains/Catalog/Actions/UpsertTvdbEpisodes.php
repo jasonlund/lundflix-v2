@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Actions;
 
+use App\Domains\Catalog\Models\Episode;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Support\RawSourceColumns;
 use App\Domains\Common\Support\SourceId;
@@ -21,7 +22,7 @@ final readonly class UpsertTvdbEpisodes
     ];
 
     /**
-     * Persist a show's TVDB episodes, deduped on `_tvdb_id` and scoped to the show.
+     * Persist a show's TVDB episodes, deduped on `_tvdb_id` across every show.
      *
      * @param  array<int, array<string, mixed>>  $episodes
      */
@@ -39,9 +40,17 @@ final readonly class UpsertTvdbEpisodes
                 continue;
             }
 
-            $show->episodes()->updateOrCreate(
+            // Matched across every show, not through the relation: `_tvdb_id` is
+            // globally unique, so an episode TVDB has moved to another series must
+            // be re-parented onto `$show` — a show-scoped lookup misses the row it
+            // is still stored under and the insert is rejected outright.
+            Episode::query()->updateOrCreate(
                 ['_tvdb_id' => $tvdbId],
-                [...RawSourceColumns::map('tvdb', self::RAW_COLUMNS, $episode), 'tvdb_synced_at' => now()],
+                [
+                    'show_id' => $show->id,
+                    ...RawSourceColumns::map('tvdb', self::RAW_COLUMNS, $episode),
+                    'tvdb_synced_at' => now(),
+                ],
             );
 
             $processed++;

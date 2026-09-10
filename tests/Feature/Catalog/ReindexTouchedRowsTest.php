@@ -12,6 +12,18 @@ use Illuminate\Support\Facades\Queue;
 uses(RefreshDatabase::class);
 
 /**
+ * Every key a `delete` spy captured, chunk grouping dropped — the removal-side
+ * twin of reindexedIds(), whose name misreads over rows leaving the index.
+ *
+ * @param  list<list<int|string>>  $chunks
+ * @return list<int|string>
+ */
+function removedIds(array $chunks): array
+{
+    return collect($chunks)->flatten()->all();
+}
+
+/**
  * Stamp a row's `updated_at` without the model touching timestamps itself.
  */
 $stampUpdatedAt = function (Movie|Show $row, CarbonImmutable $updatedAt): void {
@@ -120,6 +132,39 @@ describe('handle() chunked walk', function () use ($write): void {
         sort($ascendingIds);
         expect($capturedChunks())->toHaveCount(3);
         expect($capturedChunks())->toBe(array_chunk($ascendingIds, 2));
+    });
+});
+
+describe('handle() refused rows', function () use ($write): void {
+    it('hands the engine only the rows the catalog will surface', function () use ($write): void {
+        // Arrange
+        $watermark = CarbonImmutable::now()->startOfSecond()->subHour();
+        $clean = Movie::factory()->withTmdb()->create();
+        Movie::factory()->withTmdb()->create(['_tmdb_adult' => true]);
+        $capturedChunks = spyOnScoutEngine();
+
+        // Act
+        new ReindexTouchedRows()->handle(Movie::class, $watermark, $write);
+
+        // Assert
+        expect(reindexedIds($capturedChunks()))->toBe([$clean->id]);
+    });
+
+    // TMDB reclassifies titles, so a row already in the index can turn refused on
+    // a later sync. Declining to re-add it would leave the stale entry findable
+    // forever — the pass has to actively remove it.
+    it('removes a row from the index once it becomes refused', function () use ($write): void {
+        // Arrange
+        $watermark = CarbonImmutable::now()->startOfSecond()->subHour();
+        Movie::factory()->withTmdb()->create();
+        $nowRefused = Movie::factory()->withTmdb()->create(['_tmdb_adult' => true]);
+        $capturedChunks = spyOnScoutEngine('delete');
+
+        // Act
+        new ReindexTouchedRows()->handle(Movie::class, $watermark, $write);
+
+        // Assert
+        expect(removedIds($capturedChunks()))->toBe([$nowRefused->id]);
     });
 });
 
