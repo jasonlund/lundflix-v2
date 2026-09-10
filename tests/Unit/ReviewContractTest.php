@@ -1160,59 +1160,38 @@ describe('human round contract', function () use (
             ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(300);
     });
 
-    it('replies to a TICKET item once the user has ruled on the ticket', function () use ($reviewCommandSource, $withinPhase): void {
-        // Phase 5 replies to every disposition but this one, and the gap is not a
-        // missing sentence so much as a reply that cannot be written where the
-        // others are: Phase 6 is where the user rules on the ticket batch, and it
-        // runs after Phase 5 — so a reply drafted in place promises a ticket
-        // nobody approved. The declined half is the one an editor drops as
-        // redundant. A ticket the user turned down still owes the reviewer an
-        // answer, and a reply that never comes reads as agreement.
-        // Scoped to Phase 5 because that is the phase that owes the reply; the
-        // ticket offer itself is Phase 6's and is asserted nowhere near here.
+    it('replies to a TICKET item in the same pass as every other disposition', function () use ($reviewCommandSource, $withinPhase): void {
+        // `TICKET` was the one disposition whose reply hung on a decision a later
+        // phase makes, and that deferral cost three review rounds in a row: the
+        // invariant lived in this bullet, in the `gh-thread` mechanics, in a
+        // Phase 6 posting step and in the `--leave-human-open` clause at once, so
+        // every patch to one stranded another. Written in place the reply owes
+        // Phase 6 nothing — it records that the point is captured, that the batch
+        // is where it is ruled on, and that a ticket opens only if the user
+        // approves. The price is that it cannot name an id, which is the cheaper
+        // half of the trade: a thread that resolves carrying no reply is what
+        // Phase 0 never collects again.
+        // The declined half is the one an editor drops as redundant. A ticket the
+        // user turns down still owes the reviewer an answer, and a reply that
+        // never comes reads as agreement.
+        // All three are tempered to the one bullet. `Phase 6`, `approve` and the
+        // deferral verbs are prose in the bullets and mechanics around this one,
+        // so a phase-wide lookahead would hold on a neighbour's copy of the word
+        // and could not fail for the reason its name gives.
         // Arrange
         $source = $reviewCommandSource('process');
         $required = [
-            'Phase 5 replies to a `TICKET` item' => $withinPhase(5, '\bTICKET\b'),
-            'the reply waits for Phase 6, where the user rules on the ticket' => $withinPhase(5, '\bPhase 6\b'),
-            'a ticket the user declined still gets its reply' => $withinPhase(5, '(?i:declin)'),
-        ];
-
-        // Act
-        $missing = ToolkitFiles::missingPatterns($source, $required);
-
-        // Assert
-        expect($missing)->toBe([])
-            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(300);
-    });
-
-    it('posts the held TICKET reply in Phase 6 and keeps the thread open until it lands', function () use ($reviewCommandSource, $withinPhase): void {
-        // A reply held for a later phase is only held if that phase posts it.
-        // Phase 5 defers a `TICKET` item's reply to the phase where the ticket
-        // finally has an id — and Phase 6 offers the reinforcements, lists the
-        // tickets, summarizes the run and prompts to commit. None of that is the
-        // reply. Phase 5's resolve is what makes the loss permanent: it runs
-        // unconditionally, so the thread closes carrying nothing, and Phase 0
-        // collects only un-resolved items, so the item never comes back. The
-        // reviewer asked; the run answered nowhere; every artefact of the run
-        // reads as though it had been handled.
-        // Two halves, each scoped to the phase that owes it. Phase 6's is
-        // tempered to one paragraph, because a phase that posts replies and a
-        // phase that lists tickets are different commitments and the words for
-        // both are in this phase already. Phase 5's is tempered to one bullet:
-        // `resolve` is prose in most of the bullets around it, so a phase-wide
-        // pair of lookaheads would hold on a neighbour's copy of the word and
-        // could not fail for the reason its name gives.
-        // Arrange
-        $source = $reviewCommandSource('process');
-        $required = [
-            'Phase 6 posts the held `TICKET` reply and resolves its thread' => $withinPhase(
-                6,
-                '^(?=(?:(?!\n\n).)*\bTICKET\b)(?=(?:(?!\n\n).)*(?i:\brepl))(?=(?:(?!\n\n).)*(?i:resolv))',
-            ),
-            'Phase 5 holds a `TICKET` item\'s resolve back until its reply exists' => $withinPhase(
+            'Phase 5 writes a `TICKET` item\'s reply in place, holding no part of it for a later phase' => $withinPhase(
                 5,
-                '^- \*\*(?=(?:(?!^- ).)*\bTICKET\b)(?=(?:(?!^- ).)*(?i:resolv))(?=(?:(?!^- ).)*(?i:\bwaits?\b))',
+                '^- \*\*(?i:ticket)(?!(?:(?!^- ).)*(?i:\bwaits?\b|\bheld\b|\bholds?\b))',
+            ),
+            'the reply names the Phase 6 batch and the approval a ticket opens on' => $withinPhase(
+                5,
+                '^- \*\*(?=(?:(?!^- ).)*\bPhase 6\b)(?=(?:(?!^- ).)*(?i:approv))',
+            ),
+            'a ticket the user declined still gets its reply' => $withinPhase(
+                5,
+                '^- \*\*(?=(?:(?!^- ).)*(?i:declin))',
             ),
         ];
 

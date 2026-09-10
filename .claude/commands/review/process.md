@@ -413,12 +413,9 @@ get their reply and resolve too, even though they were never presented.
 - **Skipped / dismissed** → the rationale.
 - **Answered / acknowledged** → the text of the item's `Answer:` slot, or a one-line
   acknowledgment for praise.
-- **Ticketed** → the ticket the user approved, by id. Phase 6 is where they rule on the
-  batch and it runs after this phase, so a `TICKET` item's reply waits for Phase 6 **and
-  its resolve waits with it** — a reply written in place names a ticket nobody has
-  approved, and a thread resolved in place closes with no reply on it, which Phase 0
-  never collects again. A ticket the user declined gets its reply too: record the point
-  and say no ticket was opened.
+- **Ticketed** → the point is captured, and goes to the Phase 6 batch where a ticket opens
+  only on the user's approval. No id exists yet, so the reply names none — and it is owed
+  the same whether that batch opens the ticket or the user declines it.
 - **Out of scope** → the out-of-scope rationale, and for a BLOCKING hold, how the user
   chose to handle it.
 
@@ -430,8 +427,7 @@ Mechanics by source:
   gh api graphql -F id={threadId} -f query='
   mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }'
   ```
-  Every thread resolves by default, in the same pass as its reply — so a `TICKET` item's
-  thread is left alone here and resolves in Phase 6, with the reply it is holding.
+  Every thread resolves by default.
   **`--leave-human-open` holds back the resolve mutation on threads where `isBot` is
   false** — those keep their reply and stay open for the reviewer to close, while threads
   our own pipeline or a known bot authored resolve either way.
@@ -479,11 +475,6 @@ when Phase 1 captured none.
 In `--human-round`, list every `TICKET` item in the same batch, each with the ticket
 you would open for it. Create a ticket only on the user's approval.
 
-**Once that batch is settled, post the replies Phase 5 held.** Every `TICKET` item is
-still unanswered and its thread still open, because until here the ticket had no id.
-Reply on each by the Phase 5 mechanics for its source — the ticket id for an approved
-one, the point recorded and no ticket opened for a declined one — then resolve it.
-
 Summarize the run:
 
 ```
@@ -494,6 +485,7 @@ Summarize the run:
 - Skipped: {count}
 - Dismissed (false positive): {count}
 - Reinforcements applied (registry/config edits to stop re-flags): {list}
+- Tickets opened from the batch: {list}
 - Out of scope — skipped (PR didn't touch this code): {count}
 - Out of scope — BLOCKING, decided in the gate: {count} ({addressed}/{skipped})
 - Human threads left open for the reviewer: {count}   # only with --leave-human-open
