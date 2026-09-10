@@ -1186,6 +1186,44 @@ describe('human round contract', function () use (
             ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(300);
     });
 
+    it('posts the held TICKET reply in Phase 6 and keeps the thread open until it lands', function () use ($reviewCommandSource, $withinPhase): void {
+        // A reply held for a later phase is only held if that phase posts it.
+        // Phase 5 defers a `TICKET` item's reply to the phase where the ticket
+        // finally has an id — and Phase 6 offers the reinforcements, lists the
+        // tickets, summarizes the run and prompts to commit. None of that is the
+        // reply. Phase 5's resolve is what makes the loss permanent: it runs
+        // unconditionally, so the thread closes carrying nothing, and Phase 0
+        // collects only un-resolved items, so the item never comes back. The
+        // reviewer asked; the run answered nowhere; every artefact of the run
+        // reads as though it had been handled.
+        // Two halves, each scoped to the phase that owes it. Phase 6's is
+        // tempered to one paragraph, because a phase that posts replies and a
+        // phase that lists tickets are different commitments and the words for
+        // both are in this phase already. Phase 5's is tempered to one bullet:
+        // `resolve` is prose in most of the bullets around it, so a phase-wide
+        // pair of lookaheads would hold on a neighbour's copy of the word and
+        // could not fail for the reason its name gives.
+        // Arrange
+        $source = $reviewCommandSource('process');
+        $required = [
+            'Phase 6 posts the held `TICKET` reply and resolves its thread' => $withinPhase(
+                6,
+                '^(?=(?:(?!\n\n).)*\bTICKET\b)(?=(?:(?!\n\n).)*(?i:\brepl))(?=(?:(?!\n\n).)*(?i:resolv))',
+            ),
+            'Phase 5 holds a `TICKET` item\'s resolve back until its reply exists' => $withinPhase(
+                5,
+                '^- \*\*(?=(?:(?!^- ).)*\bTICKET\b)(?=(?:(?!^- ).)*(?i:resolv))(?=(?:(?!^- ).)*(?i:\bwaits?\b))',
+            ),
+        ];
+
+        // Act
+        $missing = ToolkitFiles::missingPatterns($source, $required);
+
+        // Assert
+        expect($missing)->toBe([])
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(300);
+    });
+
     it('routes a human item it judges wrong to DISCUSS rather than a fixer', function () use ($reviewCommandSource, $nearInParagraph): void {
         // Unwritten, this is the failure with no trace at all. The pipeline reads
         // a human item it believes is wrong, has no rule for the disagreement,

@@ -104,7 +104,9 @@ the PR after the reader submits, or accept the clean read and move on to
 
 - **Any human reviews here.** Write and speak to "the reviewer", not "the
   author" — a teammate reviewing someone else's branch is the same stage.
-- **Submitted, not drafted.** Every empty result traces back to this, so say it
+- **Submitted, not drafted.** The likeliest cause of an empty result, not the
+  only one — Phase 2 carries all three, and reporting the draft as the whole
+  explanation sends the reviewer back to a review that already synced. Say it
   before the wait and again after a zero-item ingest.
 - **Read nothing for them.** Summarizing the branch is `/review:debrief`'s job,
   and defect-hunting is `/review:suite`'s. Staying in your lane keeps this stage
