@@ -178,7 +178,7 @@ granularity (too coarse / too fine), whether each ticket's blockers **genuinely*
 gate it rather than merely relating to it, and whether any pair should be merged
 or split.
 
-Ask those three in the canonical format — *Asking the user a question* in
+Ask those three as a **decision round** — *Asking the user a question* in
 `.ai/guidelines/project.md`.
 
 **GATE:** no Linear write happens until the user approves this breakdown.

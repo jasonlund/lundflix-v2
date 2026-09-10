@@ -118,9 +118,8 @@ can be approved a cluster at a time, not big-bang.
 Walk the clusters **one at a time** — phased approval, one workstream locked before
 the next, never the whole plan for one big yes/no. Per cluster: state the decision,
 give 2–3 concrete options with a **recommendation and its reasoning**, ask the
-cluster as one **numbered round** in the canonical format —
-*Asking the user a question* in `.ai/guidelines/project.md` — then wait for the
-user's pick.
+cluster as one **decision round** — *Asking the user a question* in
+`.ai/guidelines/project.md` — then wait for the user's pick.
 
 Record each **locked decision** with the rationale, so downstream (and the ticket
 reader) sees *why*, not just *what*.

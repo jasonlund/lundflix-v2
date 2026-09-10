@@ -123,8 +123,14 @@ Present every item once, each carrying your recommendation and the reasoning beh
 One reply settles the whole list: every recommendation stands unless an override names
 its number.
 
-**Number the items globally `1..N`. A number is assigned once and stays with its item for
-the whole run**, including the Phase 6 summary.
+This list is a **disposition list** — the rendering *Asking the user a question* in
+`.ai/guidelines/project.md` defines for a batch of already-triaged items. The contract
+there binds it, numbering included.
+
+**Number the items globally `1..N`. A number is assigned once and keeps naming that item
+for the rest of the session** — the Phase 6 summary, and any later round. A delta round
+(`/review:run` Stage 5) **continues** the sequence rather than restarting at `1`, so the
+user can still amend item 6 by number two rounds on.
 
 Group by your recommendation — `APPROVE` (worth fixing, so do it) and `SKIP` (you would
 drop it) — then `ALREADY FIXED` (the head resolves it, so it needs a reply and no work)
@@ -222,11 +228,10 @@ a trip to the file.
 
 The full spec is *How Findings Are Written* in `.claude/skills/review-pipeline/SKILL.md`.
 
-Then prompt once, as plain text. That prompt is a question round, so write it in the
-canonical format — *Asking the user a question* in `.ai/guidelines/project.md`. Every
-recommendation on the list **stands by default**, so the user replies only with
-overrides, as `<approve|skip> <numbers>` lines, and the prompt closes on the line that
-format ends on — silence accepts what you recommended:
+Then prompt once, as plain text. The list above is the disposition list's entries; this
+prompt is the closing line the contract asks for. Every recommendation **stands by
+default**, so the user replies only with overrides, as `<approve|skip> <numbers>` lines,
+and the close says so outright — silence accepts what you recommended:
 
 ```
 Approve/skip stand as recommended — reply only with overrides.

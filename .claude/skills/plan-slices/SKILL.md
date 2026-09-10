@@ -93,7 +93,7 @@ spreading evenly over every edge case.
 
 Put the seam list at the **top of the backlog** and confirm it with the user
 alongside the testability findings. Ask that round — seams and findings together —
-in the canonical format: *Asking the user a question* in
+as a **decision round**: *Asking the user a question* in
 `.ai/guidelines/project.md`.
 
 **Source:** the seam contract is adapted from `mattpocock-skills:tdd`'s *Seams:

@@ -876,7 +876,25 @@ to answer per question, amend an earlier lock, or reject the framing itself.
 skill's RED gate). That is a plan-approval gate the harness renders, not a question
 put to the user — it stays.
 
-### The round format — verbatim
+### The contract
+
+Binds every asking site, whichever rendering below it uses:
+
+1. **Numbered, and the number is durable.** A number names one thing for the whole
+   session — a later round *continues* the sequence rather than restarting it, so
+   item 6 is still item 6 two rounds on.
+2. **Every entry carries a recommendation and its reasoning.** No recommendation →
+   the entry is not ready to put to the user.
+3. **Silence locks every recommendation, and nothing is re-asked.**
+4. **A partial reply locks what it names; every entry it does not name stands.**
+5. **Any earlier lock is amendable by number, at any point.**
+6. **Close with one line saying silence accepts.**
+
+Two renderings carry it. Pick by payload, not by preference: a decision you are
+putting to the user takes the **decision round**; a batch of items you have already
+triaged, each arriving with a proposed disposition, takes the **disposition list**.
+
+### Rendering A — the decision round
 
 ```
 ❓ **Q1** — **<title>**: <the decision, with its concrete options>
@@ -884,13 +902,25 @@ put to the user — it stays.
 ➡️ <your recommendation and why>
 ```
 
-- **Numbering runs continuously across every round in the session** — `Q7` names one
-  question forever, so a later reply can amend it by number.
-- **Every question carries a recommendation and its reasoning.** No recommendation →
-  the question is not ready to ask.
+Used by `plan-draft`, `plan-breakdown`, `plan-slices`, `tdd` and `/plan:run`. The
+template is mandated verbatim, glyphs included, and is defined here and **nowhere
+else** — a second copy is the drift this section exists to prevent.
+
+- **`Q7` names one question forever**, so a later reply can amend it by number
+  (contract 1).
 - **Only ask what's answerable now.** A question whose answer depends on another
   question open in the same round belongs to a later round.
-- Close the round with one line saying silence accepts the recommendations.
+
+### Rendering B — the disposition list
+
+A numbered list of already-triaged items, each carrying a severity tag, its
+location, and the slots that hold its issue, its proposed change, and the reasoning
+for the disposition it is filed under. Used by `/review:process`, which owns the
+shape block itself — it is that command's only user, and a review item's severity,
+`path:line`, source attribution and lean do not fit rendering A's two lines.
+
+The contract binds it unchanged: items are numbered durably across rounds, each
+carries its recommendation and reasoning, and silence accepts the whole list.
 
 ### Silence is an answer
 

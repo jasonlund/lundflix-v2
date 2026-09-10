@@ -39,6 +39,20 @@ use Tests\Support\ToolkitFiles;
  * `APPROVE` or `SKIP` by the lean already written on it, four recommendation
  * buckets become three, and nothing in that command waits for an answer.
  *
+ * Four more split the one thing all of that quietly assumed: that there is a
+ * single asking FORMAT. There is one contract — durable numbering, a
+ * recommendation per item, silence accepts — and two renderings of it. Planning
+ * work renders a **decision round** (the `Qn` template, defined in the guideline
+ * source and nowhere else); review feedback renders a **disposition list**
+ * (`N. [SEVERITY]` over a bare `path:line`, with `Issue`/`Fix`/`Why` slots and a
+ * lean), whose shape stays in `/review:process`, its only user. Conflating the
+ * two wrote a real contradiction into that command: it cites "the canonical
+ * format" and then shows a different one — and it CANNOT show that one, because
+ * the round glyph is single-sourced by the guard below. So the guideline section
+ * has to state the contract apart from its renderings, no site may claim a single
+ * canonical format, every site must name the rendering it uses, and the gate's
+ * item numbers must be durable across rounds rather than scoped to one run.
+ *
  * Scope, deliberate: every assertion checks that TEXT IS PRESENT, never that an
  * agent obeyed it. Whether a model actually asks in the canonical shape is a
  * runtime property no static scan can reach; what a scan can guarantee is that
@@ -57,6 +71,33 @@ use Tests\Support\ToolkitFiles;
  * text, so a reader following the citation lands on the procedure itself.
  */
 $anchor = 'Asking the user a question';
+
+/**
+ * Rendering A of the contract, by the name a site cites it under.
+ *
+ * The two-line `Qn` template — one numbered question, one recommendation. Every
+ * planning site renders this way, and its shape stays defined in the guideline
+ * source and nowhere else, which is what the glyph sweep below enforces.
+ */
+$decisionRound = 'decision round';
+
+/**
+ * Rendering B, the shape review feedback arrives in.
+ *
+ * `N. [SEVERITY]` over a bare `path:line`, with source attribution and
+ * `Issue`/`Fix`/`Why` slots closing on a lean. It obeys the same contract —
+ * durable numbers, a recommendation per item, silence accepts — and none of that
+ * fits two lines, so its shape is written where its only user is.
+ */
+$dispositionList = 'disposition list';
+
+/**
+ * The phrase that presumes one rendering where there are two.
+ *
+ * Held as a literal here for the same reason `$pickerTool` is: the sweep it feeds
+ * reads the instruction surface only, and `tests/` is not on it.
+ */
+$singleFormatClaim = 'canonical format';
 
 /**
  * Every skill and command that asks the user a question, by repo-relative path.
@@ -201,7 +242,18 @@ $reviewGateLines = fn (): array => ToolkitFiles::scanLines(
  */
 $minimumGateLines = 300;
 
-describe('canonical question procedure', function () use ($anchor, $guidelineSection): void {
+/**
+ * Which of the two renderings a pinned asking site is expected to name.
+ *
+ * Derived from the roster rather than restating it as a second list: `$askingSites`
+ * stays the one place a site is written down, and this only answers which shape
+ * that site renders. Review feedback is the disposition list; every other asking
+ * site runs a decision round. Declared here rather than beside the roster because
+ * it leans on `$reviewGate` to say which is which.
+ */
+$renderingOf = fn (string $file): string => $file === $reviewGate ? $dispositionList : $decisionRound;
+
+describe('canonical question procedure', function () use ($anchor, $guidelineSection, $decisionRound, $dispositionList): void {
     it('writes the whole asking procedure once in the guideline source', function () use ($anchor, $guidelineSection): void {
         // The section is the single source of truth, so it has to carry the whole
         // procedure — not just a heading the other files can point at. Three parts:
@@ -223,6 +275,38 @@ describe('canonical question procedure', function () use ($anchor, $guidelineSec
             'silence locking that question at its recommendation' => '~recommendation~i',
             'the literal `nt` accept token' => '~`nt`~',
             'the empty message as the other accept token' => '~empty message~i',
+        ];
+
+        // Act
+        $missing = ToolkitFiles::missingPatterns($section, $required);
+
+        // Assert
+        expect($missing)->toBe([])
+            ->and(Str::length($section))->toBeGreaterThan(200);
+    });
+
+    it('states the contract apart from the two renderings that carry it', function () use ($anchor, $guidelineSection, $decisionRound, $dispositionList): void {
+        // The section conflates the contract with ONE rendering of it: it defines the
+        // `Qn` round template and then governs every asking site, including the one
+        // whose items cannot be written that way. A review item carries a
+        // `[SEVERITY]` tag, a bare `path:line`, who flagged it, `Issue`/`Fix`/`Why`
+        // slots and a lean — none of which fits two lines. So `/review:process` cites
+        // "the canonical format" and then shows a different one, and it cannot show
+        // the cited one, because the sweep below single-sources the round glyph. Two
+        // contradictory instructions in one file, with nothing to report it.
+        // The split is what fixes that: the contract under its own `### ` heading,
+        // then both renderings by name — the decision round, whose shape stays here,
+        // and the disposition list, whose shape stays with its only user.
+        // Clause 1 is pinned directly because it is the clause the review gate breaks
+        // today: a number is durable for the whole session, so a later round continues
+        // the sequence rather than restarting it.
+        // Arrange
+        $section = $guidelineSection($anchor);
+        $required = [
+            'a `### ` sub-heading for the contract itself, apart from any rendering' => '~^###\s+[^\n]*\bcontract\b~mi',
+            'rendering A, named the "'.$decisionRound.'"' => '~\b'.preg_quote($decisionRound, '~').'\b~i',
+            'rendering B, named the "'.$dispositionList.'"' => '~\b'.preg_quote($dispositionList, '~').'\b~i',
+            'clause 1: numbering durable across rounds, continued rather than restarted' => '~\bnumber(?:ing|s)?\b[^\n]{0,160}\b(?:continu\w*|durable|never restarts?|not restart\w*)\b~i',
         ];
 
         // Act
@@ -261,7 +345,7 @@ describe('generated agent guideline files', function () use ($anchor, $generated
     });
 });
 
-describe('pinned asking sites', function () use ($anchor, $askingSites, $minimumSiteLines): void {
+describe('pinned asking sites', function () use ($anchor, $askingSites, $minimumSiteLines, $renderingOf): void {
     it('cites the canonical anchor from every asking site', function () use ($anchor, $askingSites): void {
         // A site that restates the format instead of citing it is a copy, and a copy
         // is what drifts. The citation is the whole point: it is the only thing that
@@ -293,6 +377,41 @@ describe('pinned asking sites', function () use ($anchor, $askingSites, $minimum
         expect($offenders)->toBe([]);
     });
 
+    it('names the rendering it uses at every asking site', function () use ($askingSites, $renderingOf): void {
+        // The anchor tells a reader where the contract lives; it does not tell them
+        // which shape to write. Both renderings obey that contract and neither is the
+        // default, so a site that cites and stops leaves the agent to guess — and the
+        // guess it makes is the template it can see, which is how review feedback came
+        // to be told to render as a round.
+        // Which rendering a site uses comes from the roster above rather than from a
+        // second list, so adding an asking site still means editing one place.
+        // The two failure modes are reported apart for the same reason as the citation
+        // check: a missing file means the roster is stale, a present file with no
+        // rendering name means the rewrite skipped a site, and they need opposite fixes.
+        // Arrange
+        $sites = collect($askingSites);
+
+        // Act
+        $offenders = $sites
+            ->map(function (string $file) use ($renderingOf): ?string {
+                $rendering = $renderingOf($file);
+
+                if (! file_exists(ToolkitFiles::path($file))) {
+                    return $file.'  →  file is missing';
+                }
+
+                return Str::contains(ToolkitFiles::read($file), $rendering)
+                    ? null
+                    : $file.'  →  present, but names no "'.$rendering.'" rendering';
+            })
+            ->filter()
+            ->values()
+            ->all();
+
+        // Assert
+        expect($offenders)->toBe([]);
+    });
+
     it('actually scans the roster rather than silently finding nothing', function () use ($askingSites, $minimumSiteLines): void {
         // The check above reports an empty offender list both when every site cites
         // the anchor and when the roster resolved nothing at all — a renamed or
@@ -315,7 +434,7 @@ describe('pinned asking sites', function () use ($anchor, $askingSites, $minimum
     });
 });
 
-describe('instruction surface prose', function () use ($pickerTool, $instructionSurfaceLines, $minimumSurfaceLines): void {
+describe('instruction surface prose', function () use ($pickerTool, $singleFormatClaim, $instructionSurfaceLines, $minimumSurfaceLines): void {
     it('sanctions the question picker nowhere it instructs an agent', function () use ($pickerTool, $instructionSurfaceLines, $minimumSurfaceLines): void {
         // The ban is on the tool, not on one phrasing of it: a skill that tells the
         // agent to reach for the picker has handed it a second, unwritten asking
@@ -328,6 +447,31 @@ describe('instruction surface prose', function () use ($pickerTool, $instruction
         // Act
         $offenders = collect($lines)
             ->filter(fn (array $line): bool => Str::contains($line['text'], $pickerTool))
+            ->map(fn (array $line): string => sprintf('%s:%d  →  %s', $line['file'], $line['line'], Str::trim($line['text'])))
+            ->values()
+            ->all();
+
+        // Assert
+        expect($offenders)->toBe([])
+            ->and(count($lines))->toBeGreaterThan($minimumSurfaceLines);
+    });
+
+    it('claims a single canonical format nowhere it instructs an agent', function () use ($singleFormatClaim, $instructionSurfaceLines, $minimumSurfaceLines): void {
+        // The phrase is the defect, not a wording preference. "Write it in the
+        // canonical format" asserts that one shape exists, and six files now say so —
+        // including the one that then prints a numbered severity list instead. An
+        // agent cannot follow both halves of that file, and nothing at runtime says
+        // which half it followed.
+        // What replaces the phrase is a rendering name, so a citation stays checkable:
+        // "write it as a decision round" and "write it as a disposition list" each
+        // point at a shape that exists, and the guideline section says what the two
+        // have in common.
+        // Arrange
+        $lines = $instructionSurfaceLines();
+
+        // Act
+        $offenders = collect($lines)
+            ->filter(fn (array $line): bool => Str::contains($line['text'], $singleFormatClaim))
             ->map(fn (array $line): string => sprintf('%s:%d  →  %s', $line['file'], $line['line'], Str::trim($line['text'])))
             ->values()
             ->all();
@@ -517,5 +661,31 @@ describe('review gate silence exception', function () use ($reviewGate, $reviewG
         // Assert
         expect($surviving)->toBe([])
             ->and(Str::length($summary))->toBeGreaterThan(200);
+    });
+});
+
+describe('review gate numbering scope', function () use ($reviewGate, $minimumGateLines): void {
+    it('scopes an item number across rounds rather than to one run', function () use ($reviewGate, $minimumGateLines): void {
+        // Clause 1 of the contract makes a number durable for the whole session, so a
+        // later round continues the sequence. The gate scopes it to the run instead,
+        // and `/review:run` presents a second, delta list under that rule — which
+        // restarts at 1. Item 3 then names two different findings in one session, and
+        // an override reply of `skip 3` is ambiguous by construction: nothing in the
+        // command, and nothing the user can see, says which 3 was meant.
+        // The scoping is named as a sentence rather than swept as a token, because
+        // `run` is a legitimate word throughout this command and only this phrase
+        // binds a number's life to one of them.
+        // Arrange
+        $source = ToolkitFiles::read($reviewGate);
+        $forbidden = [
+            'the "a number … stays with its item for the whole run" scoping' => '~\bfor\s+the\s+whole\s+run\b~i',
+        ];
+
+        // Act
+        $surviving = ToolkitFiles::survivingPatterns($source, $forbidden);
+
+        // Assert
+        expect($surviving)->toBe([])
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan($minimumGateLines);
     });
 });
