@@ -52,5 +52,7 @@ slice. Do nothing further — execution is the `tdd` skill's job.
 ## Rules
 - **One stage at a time**; honor each skill's own gate.
 - **Defer, don't duplicate** — the skills own their logic; this file only routes.
+- Every ⏸ pause asks in the canonical format — *Asking the user a question* in
+  `.ai/guidelines/project.md`.
 
 $ARGUMENTS

@@ -849,6 +849,46 @@ GitHub settings — a vendor-dashboard click, so offer `mattpocock-skills:wizard
 The incident behind the rule and the timing forensics:
 `docs/agents/linear-pr-open-contention.md`.
 
+## Asking the user a question
+
+Every question an agent puts to the user in this repo is **plain markdown in the
+chat**. Never `AskUserQuestion`, never a menu, picker, or dialog tool — no
+exceptions, and a `PreToolUse` hook denies the tool outright.
+
+The picker truncates the reasoning behind a recommendation, which is the part that
+makes it judgeable, and forces one shot at a fixed option set — where the user needs
+to answer per question, amend an earlier lock, or reject the framing itself.
+
+**Not a question round:** `EnterPlanMode` / `ExitPlanMode` plan approval (the `tdd`
+skill's RED gate). That is a plan-approval gate the harness renders, not a question
+put to the user — it stays.
+
+### The round format — verbatim
+
+```
+❓ **Q1** — **<title>**: <the decision, with its concrete options>
+
+➡️ <your recommendation and why>
+```
+
+- **Numbering runs continuously across every round in the session** — `Q7` names one
+  question forever, so a later reply can amend it by number.
+- **Every question carries a recommendation and its reasoning.** No recommendation →
+  the question is not ready to ask.
+- **Only ask what's answerable now.** A question whose answer depends on another
+  question open in the same round belongs to a later round.
+- Close the round with one line saying silence accepts the recommendations.
+
+### Silence is an answer
+
+**An unanswered question locks at its recommendation and is never re-asked.** The
+user may reply `nt` ("no text") or send an empty message — Claude Code permits one —
+and both mean every recommendation in the round stands. Treat either as a complete
+answer, not an absent reply to chase.
+
+A partial reply (`3. b`, `4a`) locks what it names and locks the rest at their
+recommendations. The user may amend any earlier lock at any point.
+
 ## Agent skills
 
 Configuration the installed engineering skills read before they act —

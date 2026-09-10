@@ -91,6 +91,10 @@ The gate is the **approval**, not the UI that renders it: Conductor's plan UI, o
 plain `EnterPlanMode` / `ExitPlanMode` approval in the terminal under LaborForest +
 Solo. Either way the RED slice is agreed before any test is written.
 
+Plan approval is the harness's own gate, not a question round. Anything you ask
+*around* it — a seam deviation, an ambiguous slice — goes in the canonical format:
+*Asking the user a question* in `.ai/guidelines/project.md`.
+
 **On the first slice for a ticket, move it to In Progress.** Before presenting
 that ticket's first RED card, advance the ticket to **In Progress** per the
 *Automatic ticket status transitions* contract in `project.md` (forward-only,
@@ -145,6 +149,8 @@ finish the backend cycle(s) before starting the frontend cycle(s).
 - `.claude/skills/codebase-design/SKILL.md` — seam / interface / depth vocabulary
   and the four dependency categories that decide how a seam gets faked.
 - GREEN and BLUE run automatically after RED approval. To make them stop-and-show
-  too, add an `AskUserQuestion` gate before each.
+  too, gate each on a numbered round asking whether to proceed, written in the
+  canonical format (*Asking the user a question* in `.ai/guidelines/project.md`),
+  and wait for the answer before spawning.
 - A skill-activation reminder hook (`tdd-activation-reminder.sh`) nudges this skill
   on new-feature prompts — see `.claude/hooks/README.md`.

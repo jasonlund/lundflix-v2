@@ -115,29 +115,15 @@ can be approved a cluster at a time, not big-bang.
 
 ## Phase C — Interview to lock (interactive, phased)
 
-Walk the clusters **one at a time**. Per cluster: state the decision, give 2–3
-concrete options with a **recommendation and its reasoning**, and get the user's
-pick. Use `AskUserQuestion` for structured choices — it is Claude Code's own tool
-and renders its picker in the terminal under any harness, Conductor or
-LaborForest + Solo.
+Walk the clusters **one at a time** — phased approval, one workstream locked before
+the next, never the whole plan for one big yes/no. Per cluster: state the decision,
+give 2–3 concrete options with a **recommendation and its reasoning**, ask the
+cluster as one **numbered round** in the canonical format —
+*Asking the user a question* in `.ai/guidelines/project.md` — then wait for the
+user's pick.
 
-Ask a cluster as a **numbered round**, every question carrying your recommended
-answer, then wait. Numbering lets the user answer `3. b` instead of re-quoting the
-question, and a recommendation on every line means silence is a usable answer:
-
-```
-❓ **Q1** — **<title>**: <the decision, with its concrete options>
-
-➡️ <your recommendation and why>
-```
-
-- **Phased approval** — lock one workstream, then move to the next; never dump the
-  whole plan for one big yes/no. The user can amend an earlier lock at any point.
-- **Only ask what's answerable now.** A question whose answer depends on another
-  question still open in this round belongs to a *later* round. Each round's
-  answers reshape what's askable next.
-- Record each **locked decision** with the rationale, so downstream (and the ticket
-  reader) sees *why*, not just *what*.
+Record each **locked decision** with the rationale, so downstream (and the ticket
+reader) sees *why*, not just *what*.
 
 Per-cluster confirmation locks the *decisions*; it is not final approval of the
 plan. Nothing is written to Linear in this phase.
