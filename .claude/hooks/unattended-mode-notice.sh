@@ -24,16 +24,25 @@ INPUT="$(cat)"
 # Anything non-zero here would surface an error on a turn that is otherwise fine.
 command -v jq >/dev/null 2>&1 || exit 0
 
-MODE="$(printf '%s' "$INPUT" | jq -r '.permission_mode // empty' 2>/dev/null || true)"
+# jq reads stdin as a STREAM of back-to-back values, so `{}{"permission_mode":
+# "bypassPermissions"}` decodes happily and `{…}xyz` flushes the mode to stdout
+# before failing on the junk — both printed the notice while only the mode line
+# was checked. `-s` slurps the whole stream into one array, so this is the only
+# place that can say "stdin was exactly one document"; a parse error fails it too.
+printf '%s' "$INPUT" | jq -es 'length == 1' >/dev/null 2>&1 || exit 0
+
+MODE="$(printf '%s' "$INPUT" | jq -re 'if type != "object" then empty else (.permission_mode // empty) end' 2>/dev/null || true)"
 
 [ "$MODE" = "bypassPermissions" ] || exit 0
 
 cat <<'EOF'
 [unattended-mode] permission_mode=bypassPermissions — this session runs unattended.
-Skill approval gates that exist only to ask a human (the `tdd` Step 1 RED plan card,
-tdd-feedback's route confirmation, review-tdd-cross-slice's sweep approval) do NOT
-apply: write the contract to chat and proceed. Every correctness gate still applies —
-RED must fail for the right reason, GREEN must pass, REFACTOR must stay green.
+Three ask-a-human approval gates, and only these three, do NOT apply: the `tdd` Step 1
+RED plan card, tdd-feedback's route confirmation, review-tdd-cross-slice's sweep
+approval. Write the contract to chat and proceed. The planning skills (plan-draft,
+plan-breakdown, plan-slices) stay gated — the interview is the work. Every correctness
+gate still applies — RED must fail for the right reason, GREEN must pass,
+REFACTOR must stay green.
 EOF
 
 exit 0

@@ -97,6 +97,20 @@ describe('unattended-mode hook firing', function (): void {
             ->and($output)->toContain('GREEN must pass')
             ->and($output)->toContain('REFACTOR must stay green');
     });
+
+    it('states that the planning skills stay gated', function (): void {
+        // Arrange
+        $payload = unattendedModePayload('bypassPermissions');
+
+        // Act
+        $output = runUnattendedModeHook($payload);
+
+        // An open-ended list of examples reads as a universal rule, which would take
+        // the interview out of `plan-draft` — the one thing it exists for. Substring
+        // only, as above: the contract is that the exclusion is named, not its prose.
+        // Assert
+        expect($output)->toContain('planning skills');
+    });
 });
 
 describe('unattended-mode hook silence', function (): void {
@@ -138,6 +152,24 @@ describe('unattended-mode hook silence', function (): void {
         // Assert
         expect(Str::trim($output))->toBe('');
     });
+
+    it('stays silent on stdin that is not exactly one JSON document', function (string $stream): void {
+        // jq reads stdin as a STREAM of back-to-back values, so a real payload with a
+        // second document beside it still prints `bypassPermissions` — and with junk
+        // trailing it, jq flushes that line before failing on the junk. Reading the
+        // mode alone cannot tell either apart from a lone trusted payload.
+        // Arrange
+        $payload = Str::replace('{document}', unattendedModePayload('bypassPermissions'), $stream);
+
+        // Act
+        $output = runUnattendedModeHook($payload);
+
+        // Assert
+        expect(Str::trim($output))->toBe('');
+    })->with([
+        'a second document ahead of the payload' => '{}{document}',
+        'junk trailing the payload' => '{document}xyz',
+    ]);
 
     it('stays silent when jq is unavailable', function (): void {
         // Failing closed on a machine without jq costs one skipped notice; guessing

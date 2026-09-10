@@ -298,6 +298,12 @@ positives, never at the author's judgment.
   code**. A test whose subject is infra (a migration, a hook, framework behavior)
   has no domain owner; a migration spanning several domains has no non-arbitrary
   one. Filing it under a domain would be the violation.
+- A hook-test runner interpolating its script path into a shell command string
+  **without `escapeshellarg()`** (`tests/Feature/Hooks/*Test.php`). Every value is
+  locally derived — `base_path()`, `sys_get_temp_dir()` + `uniqid()` — so no
+  untrusted input reaches the string, and a path with a space fails the test loudly
+  rather than doing anything unsafe. All three hook tests share the pattern; flagging
+  one of them is also a scope-bar miss unless the PR touched that call site.
 - Third-party account identifiers (ids, usernames, emails) inside an **exception
   message** — those exceptions are `report()`ed and never thrown, so the message
   reaches the operator's log only while the user sees generic lang-file copy.

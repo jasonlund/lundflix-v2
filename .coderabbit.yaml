@@ -39,6 +39,15 @@ reviews:
         `expect(fn () => ...)->toThrow(...)`. The standard is machine-guarded by
         tests/Unit/TestCommentStandardTest.php; splitting these blocks is a
         regression, not an improvement.
+    - path: "tests/Feature/Hooks/**"
+      instructions: >-
+        Do not flag the absence of `escapeshellarg()` around a script path or PATH
+        value interpolated into a shell command string. These runners execute a
+        committed hook script end to end, and every interpolated value is locally
+        derived — `base_path()` for the script, `sys_get_temp_dir()` plus `uniqid()`
+        for the trimmed PATH. No untrusted input reaches the command, and a path
+        containing a space fails the test loudly rather than doing anything unsafe.
+        All three hook tests share this pattern deliberately.
     - path: "routes/console.php"
       instructions: >-
         Do not propose a shared mutex, shared lock key, or `skip()` guard to stop

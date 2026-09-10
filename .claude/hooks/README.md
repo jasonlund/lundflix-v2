@@ -46,11 +46,14 @@ observe the skill failing to activate on real prompts.
 ## The unattended-mode notice
 
 It **notices, never blocks** — and the asymmetry is the whole design. The notice
-tells the `tdd` loop (and `tdd-feedback`, and `review-tdd-cross-slice`) that the
-approval gates which exist only to ask a human do not apply this session, so an
-AFK run over an approved slice backlog stops stalling at slice 1 for an approval
-that will never come. It cannot lift a *correctness* gate: RED still has to fail
-for the right reason, GREEN to pass, REFACTOR to stay green.
+names three ask-a-human gates — the `tdd` Step 1 RED plan card, `tdd-feedback`'s
+route confirmation, `review-tdd-cross-slice`'s sweep approval — and lifts those
+three only, so an AFK run over an approved slice backlog stops stalling at slice 1
+for an approval that will never come. The list is closed on purpose: the planning
+skills stay gated, because `plan-draft`'s interview *is* the work and running it
+unattended would lock decisions nobody made. It cannot lift a *correctness* gate
+either: RED still has to fail for the right reason, GREEN to pass, REFACTOR to
+stay green.
 
 **Fail closed.** The notice prints only on the literal `bypassPermissions` — the
 one mode requiring an explicit `--dangerously-skip-permissions` opt-in. An absent
@@ -66,7 +69,14 @@ turn, so the notice is fresh as of the moment work is requested. A `SessionStart
 hook would go stale the instant someone shift-tabs the mode, and wiring both would
 create two sources that can disagree. The trade-off: a mode toggled *mid-turn*
 isn't seen until the next prompt — accepted, because leaving bypass mid-loop is a
-deliberate act by someone who is, by definition, present.
+deliberate act by someone who is, by definition, present. The same transience costs
+one more thing: an auto-compaction mid-run summarizes the notice away, so `tdd` stops
+and says so instead of entering plan mode for a human who isn't there, and the
+operator's next prompt re-fires the hook.
+
+**Editing.** If you rename the `tdd`, `tdd-feedback`, or `review-tdd-cross-slice`
+skill, update all three hardcoded skill names in this hook's heredoc and the row
+above.
 
 `tests/Feature/Hooks/UnattendedModeNoticeTest.php` pins every branch above, plus
 the registration itself — a hook written and never wired is a silent failure no

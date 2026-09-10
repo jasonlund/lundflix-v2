@@ -65,7 +65,9 @@ Feedback item in →
  │     reproducer not obvious first pass? → mattpocock-skills:diagnosing-bugs,
  │       return with a minimised repro, THEN write RED
  │     RED tdd-test-writer · GREEN tdd-implementer · REFACTOR tdd-refactorer
- │     show classification + RED plan card (EnterPlanMode/ExitPlanMode) → dispatch
+ │     show classification + RED plan card → dispatch
+ │       attended: EnterPlanMode/ExitPlanMode · unattended: card to chat,
+ │       never EnterPlanMode
  │
  ├─ New / changed behavior?                          → SLICE
  │  ("also do X", "change the validation")
@@ -86,12 +88,12 @@ Feedback item in →
 
 ## Routing table
 
-| Class        | Subagent(s)                                      | Gates                                              | Approval shown            |
-|--------------|--------------------------------------------------|----------------------------------------------------|---------------------------|
-| BUG          | `tdd-test-writer` → `tdd-implementer` → `tdd-refactorer` | RED fails for right reason · GREEN passes · stays green | RED plan card        |
-| SLICE        | normal tdd loop (Step 1–3)                       | same three tdd gates                                | RED plan card             |
-| REFACTOR HAT | `tdd-refactorer` only                            | precondition green · post-refactor still green     | green-run THEN plan card  |
-| DIRECT       | none                                             | none                                               | none                      |
+| Class        | Subagent(s)                                              | Gates                                                   | Approval shown                                       |
+|--------------|----------------------------------------------------------|---------------------------------------------------------|------------------------------------------------------|
+| BUG          | `tdd-test-writer` → `tdd-implementer` → `tdd-refactorer` | RED fails for right reason · GREEN passes · stays green | RED plan card (attended plan mode / unattended chat) |
+| SLICE        | normal tdd loop (Step 1–3)                               | same three tdd gates                                    | RED plan card (attended plan mode / unattended chat) |
+| REFACTOR HAT | `tdd-refactorer` only                                    | precondition green · post-refactor still green          | green-run THEN plan card                             |
+| DIRECT       | none                                                     | none                                                    | none                                                 |
 
 ## Reference
 
