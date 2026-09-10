@@ -665,6 +665,12 @@ long-running dev processes through a committed `solo.yml`. Conductor's `.conduct
 is still live for its in-flight workspaces — both toolchains work side by side, and
 LaborForest + Solo is the current path for new work.
 
+- **The lifecycle is two commands, not a remembered procedure** — **`/worktree:up
+  FLIX-NNN`** and **`/worktree:down`**. Each runs the whole thing: the LaborForest
+  workflow *and* the Solo registration, verified from the run log. Reach for them
+  rather than re-deriving the steps; the rules below are why they do what they do,
+  not a procedure to follow by hand. They are **commands, not skills**, deliberately:
+  a procedure that drops a database must be user-invoked and can never fire on its own.
 - **Never put computation in a workflow's bash string.** A `shell` step's `run:` is
   a string inside YAML — nothing can test it, so any logic there is unverifiable by
   construction. Route it through an artisan command and test that at `artisan()`:
@@ -691,11 +697,11 @@ LaborForest + Solo is the current path for new work.
   processes sync in on their own.
 - **Trusting those processes stays human-only, by design.** Every Solo start/restart
   tool is scoped to *trusted* commands and the API exposes no trust/approve tool, so a
-  freshly registered project starts with every process stopped; `npm:dev` is the one
-  the gate actually changes, its `auto_start: true` notwithstanding. That gate is what
-  stops a committed `solo.yml` from auto-running arbitrary commands in any checkout
-  that clones it. Never document or script around it; leave the one click to the
-  operator.
+  freshly registered project starts with every process stopped. That gate is what stops
+  a committed `solo.yml` from auto-running arbitrary commands in any checkout that
+  clones it — so every committed process carries `auto_start: false` to match, rather
+  than declaring an intent the gate would silently refuse to honor. Never document or
+  script around it; leave the one click to the operator.
 - **`solo.yml` is repo-controlled, with limits worth knowing.** Solo syncs it into
   local state, but **only `command` processes are YAML-backed** — terminals and
   agents are not stored there at all, so they stay per-machine. New or changed YAML
@@ -732,7 +738,12 @@ LaborForest + Solo is the current path for new work.
   asynchronously inside the app, so its return says nothing about success. Read
   `.laborforest/ignored/logs/` — the newest file records every step's exit code,
   output and `skip_reason`. Judging a run by the dispatch call is how a failure gets
-  reported as a success.
+  reported as a success. **`php artisan lf:run-log <workflow>` is that check**, so the
+  rule lives in a tested helper rather than in prose an agent re-derives: it selects the
+  newest log for the workflow, exits non-zero naming the failing step, and surfaces the
+  `[orphaned …]` lines that best-effort teardown leaves in step *output*. A skipped step
+  carries no `exitCode` at all — reading that as a failure calls every successful `up` a
+  failure, which is exactly why the judgment is not hand-written each time.
 - **Validate through the MCP; the CLI's `lf validate` is inert.** `lf validate` exits
   0 for a missing file *and* for a schema-invalid one. The MCP's `validate-workflow`
   is a real check — it returns `isError` with the reason ("The selected require
@@ -811,8 +822,15 @@ cross-reference — don't duplicate.
   results, or deviations, replace or append the ticket's **description**
   (`save_issue` with `description`) — keep it the single source of truth, not
   `save_comment`.
-- **Every branch maps to ≥1 ticket**; the branch name includes every ticket id,
-  drops the `jasonlund/` prefix, ≤40 chars (e.g. `flix-123-scaffold-new-app`).
+- **Every branch maps to ≥1 ticket**, and the branch name is **derived, not pasted**.
+  Linear's own `gitBranchName` runs past 60 characters, which propagates into the
+  worktree directory, the Herd site and the database name. `/worktree:up` derives it
+  for you; `php artisan lf:branch-name <ids> '<title>'` is the same budget standalone.
+  The shape: every ticket id, lowercased and `-`-joined, then **at most 20 characters**
+  of title slug cut at a word boundary (e.g. `flix-123-scaffold-new`). Deriving is what
+  makes the budget unskippable — a rule an agent has to remember is one it forgets.
+  `WorkspaceName`'s 40-character trim is a **separate downstream guard** on the
+  workspace slug, unchanged by this and still covering a hand-cut branch.
 - **No ticket yet → prompt to create one** before proceeding.
 - **Work deviates → confirm first, then update the ticket** and mark it a
   deviation.
