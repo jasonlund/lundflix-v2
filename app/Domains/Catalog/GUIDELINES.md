@@ -419,7 +419,7 @@ window-and-membership check passes — yet the amplification sat one level down,
 each touched row then cost to refresh.
 
 **Carve-out (FLIX-321): `catalog:refresh-popularity` is O(catalog) on purpose.** It
-streams both TMDB daily id exports in full every week and bulk-writes
+streams both TMDB daily id exports in full every day and bulk-writes
 `_tmdb_popularity` on every held row they list — cost proportional to the catalog,
 which the rule above would otherwise read as an offender. It is not one, and the
 reason is that the first question has no answer here: **popularity is not a change

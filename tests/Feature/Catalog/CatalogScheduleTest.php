@@ -88,7 +88,7 @@ describe('catalog:refresh-popularity scheduling', function (): void {
         expect($hasCommand)->toBeTrue();
     });
 
-    it('schedules catalog:refresh-popularity weekly on Sunday at 03:00 America/Los_Angeles without overlapping', function (): void {
+    it('schedules catalog:refresh-popularity daily at 03:00 America/Los_Angeles without overlapping', function (): void {
         // Arrange
         $schedule = resolve(Schedule::class);
 
@@ -98,15 +98,15 @@ describe('catalog:refresh-popularity scheduling', function (): void {
             fn ($e): bool => Str::endsWith($e->command ?? '', ' catalog:refresh-popularity'),
         );
 
-        // catalog:sync runs at 00:00/12:00 and catalog:sync-imdb at 06:00, so 03:00 Sunday
-        // is the widest gap from both — this leg reads ~1.2M movie rows plus ~230k series
-        // rows and must not overlap either.
+        // 03:00 is the midpoint between catalog:sync (00:00/12:00) and catalog:sync-imdb
+        // (06:00), and it lands after TMDB publishes the day's export (08:00 UTC = 00:00 PST
+        // / 01:00 PDT), so every run reads that day's export.
         // 360 matches catalog:sync's expiry: generous cover for a run measured in minutes,
-        // yet it dies long before the next weekly tick, so a SIGKILLed run can't hold the
-        // lock into the following week.
+        // yet dead long before the next daily tick, so a SIGKILLed run can't hold the lock
+        // into the next day's run.
         // Assert
         expect($event)->not->toBeNull();
-        expect($event->expression)->toBe('0 3 * * 0');
+        expect($event->expression)->toBe('0 3 * * *');
         expect($event->timezone)->toBe('America/Los_Angeles');
         expect($event->withoutOverlapping)->toBeTrue();
         expect($event->expiresAt)->toBe(360);
