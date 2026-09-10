@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Support\SyncMarker;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 
@@ -46,6 +47,58 @@ describe('window() sync windows', function (): void {
 
         // Assert
         expect($window->since->equalTo(now()->subDays(14)))->toBeTrue();
+    });
+
+    it('flags the window capped when the marker predates the 14-day floor', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        resolve(SyncMarker::class)->advance(SyncFeed::TvdbShows, now()->subDays(30)->toImmutable());
+
+        // Act
+        $window = resolve(SyncMarker::class)->window(SyncFeed::TvdbShows);
+
+        // Assert
+        expect($window->isCapped())->toBeTrue();
+    });
+
+    it('names the marker-derived start the 14-day floor discarded', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        resolve(SyncMarker::class)->advance(SyncFeed::TvdbShows, CarbonImmutable::parse('2026-06-16 03:00:00'));
+
+        // Act
+        $window = resolve(SyncMarker::class)->window(SyncFeed::TvdbShows);
+
+        // Assert
+        // The discarded start is the marker minus the 6h overlap, not the bare marker:
+        // this marker sits at 03:00, so the overlap carries it back across midnight and
+        // a bare-marker answer would read 2026-06-16.
+        expect($window->uncoveredStartDate())->toBe('2026-06-15');
+    });
+
+    it('leaves the window uncapped for a marker inside the cap', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        resolve(SyncMarker::class)->advance(SyncFeed::TvdbShows, now()->subDays(5)->toImmutable());
+
+        // Act
+        $window = resolve(SyncMarker::class)->window(SyncFeed::TvdbShows);
+
+        // Assert
+        expect($window->isCapped())->toBeFalse();
+        expect($window->uncoveredStartDate())->toBeNull();
+    });
+
+    it('leaves the window uncapped when no marker is cached', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+
+        // Act
+        $window = resolve(SyncMarker::class)->window(SyncFeed::TvdbShows);
+
+        // Assert
+        expect($window->isCapped())->toBeFalse();
+        expect($window->uncoveredStartDate())->toBeNull();
     });
 
     it('isolates markers per feed by cache key', function (): void {

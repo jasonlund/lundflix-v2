@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Catalog\Console\Commands;
 
-use App\Domains\Catalog\Actions\SeedTvdbEpisodes;
+use App\Domains\Catalog\Actions\RefreshTvdbEpisodes;
 use App\Domains\Catalog\Console\Commands\Concerns\MeasuresElapsedTime;
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Exceptions\TvdbAuthenticationFailed;
@@ -18,7 +18,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
 /**
@@ -45,7 +44,17 @@ final class SyncTvdbEpisodes extends Command
      */
     private const string FEED_HEARTBEAT_TAG = 'tvdb feed';
 
-    public function handle(TvdbApiService $api, SeedTvdbEpisodes $seed, SyncMarker $marker): int
+    /**
+     * Feed series ids bound into one membership `whereIn`. The feed carries far more
+     * distinct ids than a single statement can bind, so the lookup runs a chunk at a
+     * time.
+     */
+    private const int SERIES_LOOKUP_CHUNK = 1000;
+
+    /** Changed episode ids handed to one pooled refresh call. */
+    private const int EPISODE_BATCH = 500;
+
+    public function handle(TvdbApiService $api, RefreshTvdbEpisodes $refresh, SyncMarker $marker): int
     {
         $startedAt = CarbonImmutable::now();
 
@@ -53,7 +62,7 @@ final class SyncTvdbEpisodes extends Command
 
         $this->output->writeln('Reading the episodes update feed…');
 
-        $seriesIds = $this->drainFeed($api, $since);
+        $changes = $this->drainFeed($api, $since);
 
         $this->output->writeln('Read the episodes update feed in '.$this->secondsSince($startedAt).'s');
 
@@ -66,13 +75,13 @@ final class SyncTvdbEpisodes extends Command
         // one engine write per show for a bookkeeping column nothing searches. Scout
         // has no global off switch; disabling is per-class, via the trait's static.
         ['episodes' => $episodes, 'failures' => $failures] = Show::withoutSyncingToSearch(
-            fn (): array => $this->seedMatchedShows($seriesIds, $seed),
+            fn (): array => $this->refreshChangedEpisodes($changes, $refresh),
         );
 
         $this->output->writeln("Synced {$episodes} ".Str::plural('episode', $episodes).' in '.$this->secondsSince($syncStartedAt).'s');
 
-        // Advance only on a clean run: a failed show means this run didn't cover
-        // the whole window, so the marker must not move past it.
+        // Advance only on a clean run: an unfetchable changed episode means this run
+        // didn't cover the whole window, so the marker must not move past it.
         if ($failures === 0) {
             $marker->advance(SyncFeed::TvdbEpisodes, $startedAt);
         }
@@ -81,7 +90,7 @@ final class SyncTvdbEpisodes extends Command
         // mark can't supply), then Done.
         $this->flushTotal(self::HEARTBEAT_TAG, $episodes);
 
-        $this->failureSummary($failures, 'shows', 'marker not advanced');
+        $this->failureSummary($failures, 'episodes', 'marker not advanced');
 
         $this->output->writeln('Done.');
 
@@ -90,21 +99,25 @@ final class SyncTvdbEpisodes extends Command
 
     /**
      * Fully drained before any lookup runs: a mid-feed page failure must abort the
-     * run with no show processed.
+     * run with no episode fetched.
      *
-     * Accumulated as an int set keyed by id — the key dedupes for free and holds
-     * only ints, so the whole feed never sits in memory as records.
+     * Accumulated as a nested int set — series id keying an episode id set — so the
+     * keys dedupe both levels for free and hold only ints, and the whole feed never
+     * sits in memory as records. A record is usable only when both ids are numeric:
+     * the episode id says what to fetch, the series id says which show has to be
+     * seeded before it is worth fetching.
      *
-     * Each candidate routes through `SourceId::positiveInt`, so a decimal
+     * Both candidates route through `SourceId::positiveInt`, so a decimal
      * ("70327.5"), exponential ("1e5"), signed, overflow, or slug-appended value is
-     * dropped rather than truncated into a plausible but unrelated series id — the
-     * ids collected here key the `whereIn('_tvdb_id', …)` lookup below, so a
-     * truncated one would crawl the wrong show.
+     * dropped rather than truncated into a plausible but unrelated id — the series
+     * ids key the `whereIn('_tvdb_id', …)` lookup below and the episode ids key the
+     * pooled fetch, so a truncated one would refresh the wrong show or the wrong
+     * episode.
      *
      * The beat counts records read from the feed, not ids accepted, so it fires for
      * a rejected record too.
      *
-     * @return list<int> every distinct series id the feed reported
+     * @return array<int, list<int>> the changed episode ids, keyed by series id
      */
     private function drainFeed(TvdbApiService $api, int $since): array
     {
@@ -113,15 +126,16 @@ final class SyncTvdbEpisodes extends Command
 
         foreach ($api->updates($since, 'episodes') as $record) {
             $seriesId = SourceId::positiveInt($record['seriesId'] ?? null);
+            $episodeId = SourceId::positiveInt($record['recordId'] ?? null);
 
-            if ($seriesId !== null) {
-                $seen[$seriesId] = true;
+            if ($seriesId !== null && $episodeId !== null) {
+                $seen[$seriesId][$episodeId] = true;
             }
 
             $this->beat(self::FEED_HEARTBEAT_TAG, ++$records, 10_000);
         }
 
-        return array_keys($seen);
+        return array_map(array_keys(...), $seen);
     }
 
     /**
@@ -129,52 +143,65 @@ final class SyncTvdbEpisodes extends Command
      * narrowed catch below is the only failure this walk tolerates, so counting it
      * says everything a separate "did anything fail" flag would.
      *
-     * @param  list<int>  $seriesIds  every distinct series id the feed reported
+     * @param  array<int, list<int>>  $changes  the changed episode ids, keyed by series id
      * @return array{episodes: int, failures: int}
      */
-    private function seedMatchedShows(array $seriesIds, SeedTvdbEpisodes $seed): array
+    private function refreshChangedEpisodes(array $changes, RefreshTvdbEpisodes $refresh): array
     {
         $failures = 0;
 
         // Per 100 rather than the other Catalog syncs' per 1000: those beat over
-        // bulk-hydrated batches, while this walk pays a paged HTTP crawl per show,
-        // so items land orders of magnitude slower — the same reason the Plex
-        // per-show episode crawl beats per 100.
+        // bulk-hydrated batches, while this walk pays a pooled HTTP fetch per
+        // episode, so items land orders of magnitude slower — the same reason the
+        // Plex per-show episode crawl beats per 100.
         //
         // The cadence is hand-rolled on purpose; do NOT collapse it into beat().
-        // A show contributes many episodes at once, so the total jumps past a
+        // A batch contributes many episodes at once, so the total jumps past a
         // boundary rather than landing on it, and the operator needs the count as
         // it actually stands: this prints the crossing value (102), where beat()
         // would print the boundary (100) and go quiet again until 200.
         $episodes = 0;
         $beatAt = 100;
 
-        // The feed carries far more distinct ids than a single whereIn can bind, so
-        // the membership lookup runs a chunk at a time.
-        foreach (array_chunk($seriesIds, 1000) as $chunk) {
-            $query = Show::query()
+        foreach (array_chunk(array_keys($changes), self::SERIES_LOOKUP_CHUNK) as $chunk) {
+            // get(), not chunkById(): the project's iterate-and-write rule doesn't
+            // reach this read. It binds a bounded set of explicit ids, materializes
+            // once and paginates not at all, so the later episodes_synced_at write
+            // can't skip or double-process a row the way an offset walk could.
+            // TvdbShowsCommand::syncChunk() is the same bounded-membership shape.
+            $shows = Show::query()
                 ->select(['id', '_tvdb_id', '_tvdb_defaultSeasonType'])
                 ->whereIn('_tvdb_id', $chunk)
-                ->whereNotNull('episodes_synced_at');
+                ->whereNotNull('episodes_synced_at')
+                ->get()
+                ->keyBy('_tvdb_id');
 
-            // PK pagination because the walk writes to the rows it iterates: the seed
-            // stamps episodes_synced_at, which offset pagination would skip or
-            // double-process. Report-and-continue so one bad show can't abort the run.
-            $query->chunkById(200, function (Collection $shows) use ($seed, &$failures, &$episodes, &$beatAt): void {
-                foreach ($shows as $show) {
-                    try {
-                        $episodes += $seed->handle($show);
-                    } catch (TvdbRequestFailed|TvdbAuthenticationFailed $e) {
-                        report($e);
-                        $failures++;
-                    }
+            if ($shows->isEmpty()) {
+                continue;
+            }
 
-                    if ($episodes >= $beatAt) {
-                        $this->mark(self::HEARTBEAT_TAG, $episodes);
-                        $beatAt = intdiv($episodes, 100) * 100 + 100;
-                    }
+            $episodeIds = $shows->keys()->flatMap(fn (int|string $seriesId): array => $changes[$seriesId]);
+
+            foreach ($episodeIds->chunk(self::EPISODE_BATCH) as $batch) {
+                try {
+                    // The whole chunk's show map goes to every batch, not just the
+                    // batch's own shows: the refresh attributes each payload by the
+                    // seriesId the payload itself carries, which may not be the show
+                    // whose feed record named the id. Bounded at one lookup chunk of
+                    // three-column rows, so passing all of them costs nothing.
+                    $result = $refresh->handle($shows, $batch);
+                    $episodes += $result->episodes;
+                    $failures += $result->failedEpisodes;
+                } catch (TvdbRequestFailed|TvdbAuthenticationFailed $e) {
+                    report($e);
+                    $failures += $batch->count();
                 }
-            });
+
+                if ($episodes >= $beatAt) {
+                    $this->mark(self::HEARTBEAT_TAG, $episodes);
+                    $beatAt = intdiv($episodes, 100) * 100 + 100;
+                }
+            }
         }
 
         return ['episodes' => $episodes, 'failures' => $failures];

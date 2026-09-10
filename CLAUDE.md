@@ -87,6 +87,23 @@ readonly.
 Anonymous migration classes are the one structural exclusion — they can't be named,
 and the arch targets (`Database\Factories`, `Database\Seeders`) don't reach them.
 
+### Import every class, including global ones
+
+**A class name is written bare and imported with a `use` statement — never inlined
+as a leading-backslash FQCN.** This holds for global classes and PHP's own
+attributes too: `use Override;` then `#[Override]`, not `#[\Override]`; `use
+Throwable;` then `catch (Throwable $e)`, not `catch (\Throwable $e)`.
+
+One import block at the top of the file is the only place a reader has to look to
+learn what a class depends on, and a `\`-prefixed name in the body hides that
+dependency from it.
+
+**Adopted 2026-09-09 and not yet swept.** The repo currently carries ~20
+`#[\Override]` sites written before this rule; they are wrong and are being
+corrected in their own ticket, so a leading backslash you meet in existing code is
+debt, not precedent. Nothing enforces this yet — no Rector rule and no arch test —
+so it holds by review until one exists.
+
 ### Action classes
 
 Single-purpose actions live in `App\Domains\{Domain}\Actions`.
@@ -648,11 +665,26 @@ long-running dev processes through a committed `solo.yml`. Conductor's `.conduct
 is still live for its in-flight workspaces — both toolchains work side by side, and
 LaborForest + Solo is the current path for new work.
 
+- **The lifecycle is two commands, not a remembered procedure** — **`/worktree:up
+  FLIX-NNN`** and **`/worktree:down`**. Each runs the whole thing: the LaborForest
+  workflow *and* the Solo registration, verified from the run log. Reach for them
+  rather than re-deriving the steps; the rules below are why they do what they do,
+  not a procedure to follow by hand. They are **commands, not skills**, deliberately:
+  a procedure that drops a database must be user-invoked and can never fire on its own.
 - **Never put computation in a workflow's bash string.** A `shell` step's `run:` is
   a string inside YAML — nothing can test it, so any logic there is unverifiable by
   construction. Route it through an artisan command and test that at `artisan()`:
-  `lf:workspace-env` derives a workspace's site/database/URL. A step should be one
-  line.
+  `lf:workspace-env` derives a workspace's site/database/URL, and
+  `lf:workspace-sync` clears LaborForest's seeded `.laborforest/` files before
+  fast-forwarding onto `origin/main`. A step should be one line.
+- **A step that must run before `composer install` calls the primary checkout's
+  artisan.** A fresh worktree has no `vendor/`, so its own `php artisan` cannot boot
+  until Composer has run — and Composer cannot move ahead of `up`'s fast-forward
+  without resolving the stale `composer.lock`. Such a step spells the binary
+  `php "{{ PROJECT_PRIMARY_DIR }}/artisan"` and passes `{{ WORKSPACE_DIR }}` as an
+  argument, because `base_path()` in that process is the *primary's* tree, never the
+  workspace's. `lf:workspace-sync` is the only one, and `LaborForestWorkflowTest`
+  pins both halves — the workspace's own artisan still may not precede Composer.
 - **The workflows never touch Solo — but the agent driving them may.** `up` creates no
   Solo state, so `down` has none to reverse, and the boundary stays where the two tools
   already draw it: LaborForest orchestrates worktrees, Solo runs processes inside one.
@@ -665,11 +697,11 @@ LaborForest + Solo is the current path for new work.
   processes sync in on their own.
 - **Trusting those processes stays human-only, by design.** Every Solo start/restart
   tool is scoped to *trusted* commands and the API exposes no trust/approve tool, so a
-  freshly registered project starts with every process stopped; `npm:dev` is the one
-  the gate actually changes, its `auto_start: true` notwithstanding. That gate is what
-  stops a committed `solo.yml` from auto-running arbitrary commands in any checkout
-  that clones it. Never document or script around it; leave the one click to the
-  operator.
+  freshly registered project starts with every process stopped. That gate is what stops
+  a committed `solo.yml` from auto-running arbitrary commands in any checkout that
+  clones it — so every committed process carries `auto_start: false` to match, rather
+  than declaring an intent the gate would silently refuse to honor. Never document or
+  script around it; leave the one click to the operator.
 - **`solo.yml` is repo-controlled, with limits worth knowing.** Solo syncs it into
   local state, but **only `command` processes are YAML-backed** — terminals and
   agents are not stored there at all, so they stay per-machine. New or changed YAML
@@ -706,7 +738,12 @@ LaborForest + Solo is the current path for new work.
   asynchronously inside the app, so its return says nothing about success. Read
   `.laborforest/ignored/logs/` — the newest file records every step's exit code,
   output and `skip_reason`. Judging a run by the dispatch call is how a failure gets
-  reported as a success.
+  reported as a success. **`php artisan lf:run-log <workflow>` is that check**, so the
+  rule lives in a tested helper rather than in prose an agent re-derives: it selects the
+  newest log for the workflow, exits non-zero naming the failing step, and surfaces the
+  `[orphaned …]` lines that best-effort teardown leaves in step *output*. A skipped step
+  carries no `exitCode` at all — reading that as a failure calls every successful `up` a
+  failure, which is exactly why the judgment is not hand-written each time.
 - **Validate through the MCP; the CLI's `lf validate` is inert.** `lf validate` exits
   0 for a missing file *and* for a schema-invalid one. The MCP's `validate-workflow`
   is a real check — it returns `isError` with the reason ("The selected require
@@ -785,8 +822,15 @@ cross-reference — don't duplicate.
   results, or deviations, replace or append the ticket's **description**
   (`save_issue` with `description`) — keep it the single source of truth, not
   `save_comment`.
-- **Every branch maps to ≥1 ticket**; the branch name includes every ticket id,
-  drops the `jasonlund/` prefix, ≤40 chars (e.g. `flix-123-scaffold-new-app`).
+- **Every branch maps to ≥1 ticket**, and the branch name is **derived, not pasted**.
+  Linear's own `gitBranchName` runs past 60 characters, which propagates into the
+  worktree directory, the Herd site and the database name. `/worktree:up` derives it
+  for you; `php artisan lf:branch-name <ids> '<title>'` is the same budget standalone.
+  The shape: every ticket id, lowercased and `-`-joined, then **at most 20 characters**
+  of title slug cut at a word boundary (e.g. `flix-123-scaffold-new`). Deriving is what
+  makes the budget unskippable — a rule an agent has to remember is one it forgets.
+  `WorkspaceName`'s 40-character trim is a **separate downstream guard** on the
+  workspace slug, unchanged by this and still covering a hand-cut branch.
 - **No ticket yet → prompt to create one** before proceeding.
 - **Work deviates → confirm first, then update the ticket** and mark it a
   deviation.
@@ -861,6 +905,84 @@ GitHub settings — a vendor-dashboard click, so offer `mattpocock-skills:wizard
 
 The incident behind the rule and the timing forensics:
 `docs/agents/linear-pr-open-contention.md`.
+
+## Asking the user a question
+
+Every question an agent puts to the user in this repo is **plain markdown in the
+chat**. Never `AskUserQuestion`, never a menu, picker, or dialog tool — no
+exceptions, and a `PreToolUse` hook denies the tool outright.
+
+The picker truncates the reasoning behind a recommendation, which is the part that
+makes it judgeable, and forces one shot at a fixed option set — where the user needs
+to answer per question, amend an earlier lock, or reject the framing itself.
+
+**Not a question round:** `EnterPlanMode` / `ExitPlanMode` plan approval (the `tdd`
+skill's RED gate). That is a plan-approval gate the harness renders, not a question
+put to the user — it stays.
+
+### The contract
+
+Binds every asking site, whichever rendering below it uses:
+
+1. **Numbered, and the number is durable.** A number names one thing for the whole
+   session — a later round *continues* the sequence rather than restarting it, so
+   item 6 is still item 6 two rounds on.
+2. **Every entry carries a recommendation and its reasoning.** No recommendation →
+   the entry is not ready to put to the user.
+3. **Silence locks every recommendation, and nothing is re-asked** — except where
+   clause 7 names.
+4. **A partial reply locks what it names; every entry it does not name stands.**
+5. **Any earlier lock is amendable by number, at any point.**
+6. **Close with one line saying silence accepts.**
+7. **One exception, and only this one: a person's own review of a diff.** In
+   `/review:process --human-round`, an item the pipeline judges wrong — or cannot
+   classify — holds the gate instead of standing. Clause 3 earns its keep because the
+   entries are usually cheap and numerous, and a machine finding dropped on silence
+   costs one re-run. A human who read the diff and asked for something is neither, so
+   dropping their request because nobody replied inverts the deference that round
+   exists to provide. That command owns the carve-out; no other site has one.
+
+Two renderings carry it. Pick by payload, not by preference: a decision you are
+putting to the user takes the **decision round**; a batch of items you have already
+triaged, each arriving with a proposed disposition, takes the **disposition list**.
+
+### Rendering A — the decision round
+
+```
+❓ **Q1** — **<title>**: <the decision, with its concrete options>
+
+➡️ <your recommendation and why>
+```
+
+Used by `plan-draft`, `plan-breakdown`, `plan-slices`, `tdd` and `/plan:run`. The
+template is mandated verbatim, glyphs included, and is defined here and **nowhere
+else** — a second copy is the drift this section exists to prevent.
+
+- **`Q7` names one question forever**, so a later reply can amend it by number
+  (contract 1).
+- **Only ask what's answerable now.** A question whose answer depends on another
+  question open in the same round belongs to a later round.
+
+### Rendering B — the disposition list
+
+A numbered list of already-triaged items, each carrying a severity tag, its
+location, and the slots that hold its issue, its proposed change, and the reasoning
+for the disposition it is filed under. Used by `/review:process`, which owns the
+shape block itself — it is that command's only user, and a review item's severity,
+`path:line`, source attribution and lean do not fit rendering A's two lines.
+
+The contract binds it unchanged: items are numbered durably across rounds, each
+carries its recommendation and reasoning, and silence accepts the whole list.
+
+### Silence is an answer
+
+**An unanswered question locks at its recommendation and is never re-asked.** The
+user may reply `nt` ("no text") or send an empty message — Claude Code permits one —
+and both mean every recommendation in the round stands. Treat either as a complete
+answer, not an absent reply to chase.
+
+A partial reply (`3. b`, `4a`) locks what it names and locks the rest at their
+recommendations. The user may amend any earlier lock at any point.
 
 ## Agent skills
 

@@ -128,7 +128,7 @@ chokepoints, waves, DDD boundaries — are this repo's own.
     go stale fast and describe the edit rather than the outcome.
   - **Acceptance criteria** — a checkbox list of what "done" means, each
     independently checkable. This is what review checks the finished work against;
-    a prose scope paragraph gives `/review:human`'s spec pass nothing to verify.
+    a prose scope paragraph gives `/review:debrief`'s spec pass nothing to verify.
   - **Target** — the concrete files + the single domain it lives in. Paths live
     *here*, deliberately: this block is the input to chokepoint detection and wave
     assignment. Label it as such — it may go stale, and that's an accepted cost.
@@ -177,6 +177,9 @@ Ask three things outright, since they're the ones that go wrong silently:
 granularity (too coarse / too fine), whether each ticket's blockers **genuinely**
 gate it rather than merely relating to it, and whether any pair should be merged
 or split.
+
+Ask those three as a **decision round** — *Asking the user a question* in
+`.ai/guidelines/project.md`.
 
 **GATE:** no Linear write happens until the user approves this breakdown.
 

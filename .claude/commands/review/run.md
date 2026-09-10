@@ -1,6 +1,6 @@
 ---
 name: review:run
-description: Orchestrates the full PR review loop end-to-end with confirmation gates — optional cross-slice refactor sweep, then create-pr → human → suite → process → delta review of the fixes. Each stage pauses for approval before the next.
+description: Orchestrates the full PR review loop end-to-end with confirmation gates — optional cross-slice refactor sweep, then create-pr → debrief → human → suite → process → delta review of the fixes. Each stage pauses for approval before the next.
 ---
 
 # Review Loop Orchestrator
@@ -9,8 +9,8 @@ Runs the review pipeline as one guided sequence. Drive each stage **in order**,
 pausing at the ⏸ gates for the user. Each stage's mechanics live in its own
 command — **defer to that file, do not reimplement it here.**
 
-Loop: `[cross-slice sweep?]` → `/review:create-pr` → `/review:human` →
-`/review:suite` → `/review:process` → `[delta review]`.
+Loop: `[cross-slice sweep?]` → `/review:create-pr` → `/review:debrief` →
+`/review:human` → `/review:suite` → `/review:process` → `[delta review]`.
 
 ## Input
 - **PR number** — optional, auto-detected from the branch.
@@ -53,17 +53,35 @@ If the branch has **no open PR**, follow `.claude/commands/review/create-pr.md`
 (lint → commit → push → open). Show the drafted title/body and **pause for
 approval before opening**. If a PR already exists, skip this stage.
 
-### Stage 2: human  ⏸
-Follow `.claude/commands/review/human.md` — plain-language summary of the branch +
+### Stage 2: debrief  ⏸
+Follow `.claude/commands/review/debrief.md` — plain-language summary of the branch +
 ticket-scope check. **Pause** so the user reads it before the engines dig for
 defects.
 
-### Stage 3: suite
+### Stage 3: human  ⏸
+Follow `.claude/commands/review/human.md` — the Linear diff link, the wait while a
+person reads the diff and submits their review, and the ingest of what comes back.
+**Pause** for the whole read: the loop moves on only when the reviewer says they
+are done.
+
+**Why this sits before the engines**, so the next person to tidy the loop doesn't
+move it after them:
+- **A posted finding biases the reader.** Someone who has already scrolled fifteen
+  engine findings checks that list instead of forming their own view of the branch,
+  and the view is the only thing this stage is here to get.
+- **The engines then review better code.** The structural objections a human raises
+  are already fixed by the time they run, so the pass is spent on what survived
+  rather than on code that was about to be restructured anyway.
+- **Stage 4's suite covers whatever this round fixes**, which is why this stage
+  needs no delta pass of its own the way Stage 5 does — its fixes land before the
+  engines and the full suite have run, not after them.
+
+### Stage 4: suite
 Follow `.claude/commands/review/suite.md` — runs both engines (`/review:claude` +
 CodeRabbit) and posts each to the PR as its own review. No pause — this is the
 machine work.
 
-### Stage 4: process  ⏸
+### Stage 5: process  ⏸
 **Before dispatching a single fixer, record the pre-fix commit:**
 ```bash
 PRE_FIX_SHA=$(git rev-parse HEAD)
@@ -72,18 +90,18 @@ Then follow `.claude/commands/review/process.md` — triage the posted feedback,
 one numbered list carrying your recommendations, take the user's overrides, dispatch
 fixers. Already interactive.
 
-### Stage 5: delta review  ⏸
-**The fixes Stage 4 just landed have never been reviewed by anything.** The engines
-in Stage 3 saw the pre-fix tree; the fixers that changed it were isolated subagents
+### Stage 6: delta review  ⏸
+**The fixes Stage 5 just landed have never been reviewed by anything.** The engines
+in Stage 4 saw the pre-fix tree; the fixers that changed it were isolated subagents
 each seeing one item. A bad fix ships with the same blast radius as any other bug,
 and nothing upstream is looking at it. This stage closes that.
 
 **Review only what we implemented — never re-review the whole PR.**
 
 1. **Compute the delta.** `git diff {PRE_FIX_SHA}..HEAD`. Empty (every item skipped,
-   or Stage 4 never ran) → skip this stage and say so.
+   or Stage 5 never ran) → skip this stage and say so.
 2. **Re-run the deterministic gates** (Pint, Rector scoped to the changed files, the
-   full Pest suite). Stage 4's fixers only ran filtered tests.
+   full Pest suite). Stage 5's fixers only ran filtered tests.
 3. **Dispatch ONE focused reviewer** over that delta — `review-bug-hunter` by
    default, since fix regressions are overwhelmingly failure-mode bugs rather than
    convention drift. Give it:
@@ -95,9 +113,9 @@ and nothing upstream is looking at it. This stage closes that.
      fix that reorders guards can change what runs on an early return; a fix that
      swaps a sort key can drop a tie-break. Name the specific suspicion per item.
    - the ticket context, and the pipeline contract's finding format + Comment Bar.
-4. **Route any findings back through Stage 4's mechanics** — present each with your
+4. **Route any findings back through Stage 5's mechanics** — present each with your
    own recommendation, take Approve/Modify/Skip, dispatch a foreground fixer, commit.
-5. **Then re-enter Stage 5 on the *new* delta.** Loop until a pass comes back clean.
+5. **Then re-enter Stage 6 on the *new* delta.** Loop until a pass comes back clean.
    **Cap at 3 rounds**; if round 3 still finds real defects, stop and tell the user
    the fixes are churning — that is a signal to rethink the approach, not to keep
    patching.
@@ -111,10 +129,10 @@ fix the user already approved.
 - A stage that HALTs (no PR to review, no diff, etc.) **stops the loop** and reports
   why — it does not silently continue.
 - **Defer, don't duplicate.** Each stage's logic lives in its command/skill file;
-  this orchestrator only sequences and gates. Stage 5 is the one exception — it has
+  this orchestrator only sequences and gates. Stage 6 is the one exception — it has
   no command file of its own, so its mechanics live here.
-- **Every commit the loop produces gets reviewed before the loop ends.** Stage 5
-  applies that to Stage 4's fixes; if you ever land code outside a stage, it needs
+- **Every commit the loop produces gets reviewed before the loop ends.** Stage 6
+  applies that to Stage 5's fixes; if you ever land code outside a stage, it needs
   the same treatment.
 
 $ARGUMENTS

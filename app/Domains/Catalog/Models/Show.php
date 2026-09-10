@@ -6,6 +6,7 @@ namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Casts\NullableDate;
 use App\Domains\Catalog\Database\Factories\ShowFactory;
+use App\Domains\Catalog\Models\Concerns\Refusable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,7 +19,9 @@ final class Show extends Model
     /** @use HasFactory<ShowFactory> */
     use HasFactory;
 
-    use Searchable;
+    use Refusable, Searchable {
+        Refusable::shouldBeSearchable insteadof Searchable;
+    }
 
     /**
      * @return MorphMany<Media, $this>
@@ -79,14 +82,19 @@ final class Show extends Model
             '_imdb_runtimeMinutes' => 'integer',
             '_imdb_genres' => 'array',
             '_imdb_akas' => 'array',
+            '_imdb_isAdult' => 'boolean',
             '_tmdb_id' => 'integer',
             '_tmdb_first_air_date' => NullableDate::class,
             '_tmdb_popularity' => 'float',
             '_tmdb_vote_average' => 'float',
             '_tmdb_vote_count' => 'integer',
+            '_tmdb_adult' => 'boolean',
+            '_tmdb_softcore' => 'boolean',
             '_tmdb_genres' => 'array',
             '_tmdb_external_ids' => 'array',
             'tmdb_synced_at' => 'datetime',
+            'tmdb_unresolved_attempts' => 'integer',
+            'tmdb_retry_after' => 'datetime',
             '_tvdb_id' => 'integer',
             '_tvdb_year' => 'integer',
             '_tvdb_averageRuntime' => 'integer',
