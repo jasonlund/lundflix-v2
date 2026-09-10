@@ -89,6 +89,7 @@ const DTO_BOUNDARY_EXEMPT_PARAMETERS = [
     'App\Domains\Catalog\Actions\ImportImdbTitles::handle' => 'raw IMDb title rows',
     'App\Domains\Catalog\Actions\ImportImdbAkas::handle' => 'raw IMDb aka rows',
     'App\Domains\Catalog\Actions\UpdateImdbRatings::handle' => 'raw IMDb rating rows',
+    'App\Domains\Catalog\Actions\UpdateTmdbPopularity::handle' => 'raw TMDB id-export rows',
 ];
 
 /**
