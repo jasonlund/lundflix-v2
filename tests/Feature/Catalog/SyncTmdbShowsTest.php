@@ -12,7 +12,6 @@ use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
@@ -441,9 +440,8 @@ describe('catalog:sync-shows-tmdb changes-feed update phase', function (): void 
         expect($probes->map(fn (array $entry): int => count($entry['bindings']))->max())->toBeLessThanOrEqual(1000);
     });
 
-    it('requests the changes window from the cached marker with a 6h overlap', function (): void {
+    it('requests the changes window from the stored marker with a 6h overlap', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         // Marker at 2026-07-14 04:00 — under 6h into its day, so the three candidate
         // window starts fall on three different calendar days, the only granularity
@@ -460,9 +458,8 @@ describe('catalog:sync-shows-tmdb changes-feed update phase', function (): void 
         assertRequestedShowChangesWindow('2026-07-13', '2026-07-16');
     });
 
-    it('falls back to a 24h changes window when no marker is cached', function (): void {
+    it('falls back to a 24h changes window when the feed has no marker', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
         fakeTmdbShowUpdateSync();
@@ -568,7 +565,6 @@ describe('catalog:sync-shows-tmdb changes-feed failure handling', function (): v
 
     it('does not advance the shows marker on a mid-stream changes-feed failure', function (): void {
         // Arrange
-        Cache::flush();
         Exceptions::fake();
         Show::factory()->create(['_tmdb_id' => 23310, 'tmdb_synced_at' => now()]);
         fakeTmdbShowMidStreamChangesFailure();
@@ -577,7 +573,7 @@ describe('catalog:sync-shows-tmdb changes-feed failure handling', function (): v
         $this->artisan('catalog:sync-shows-tmdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TmdbShows))->toBeNull();
     });
 });
 
@@ -612,7 +608,6 @@ describe('catalog:sync-shows-tmdb insert-phase failure handling', function (): v
 
     it('does not advance the shows marker when the insert phase throws', function (): void {
         // Arrange
-        Cache::flush();
         Exceptions::fake();
         Show::factory()->withTvdb()->create(['_tmdb_id' => 1399, 'tmdb_synced_at' => null]);
         fakeTmdbShowInsertPhaseThrow();
@@ -621,7 +616,7 @@ describe('catalog:sync-shows-tmdb insert-phase failure handling', function (): v
         $this->artisan('catalog:sync-shows-tmdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TmdbShows))->toBeNull();
     });
 });
 
@@ -1001,7 +996,6 @@ describe('catalog:sync-shows-tmdb heartbeat and elapsed phase lines', function (
 describe('catalog:sync-shows-tmdb marker advancement', function (): void {
     it('advances the shows marker to run-start on a clean default run', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         fakeTmdbShowSync();
 
@@ -1009,12 +1003,11 @@ describe('catalog:sync-shows-tmdb marker advancement', function (): void {
         $this->artisan('catalog:sync-shows-tmdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBe(now()->toIso8601String());
+        expect(syncMarker(SyncFeed::TmdbShows))->toBe(now()->toIso8601String());
     });
 
     it('advances the shows marker on a --fresh run', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         fakeTmdbShowSync();
 
@@ -1022,12 +1015,11 @@ describe('catalog:sync-shows-tmdb marker advancement', function (): void {
         $this->artisan('catalog:sync-shows-tmdb', ['--fresh' => true]);
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBe(now()->toIso8601String());
+        expect(syncMarker(SyncFeed::TmdbShows))->toBe(now()->toIso8601String());
     });
 
     it('does not advance the shows marker when an insert-phase per-id hydrate fails', function (): void {
         // Arrange
-        Cache::flush();
         Exceptions::fake();
         // A held candidate carrying _tmdb_id 500 whose /tv/500 detail 500s persistently;
         // the pool aggregates it as a per-id failure and drops the key from its result,
@@ -1044,12 +1036,11 @@ describe('catalog:sync-shows-tmdb marker advancement', function (): void {
         $this->artisan('catalog:sync-shows-tmdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TmdbShows))->toBeNull();
     });
 
     it('does not advance the shows marker when a changes-phase re-hydrate fails', function (): void {
         // Arrange
-        Cache::flush();
         Exceptions::fake();
         // An already-synced row → a clean insert phase; a locally-held changed id (23310,
         // present in the changes feed) whose /tv/23310 detail 500s persistently makes the
@@ -1072,7 +1063,7 @@ describe('catalog:sync-shows-tmdb marker advancement', function (): void {
         $this->artisan('catalog:sync-shows-tmdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbShows->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TmdbShows))->toBeNull();
     });
 });
 

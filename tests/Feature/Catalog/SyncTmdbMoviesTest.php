@@ -11,7 +11,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
@@ -539,9 +538,8 @@ describe('catalog:sync-movies changes-feed window and batching', function (): vo
         expect(loggedInsertsInto('movies')->count())->toBe(2);
     });
 
-    it('requests the changes window from the cached marker with a 6h overlap', function (): void {
+    it('requests the changes window from the stored marker with a 6h overlap', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         // Marker at 2026-07-14 04:00 — under 6h into its day, so the three candidate
         // window starts fall on three different calendar days, the only granularity
@@ -558,9 +556,8 @@ describe('catalog:sync-movies changes-feed window and batching', function (): vo
         assertRequestedChangesWindow('2026-07-13', '2026-07-16');
     });
 
-    it('falls back to a 24h changes window when no marker is cached', function (): void {
+    it('falls back to a 24h changes window when the feed has no marker', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         Movie::factory()->create(['_tmdb_id' => 345, 'tmdb_synced_at' => now()]);
         fakeTmdbUpdateSync();
@@ -698,7 +695,6 @@ describe('catalog:sync-movies changes-feed failure reporting', function (): void
 
     it('reports a mid-stream changes-feed failure and exits FAILURE', function (): void {
         // Arrange
-        Cache::flush();
         Exceptions::fake();
         fakeTmdbMidStreamChangesFailure();
 
@@ -707,14 +703,13 @@ describe('catalog:sync-movies changes-feed failure reporting', function (): void
 
         // Assert
         Exceptions::assertReported(TmdbRequestFailed::class);
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TmdbMovies))->toBeNull();
     });
 });
 
 describe('catalog:sync-movies marker advancement', function (): void {
     it('advances the movies marker to run-start on a clean default run', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         fakeTmdbSync();
 
@@ -722,12 +717,11 @@ describe('catalog:sync-movies marker advancement', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
+        expect(syncMarker(SyncFeed::TmdbMovies))->toBe(now()->toIso8601String());
     });
 
     it('does not advance the movies marker when an inserted title fails to hydrate', function (): void {
         // Arrange
-        Cache::flush();
         Exceptions::fake();
         // The lone changed id is one we do not hold, so it is an insert; its detail 500s
         // persistently, and the pool aggregates that as a per-id failure and drops the
@@ -744,12 +738,11 @@ describe('catalog:sync-movies marker advancement', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TmdbMovies))->toBeNull();
     });
 
     it('does not advance the movies marker when a refreshed title fails to hydrate', function (): void {
         // Arrange
-        Cache::flush();
         Exceptions::fake();
         // A locally-held changed id (345, present in the changes feed) whose detail 500s
         // persistently — a failure on the refresh side of the pass, distinct from the
@@ -773,7 +766,7 @@ describe('catalog:sync-movies marker advancement', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TmdbMovies))->toBeNull();
     });
 });
 
@@ -820,7 +813,6 @@ describe('catalog:sync-movies end-of-leg reindex', function (): void {
 
     it('still reindexes rows touched before a changes-feed failure', function (): void {
         // Arrange
-        Cache::flush();
         Exceptions::fake();
         // Page 1 of the feed lands and refreshes the held title 345, so the leg
         // genuinely touches a row, before page TWO 404s — TMDB raises that as a fatal
@@ -834,7 +826,7 @@ describe('catalog:sync-movies end-of-leg reindex', function (): void {
         $this->artisan('catalog:sync-movies')->assertExitCode(Command::FAILURE);
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TmdbMovies))->toBeNull();
         expect(reindexedIds($capturedChunks()))->toContain($held->id);
     });
 });
@@ -846,7 +838,6 @@ describe('catalog:sync-movies capped changes window', function (): void {
         // span between the marker and that floor is never fetched and never
         // retried. The leg has to say so — silently covering only the last 14
         // days is how a stalled marker stayed invisible on production for months.
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
         fakeTmdbChangedIds([]);
@@ -869,7 +860,6 @@ describe('catalog:sync-movies capped changes window', function (): void {
 
     it('exits FAILURE on a capped window', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
         fakeTmdbChangedIds([]);
@@ -880,7 +870,6 @@ describe('catalog:sync-movies capped changes window', function (): void {
 
     it('leaves the marker unadvanced so the alarm persists until an operator seeds', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         $stale = now()->subDays(30)->toImmutable();
         resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, $stale);
@@ -892,14 +881,13 @@ describe('catalog:sync-movies capped changes window', function (): void {
         // Assert
         // Unchanged, not merely un-advanced-to-now: a capped run that quietly moved
         // the marker forward would erase the evidence of its own gap.
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe($stale->toIso8601String());
+        expect(syncMarker(SyncFeed::TmdbMovies))->toBe($stale->toIso8601String());
     });
 
     it('still covers the 14 days it can reach on a capped run', function (): void {
         // Arrange
         // The guard reports the gap; it does not skip the work. The floored window
         // is still requested, and a title inside it still lands.
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
         fakeTmdbChangedIds([9500]);
@@ -918,7 +906,6 @@ describe('catalog:sync-movies capped changes window', function (): void {
         // CAP_DAYS floor truncates it, and the feed then 5xxs while reading what is
         // left. One window, so the run owes one — a second count would tell an
         // operator two spans are outstanding when only one ever existed.
-        Cache::flush();
         Exceptions::fake();
         Date::setTestNow('2026-07-16 12:00:00');
         resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
@@ -939,7 +926,6 @@ describe('catalog:sync-movies capped changes window', function (): void {
 
     it('reports no uncovered span when the marker sits inside the cap', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(2)->toImmutable());
         fakeTmdbChangedIds([]);
