@@ -22,4 +22,12 @@ Schedule::command('catalog:sync')->twiceDaily(0, 12)->timezone('America/Los_Ange
 // clears a stale lock 14h before the next daily start.
 Schedule::command('catalog:sync-imdb')->dailyAt('06:00')->timezone('America/Los_Angeles')->withoutOverlapping(600);
 
+// 03:00 Sunday is the widest gap from catalog:sync (00:00/12:00) and catalog:sync-imdb (06:00):
+// this leg streams ~1.2M movie ids plus ~230k series ids and must contend with neither.
+// Weekly is enough — popularity moves slowly and the run costs zero API calls (it reads only
+// the daily id exports from the file host), but operator-only is what froze the value at seed time.
+// 360 matches catalog:sync: generous cover for a run measured in minutes, yet dead long before
+// the next weekly tick, so a run killed mid-flight can't hold its lock into the following week.
+Schedule::command('catalog:refresh-popularity')->weeklyOn(0, '03:00')->timezone('America/Los_Angeles')->withoutOverlapping(360);
+
 Schedule::command('plex:sync')->everyMinute()->withoutOverlapping(30);
