@@ -12,10 +12,10 @@ use App\Domains\Catalog\Enums\UnitKind;
 describe('UnitRef naming one acquirable unit', function (): void {
     it('reports the id of the movie it names', function (): void {
         // Arrange
-        $ref = UnitRef::movie(41);
+        $ref = new UnitRef(UnitKind::Movie, 41);
 
         // Act
-        $actual = $ref->id();
+        $actual = $ref->id;
 
         // Assert
         expect($actual)->toBe(41);
@@ -23,10 +23,10 @@ describe('UnitRef naming one acquirable unit', function (): void {
 
     it('reports the movie kind for a movie reference', function (): void {
         // Arrange
-        $ref = UnitRef::movie(41);
+        $ref = new UnitRef(UnitKind::Movie, 41);
 
         // Act
-        $actual = $ref->kind();
+        $actual = $ref->kind;
 
         // Assert
         expect($actual)->toBe(UnitKind::Movie);
@@ -34,22 +34,22 @@ describe('UnitRef naming one acquirable unit', function (): void {
 
     it('reports the id and the episode kind for an episode reference', function (): void {
         // Arrange
-        // the id is the only input, and it is the act's own argument
+        // the kind and the id are the only inputs, and both are the act's own arguments
 
         // Act
-        $ref = UnitRef::episode(77);
+        $ref = new UnitRef(UnitKind::Episode, 77);
 
         // Assert
-        expect($ref->id())->toBe(77);
-        expect($ref->kind())->toBe(UnitKind::Episode);
+        expect($ref->id)->toBe(77);
+        expect($ref->kind)->toBe(UnitKind::Episode);
     });
 
     it('distinguishes a movie from an episode that share one id', function (): void {
         // Arrange
-        $movieRef = UnitRef::movie(500);
+        $movieRef = new UnitRef(UnitKind::Movie, 500);
 
         // Act
-        $episodeRef = UnitRef::episode(500);
+        $episodeRef = new UnitRef(UnitKind::Episode, 500);
 
         // Assert
         expect($movieRef)->not->toEqual($episodeRef);
