@@ -748,6 +748,42 @@ describe('review debrief rename', function () use (
 });
 
 describe('human review stage', function () use ($reviewCommandSource, $withinPhase, $mapSource, $commandNames): void {
+    it('tells the reviewer to put every point on a line', function () use ($reviewCommandSource, $withinPhase): void {
+        // A submitted review carries line-anchored comments AND a body, and only
+        // the first reaches the pipeline: `review-feedback-collector` parses a
+        // review body for `/review:add`-shaped findings alone, so a person's prose
+        // summary yields no items at all. Nothing shows the reviewer that. The
+        // review submitted, GitHub renders the body, and the ingest reports zero —
+        // so the one reader who could correct it concludes the pipeline lost their
+        // work. Said once before the read it costs a sentence; unsaid it costs the
+        // whole review.
+        // The zero-item list is the same instruction from the other end. It names a
+        // draft and a clean read, and a reviewer who wrote a body summary matches
+        // neither. Both halves are scoped to the phase that owes them, because a
+        // cause named in the wrong phase arrives after the read it was meant to
+        // shape.
+        // Arrange
+        $source = $reviewCommandSource('human');
+        $required = [
+            'Phase 1 says a point written in the review body reaches no later stage' => $withinPhase(
+                1,
+                '\bbody\b',
+            ),
+            'the zero-item path names the review body as a third cause, and counts three' => $withinPhase(
+                2,
+                '\bbody\b',
+                '(?i:\bthree\b)',
+            ),
+        ];
+
+        // Act
+        $missing = ToolkitFiles::missingPatterns($source, $required);
+
+        // Assert
+        expect($missing)->toBe([])
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(30);
+    });
+
     it('ships a human command carrying the stage own commitments', function () use ($reviewCommandSource, $withinPhase): void {
         // Every way this stage fails is silent. A file that announces the wrong
         // frontmatter `name` is unreachable under the name every router points
@@ -914,7 +950,11 @@ describe('review run stage sequence', function () use (
         // objections, and losing one to an edit leaves the other two reading like
         // the complete case.
         // Scoped to Stage 3's own block: a rationale a reader meets two stages
-        // later arrives after they have already decided to move it.
+        // later arrives after they have already decided to move it. The second
+        // reason is tempered to its own bullet as well, because `already` is prose
+        // in the bullet above it too — a pair of stage-wide lookaheads holds on
+        // that other bullet's copy of the word, so the assertion could not fail for
+        // the reason its name gives.
         // Arrange
         $source = $reviewCommandSource('run');
         $required = [
@@ -925,8 +965,7 @@ describe('review run stage sequence', function () use (
             ),
             'Stage 3 says the engines then review better code, because the structural objections are already fixed' => $withinStage(
                 3,
-                '\bstructural\b',
-                '\balready\b',
+                '^- \*\*(?=(?:(?!^- ).)*\bstructural\b)(?=(?:(?!^- ).)*\balready\b)',
             ),
             'Stage 3 says the suite covers this round of fixes, so the stage needs no delta pass of its own' => $withinStage(
                 3,
@@ -975,6 +1014,7 @@ describe('human round contract', function () use (
     $reviewCommandSource,
     $contractSection,
     $nearInParagraph,
+    $withinPhase,
     $requiredSources,
     $missingAcrossFiles,
 ): void {
@@ -1065,6 +1105,77 @@ describe('human round contract', function () use (
             'the `TICKET` disposition offers a ticket in the Phase 6 batch' => '~\bTICKET\b~',
             'the slot table carries an `Answer:` row' => '~^\|\s*`Answer:`\s*\|~m',
             'the `CONVERSATION` group states it carries no `[SEVERITY]` tag' => $nearInParagraph('CONVERSATION', '\bno\b(?:(?!\n\n).){0,120}(?i:severit)'),
+        ];
+
+        // Act
+        $missing = ToolkitFiles::missingPatterns($source, $required);
+
+        // Assert
+        expect($missing)->toBe([])
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(300);
+    });
+
+    it('carries a conversational item through the phases that branch on severity', function () use ($reviewCommandSource, $withinPhase): void {
+        // `CONVERSATION` is the first item class the gate prints with no severity,
+        // and every phase it passes through was written to branch on one. Phase 1
+        // routes an out-of-scope item by tier, so an item carrying no tier matches
+        // neither branch and reaches no list — dropped with no reply and no
+        // resolve. Phase 2 then closes on a terminal set of three that no
+        // conversational disposition is in, under an override grammar that cannot
+        // name one, so `ANSWER`, `ACKNOWLEDGE` and `TICKET` end nothing and the
+        // user cannot move an item between them. And an `ANSWER` escalated because
+        // it implies a change has nowhere to print: `DISCUSS` sorts by severity,
+        // which the item does not carry until the escalation assigns one.
+        // Every one of those is silent in the same way — the run reports a list
+        // short by exactly the items nobody handled, and the reviewer is the only
+        // person who could notice.
+        // Each pattern is scoped to the phase that owes it, and the escalation is
+        // tempered to the `ANSWER` bullet: its two neighbours carry the same
+        // dispositions, and a phase-wide match would let either stand in for it.
+        // Arrange
+        $source = $reviewCommandSource('process');
+        $required = [
+            'Phase 1 routes a `CONVERSATION` item onward whatever its scope mark' => $withinPhase(
+                1,
+                '\*\*Route by scope(?:(?!^\d+\.\s).)*\bCONVERSATION\b',
+            ),
+            'Phase 2 ends a conversational item as answered, acknowledged or ticketed' => $withinPhase(
+                2,
+                '(?i:\banswered\b)',
+                '(?i:\backnowledged\b)',
+                '(?i:\bticketed\b)',
+            ),
+            'the Phase 2 override grammar names the three conversational tokens beside approve and skip' => $withinPhase(
+                2,
+                '<(?=[^>\n]*\bapprove\b)(?=[^>\n]*\bskip\b)(?=[^>\n]*\banswer\b)(?=[^>\n]*\backnowledge\b)(?=[^>\n]*\bticket\b)[^>\n]*>',
+            ),
+            'an escalated `ANSWER` leaves `CONVERSATION` for `DISCUSS`, under the severity the change carries' => '~^- \*\*`ANSWER`\*\*(?=(?:(?!^- \*\*).)*\bCONVERSATION\b)(?=(?:(?!^- \*\*).)*\bDISCUSS\b)(?=(?:(?!^- \*\*).)*(?i:severit))~ms',
+        ];
+
+        // Act
+        $missing = ToolkitFiles::missingPatterns($source, $required);
+
+        // Assert
+        expect($missing)->toBe([])
+            ->and(ToolkitFiles::lineCount($source))->toBeGreaterThan(300);
+    });
+
+    it('replies to a TICKET item once the user has ruled on the ticket', function () use ($reviewCommandSource, $withinPhase): void {
+        // Phase 5 replies to every disposition but this one, and the gap is not a
+        // missing sentence so much as a reply that cannot be written where the
+        // others are: Phase 6 is where the user rules on the ticket batch, and it
+        // runs after Phase 5 — so a reply drafted in place promises a ticket
+        // nobody approved. The declined half is the one an editor drops as
+        // redundant. A ticket the user turned down still owes the reviewer an
+        // answer, and a reply that never comes reads as agreement.
+        // Scoped to Phase 5 because that is the phase that owes the reply; the
+        // ticket offer itself is Phase 6's and is asserted nowhere near here.
+        // Arrange
+        $source = $reviewCommandSource('process');
+        $required = [
+            'Phase 5 replies to a `TICKET` item' => $withinPhase(5, '\bTICKET\b'),
+            'the reply waits for Phase 6, where the user rules on the ticket' => $withinPhase(5, '\bPhase 6\b'),
+            'a ticket the user declined still gets its reply' => $withinPhase(5, '(?i:declin)'),
         ];
 
         // Act

@@ -135,7 +135,7 @@ Next: /review:human
 ```
 
 The diff link is the handoff — `/review:human` reviews the branch in Linear, and
-this is the only stage that resolves the pieces the link needs. Build it from the
+resolves the pieces the link needs again when it runs on its own. Build it from the
 repo's `owner/name` (`gh repo view --json nameWithOwner -q '.nameWithOwner'`) and
 the `{n}` Phase 0 already resolved. Drop the line when no PR is open — there is no
 diff to open in Linear yet — and say `/review:create-pr` first instead.

@@ -87,7 +87,10 @@ Give every item in the group one of three dispositions:
 
 - **`ANSWER`** — answer the item inline, in its own `Answer:` slot. An `ANSWER`
   stands by default, like an `APPROVE`. Where your answer implies a change to the
-  code, escalate the item to `DISCUSS` and let the user rule on it.
+  code, the item **leaves `CONVERSATION`**: give it the `[SEVERITY]` that change
+  carries and print it in `DISCUSS`, where the user rules on it. `CONVERSATION`
+  carries no severity, so an escalated item has no group to print in until you
+  assign one.
 - **`ACKNOWLEDGE`** — praise. Reply to it and resolve it in Phase 5. Dispatch no
   fixer.
 - **`TICKET`** — a chore or a todo for later. Offer it in the Phase 6 batch beside
@@ -167,7 +170,10 @@ go straight to Phase 5.
 4. **Route by scope.** The collector marked each item `in` or `out`. An `out` item at
    SHOULD_FIX / CONSIDER / NIT is **recorded as a skip** with the rationale "out of scope
    — PR did not create or modify this code" and resolved in Phase 5. An `out` item at
-   BLOCKING joins the Phase 2 list under its own header.
+   BLOCKING joins the Phase 2 list under its own header. A `CONVERSATION` item carries
+   no severity and matches neither branch, so it joins the Phase 2 list whatever its
+   scope mark: a question about code this PR left alone is still a question the
+   reviewer asked.
 5. **Group** duplicates and relatives by `(file, line ±10, category)` — the key
    `/review:claude` Phase 3 merges on. A group is presented and fixed as one unit.
 6. **Sort** BLOCKING → SHOULD_FIX → CONSIDER → NIT, by the `/review:add` badge
@@ -188,8 +194,9 @@ go straight to Phase 5.
    - **External reviewer config** — for a CodeRabbit or other CLI-engine flag, the
      path-scoped rule for its config (e.g. `.coderabbit.yaml`).
 
-Items marked `in`, every item with no file or line, the already-fixed items, and the
-out-of-scope BLOCKING holds go to Phase 2. Skips and dismissals go straight to Phase 5.
+Items marked `in`, every item with no file or line, the already-fixed items, the
+out-of-scope BLOCKING holds, and every `CONVERSATION` item go to Phase 2. Skips and
+dismissals go straight to Phase 5.
 
 ---
 
@@ -313,6 +320,9 @@ The full spec is *How Findings Are Written* in `.claude/skills/review-pipeline/S
 
 Then prompt once, as plain text: your `APPROVE` and `SKIP` recommendations **stand by
 default**, so the user replies only with overrides, as `<approve|skip> <numbers>` lines.
+In `--human-round` the grammar carries the conversational dispositions too —
+`<approve|skip|answer|acknowledge|ticket> <numbers>` — so one override line moves a
+`CONVERSATION` item the way it moves any other.
 **A `DISCUSS` item is the exception — name its numbers to settle it.** Close the prompt by
 listing the numbers still owed, so what blocks the run is on screen:
 
@@ -334,10 +344,13 @@ user:         skip 2 · approve 6
 final:        approve 1 4 6 · skip 2 3 5 · already fixed 7
 ```
 
-Every item ends as **approve**, **skip**, or **already fixed**. **Approve** dispatches
-(Phase 3); **skip** records its reason for Phase 5. **Already fixed** stands unless the
-user approves the number — read that override as "the head does not resolve this", so
-re-read the file before dispatching, and say what you find either way.
+Every item ends as **approve**, **skip**, or **already fixed**. In `--human-round` a
+`CONVERSATION` item ends on its own disposition instead — **answered**,
+**acknowledged** or **ticketed** — each terminal in its own right, and none of them
+dispatches a fixer. **Approve** dispatches (Phase 3); **skip** records its reason for
+Phase 5. **Already fixed** stands unless the user approves the number — read that
+override as "the head does not resolve this", so re-read the file before dispatching,
+and say what you find either way.
 
 **A `DISCUSS` item ends only when the user names it.** Silence leaves it open, so a reply
 that settles every other number still owes you these. Say which numbers remain and wait
@@ -400,6 +413,10 @@ get their reply and resolve too, even though they were never presented.
 - **Skipped / dismissed** → the rationale.
 - **Answered / acknowledged** → the text of the item's `Answer:` slot, or a one-line
   acknowledgment for praise.
+- **Ticketed** → the ticket the user approved, by id. Phase 6 is where they rule on the
+  batch and it runs after this phase, so write a `TICKET` item's reply once the batch is
+  settled — a reply written in place names a ticket nobody has approved. A ticket the
+  user declined gets its reply too: record the point and say no ticket was opened.
 - **Out of scope** → the out-of-scope rationale, and for a BLOCKING hold, how the user
   chose to handle it.
 

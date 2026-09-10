@@ -59,7 +59,9 @@ Diff: https://linear.review/{owner}/{repo}/pull/{n}
 Then tell the reader, in plain words, what to do with it:
 
 - Open the link and read the diff in Linear.
-- Comment on the lines that need a comment.
+- Comment on the lines that need a comment. Put every point on a line: only a
+  line-anchored comment reaches the pipeline, and a summary written in the review
+  body is collected as nothing.
 - **Submit** the review at the end. Linear syncs a review's line-anchored
   comments to the GitHub PR only when it is submitted. A review left as a draft
   stays in Linear, never reaches GitHub, and no later stage can see it.
@@ -82,16 +84,19 @@ settle any item yourself.
 
 ### When the ingest reports zero items
 
-Zero items is not by itself a clean review. Name both ways it happens, rather
+Zero items is not by itself a clean review. Name all three ways it happens, rather
 than sliding on to the engines as though there were no feedback:
 
 - **The review is still saved as a draft.** The likeliest cause. A draft never
   syncs to GitHub, so the pipeline cannot see it and the PR carries nothing to
   collect — the comments are on screen in Linear and nowhere else.
+- **The points went into the review body.** The collector reads a review body for
+  `/review:add`-shaped findings alone, so prose there yields no items. The review
+  synced and the summary stayed behind.
 - **There was nothing to flag.** A legitimate outcome, and the good one. A clean
   read is a result, not a failure to find something.
 
-This stage cannot tell the two apart, so say both and offer the choice: re-check
+This stage cannot tell them apart, so say all three and offer the choice: re-check
 the PR after the reader submits, or accept the clean read and move on to
 `/review:suite`.
 

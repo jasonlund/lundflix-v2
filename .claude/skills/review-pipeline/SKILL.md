@@ -276,6 +276,12 @@ positives, never at the author's judgment.
 - Action classes named `VerbNoun` with no `Action` suffix — intentional naming.
 - Multiple near-identical tests that each assert one action — intentional (AAA,
   one Act per test), not duplication to be merged.
+- Verbatim pattern pinning in the toolkit drift guards (`ReviewContractTest`,
+  `ReviewCommandStructureTest`) — deliberate, not brittleness. A guard on *who owns*
+  something pins the assigning verb, because a loose co-occurrence pattern passes
+  green on a sentence that **revokes** the ownership. Do not call it inconsistent with
+  `$nearInParagraph` / `$withinPhase` / `$withinStage`: those scope a pattern to a
+  block or pair a rule with its reason, and neither relaxes wording.
 - Domain calling another domain only through a `Contracts/` interface — intended
   boundary, not indirection to remove.
 - An ingest/mirror domain's Models declaring `belongsTo` **directly** onto
