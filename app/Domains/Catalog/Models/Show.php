@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Casts\NullableDate;
+use App\Domains\Catalog\Contracts\Title;
 use App\Domains\Catalog\Database\Factories\ShowFactory;
 use App\Domains\Catalog\Models\Concerns\Refusable;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -14,13 +15,37 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Laravel\Scout\Searchable;
 
-final class Show extends Model
+final class Show extends Model implements Title
 {
     /** @use HasFactory<ShowFactory> */
     use HasFactory;
 
     use Refusable, Searchable {
         Refusable::shouldBeSearchable insteadof Searchable;
+    }
+
+    public function catalogId(): int
+    {
+        return $this->id;
+    }
+
+    /**
+     * A show TMDB has hydrated but TVDB has not yet reached carries no
+     * _tvdb_name, and would otherwise publish no title at all.
+     */
+    public function displayTitle(): ?string
+    {
+        return $this->_tvdb_name ?? $this->_tmdb_name;
+    }
+
+    public function imdbId(): ?string
+    {
+        return $this->_imdb_id;
+    }
+
+    public function tmdbId(): ?int
+    {
+        return $this->_tmdb_id;
     }
 
     /**

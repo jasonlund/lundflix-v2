@@ -17,8 +17,9 @@ returns a canonical report file. **You (the orchestrator) do all the posting** �
 the subagent never touches GitHub. Both always run; a failing engine is skipped,
 never fatal.
 
-Loop position: `/review:create-pr` → `/review:human` (human-facing summary + ticket-scope
-check) → **`/review:suite`** → `/review:process`. Run `/review:human` first for a
+Loop position: `/review:create-pr` → `/review:debrief` (author-facing summary +
+ticket-scope check) → `/review:human` (the human read of the diff) →
+**`/review:suite`** → `/review:process`. Run `/review:debrief` first for a
 plain-language read of the branch before these engines dig for defects.
 
 ## Input

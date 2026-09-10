@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Map
 
-You don't remember 32 toolkit files — 12 skills, 8 commands, 12 subagents, this
+You don't remember 35 toolkit files — 12 skills, 11 commands, 12 subagents, this
 skill among them — so ask. This page names all of them and when to reach for each.
 It carries no description into the agent's context and fires nothing on its own.
 
@@ -27,7 +27,7 @@ rough ticket ─/plan:run──▶ plan-draft ─▶ plan-breakdown ─▶ plan-
                               review-tdd-cross-slice (multi-slice PRs only)
                                                               │
                                                               ▼
-             /review:run ─▶ create-pr ─▶ human ─▶ suite ─▶ process ─▶ delta
+      /review:run ─▶ create-pr ─▶ debrief ─▶ human ─▶ suite ─▶ process ─▶ delta
 ```
 
 **Planning — `/plan:run`** orchestrates all three with gates, so reach for the
@@ -46,14 +46,20 @@ individual skills only when you're re-entering partway:
 subagent so tests can't be retrofitted. `tdd-laravel-testing` and
 `tdd-react-testing` carry the stack conventions; the subagents read them.
 
-**Review — `/review:run`** chains the five stages with approval gates:
-`/review:create-pr` (lint, commit, push, open) → `/review:human` (orientation pass
-for you) → `/review:suite` → `/review:process` (fix the approved items) → delta.
+**Review — `/review:run`** chains the six stages with approval gates:
+`/review:create-pr` (lint, commit, push, open) → `/review:debrief` (what the
+branch did, checked against the ticket) → `/review:human` (a person reads the
+diff before any engine does) → `/review:suite` → `/review:process` (fix the
+approved items) → delta.
 Standalone when you want one piece: `/review:claude` (multi-agent analysis),
 `/review:suite` (that plus CodeRabbit), and **`/review:add`** — posts a
 `/review:claude` report to the PR as one review, inline where the file/line is in
 the diff. `/review:suite` calls `add` for you; run it yourself after a bare
 `/review:claude`.
+**`/review:human`** is the human read of the branch — it prints the Linear diff
+link, waits for a person to review the diff and submit, then hands the submitted
+comments to `/review:process`. It runs as the loop's third stage, and standalone
+whenever you want the read on its own.
 
 ## On-ramps
 
@@ -66,6 +72,10 @@ Situations that generate work and then merge onto the flow.
 - **A bug that resists the first look** → `tdd-feedback`'s BUG branch hands off to
   **`mattpocock-skills:diagnosing-bugs`**, which refuses to theorise until it has a
   **tight** loop that goes **red** on this bug.
+- **A ticket needs a workspace to work in** → **`/worktree:up FLIX-NNN`**: derives the
+  branch, cuts the LaborForest worktree, registers it in Solo, runs `up`, and reads the
+  verdict off the run log. **`/worktree:down`** reverses it once the PR is merged,
+  refusing on a dirty or unmerged branch. User-invoked — they create and drop a database.
 - **Every slice in a multi-slice PR is done** → **`review-tdd-cross-slice`**.
   Per-slice refactors never see the combined diff; this points the REFACTOR HAT at
   the whole PR. Single-slice PR → skip it; one ticket of many slices still qualifies.
@@ -80,6 +90,10 @@ Situations that generate work and then merge onto the flow.
   false-positive list, and how findings are worded.
 - **`codebase-design`** — the vocabulary layer beneath planning, tdd, and review:
   module, interface, depth, **seam**, adapter, leverage, locality.
+- **Asking the user a question** — not a skill but a `project.md` section: the one
+  contract every skill and command asks under, the two renderings that carry it (the
+  decision round, and the disposition list `/review:process` uses), and the silence
+  contract that makes an unanswered question lock at its recommendation.
 
 ## Subagents (`.claude/agents/`)
 

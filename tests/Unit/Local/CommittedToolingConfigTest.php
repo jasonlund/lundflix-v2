@@ -82,6 +82,26 @@ describe('solo.yml processes', function () use ($soloProcesses): void {
         expect($declared)->toBe(collect($expected)->sort()->values()->all());
     });
 
+    it('commits no process that declares an auto start', function () use ($soloProcesses): void {
+        // A fresh checkout's processes are all untrusted, Solo's API exposes no way
+        // to trust one, and an untrusted command never starts — so `auto_start:
+        // true` is an intent the trust gate silently refuses to honor. That gate is
+        // what keeps a cloned `solo.yml` from auto-running arbitrary commands, so
+        // the committed file matches it rather than declaring the opposite. An
+        // absent key is an offender too: the value has to be stated, not inferred.
+        // Arrange
+        $processes = $soloProcesses();
+
+        // Act
+        $autoStarting = collect($processes)
+            ->filter(fn (array $process): bool => ($process['auto_start'] ?? null) !== false)
+            ->keys()
+            ->all();
+
+        // Assert
+        expect($autoStarting)->toBe([]);
+    });
+
     it('commits no process that disables permission prompts', function () use ($soloProcesses): void {
         // Solo's own local database carries agent processes launched with
         // permission prompts disabled. They stay local by decision: a committed
