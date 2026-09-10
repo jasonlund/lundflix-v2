@@ -335,14 +335,26 @@ describe('generated agent guideline files', function () use ($anchor, $generated
         // template into a contract plus two renderings under an untouched heading, so
         // a heading-only guard would have passed on generated copies still teaching
         // the superseded rule.
+        // Both sides are blank-line-normalized before the compare, because
+        // `boost:install` is NOT byte-preserving: it reads a `#` inside a fenced block
+        // as a heading and inserts the blank line a heading would need. Compare
+        // `.ai/guidelines/project.md`'s `resources/js/` tree against the generated copy
+        // to see it — same lines, one blank line added after each `#`-bearing one. This
+        // section survives a raw compare today only because it happens to contain no
+        // `#`, so a raw compare would sit here until someone added a shell snippet or a
+        // commented path and then fail on a CORRECTLY regenerated tree, with no fix
+        // available but deleting the assertion. Collapsing blank runs costs nothing the
+        // guard needs: a stale body still differs in its words.
+        $collapseBlankLines = fn (string $text): string => (string) preg_replace('~\n{2,}~', "\n", $text);
+
         // Arrange
-        $section = $guidelineSection($anchor);
+        $section = $collapseBlankLines($guidelineSection($anchor));
         $sources = collect($generatedGuidelineFiles)
             ->mapWithKeys(fn (string $file): array => [$file => ToolkitFiles::read($file)]);
 
         // Act
         $stale = $sources
-            ->reject(fn (string $source): bool => Str::contains($source, $section))
+            ->reject(fn (string $source): bool => Str::contains($collapseBlankLines($source), $section))
             ->keys()
             ->all();
 
