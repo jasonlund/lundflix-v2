@@ -10,17 +10,16 @@ use Illuminate\Support\Str;
  * real stdin, real interpreter, no mocking — and judged by the two things Claude
  * Code reads: the JSON on stdout and the exit code.
  *
- * The gate tokens asserted below ("RED gate", "GREEN gate", …) are hand-written
- * literals taken from the guarded-set spec, never re-derived from the hook's own
- * table; a test that read the map back out of the script could never disagree
- * with it.
+ * The guarded agent names below are hand-written literals taken from the
+ * guarded-set spec, never re-derived from the hook's own table; a test that read
+ * the set back out of the script could never disagree with it.
  */
 
 /**
  * Run the hook against raw stdin and return its stdout.
  *
  * The exit-0 assertion lives here rather than in each test on purpose: every
- * path of this hook exits 0 and carries its decision in the JSON, so a missing
+ * path of this hook exits 0 and carries its rewrite in the JSON, so a missing
  * or crashing script (node exits 1 with empty stdout) would otherwise satisfy
  * the allow-path tests, which assert exactly that emptiness.
  */
@@ -50,39 +49,59 @@ function runBackgroundGuardHook(array $payload): array
 }
 
 /**
- * A background dispatch of one subagent, as Claude Code sends it.
+ * An Agent dispatch carrying exactly the given tool input, so a test controls
+ * which keys are present — an omitted `run_in_background` is not the same input
+ * as an explicit `false`.
+ *
+ * @param  array<string, mixed>  $toolInput
+ * @return array<string, mixed>
+ */
+function agentDispatch(array $toolInput): array
+{
+    return [
+        'tool_name' => 'Agent',
+        'tool_input' => $toolInput,
+    ];
+}
+
+/**
+ * An explicitly backgrounded dispatch of one subagent.
  *
  * @return array<string, mixed>
  */
 function backgroundedAgentDispatch(string $subagentType): array
 {
-    return [
-        'tool_name' => 'Agent',
-        'tool_input' => [
-            'subagent_type' => $subagentType,
-            'run_in_background' => true,
-        ],
-    ];
+    return agentDispatch([
+        'subagent_type' => $subagentType,
+        'run_in_background' => true,
+    ]);
 }
 
 /**
- * Every `command` Claude Code would run for a PreToolUse(Agent) dispatch, read
- * from the committed `.claude/settings.json` off disk — the registration IS the
+ * The committed `.claude/settings.json`, decoded off disk — the file IS the
  * behavior under test, so it is never fixtured or faked. Decoding throws rather
  * than yielding null so a malformed settings file fails as itself instead of
- * masquerading as a missing registration.
+ * masquerading as a missing entry.
+ *
+ * @return array<string, mixed>
+ */
+function committedClaudeSettings(): array
+{
+    return (array) json_decode(
+        (string) file_get_contents(base_path('.claude/settings.json')),
+        associative: true,
+        flags: JSON_THROW_ON_ERROR,
+    );
+}
+
+/**
+ * Every `command` Claude Code would run for a PreToolUse(Agent) dispatch.
  *
  * @return list<string>
  */
 function registeredAgentPreToolUseCommands(): array
 {
-    $settings = (array) json_decode(
-        (string) file_get_contents(base_path('.claude/settings.json')),
-        associative: true,
-        flags: JSON_THROW_ON_ERROR,
-    );
-
-    return collect(data_get($settings, 'hooks.PreToolUse', []))
+    return collect(data_get(committedClaudeSettings(), 'hooks.PreToolUse', []))
         ->where('matcher', 'Agent')
         ->flatMap(fn (array $entry): array => (array) data_get($entry, 'hooks', []))
         ->pluck('command')
@@ -91,20 +110,35 @@ function registeredAgentPreToolUseCommands(): array
         ->all();
 }
 
-describe('backgrounded guarded subagents', function (): void {
-    it('denies a backgrounded tdd-test-writer, naming the RED gate', function (): void {
+/**
+ * Claude Code runs a dispatch in-turn only when `run_in_background` is explicitly
+ * `false` — omitting the flag backgrounds it just as `true` does. So the guard
+ * rewrites every guarded dispatch that is not already `false` rather than denying
+ * it: the call proceeds, in the foreground, with no round trip to the caller.
+ */
+describe('guarded subagents forced to the foreground', function (): void {
+    it('rewrites a no-flag dispatch of a guarded agent to run in the foreground', function (string $subagentType): void {
         // Arrange
-        $payload = backgroundedAgentDispatch('tdd-test-writer');
+        $payload = agentDispatch([
+            'subagent_type' => $subagentType,
+            'description' => 'Write the failing tests',
+            'prompt' => 'RED phase for one slice.',
+        ]);
 
         // Act
         $output = runBackgroundGuardHook($payload);
 
         // Assert
-        expect(data_get($output, 'hookSpecificOutput.permissionDecision'))->toBe('deny')
-            ->and(data_get($output, 'hookSpecificOutput.permissionDecisionReason'))->toContain('RED gate');
-    });
+        expect(data_get($output, 'hookSpecificOutput.hookEventName'))->toBe('PreToolUse')
+            ->and(data_get($output, 'hookSpecificOutput.updatedInput.run_in_background'))->toBeFalse();
+    })->with([
+        'tdd-test-writer',
+        'tdd-implementer',
+        'tdd-refactorer',
+        'review-fixer',
+    ]);
 
-    it('denies a backgrounded tdd-implementer, naming the GREEN gate', function (): void {
+    it('rewrites an explicit background dispatch to run in the foreground', function (): void {
         // Arrange
         $payload = backgroundedAgentDispatch('tdd-implementer');
 
@@ -112,11 +146,32 @@ describe('backgrounded guarded subagents', function (): void {
         $output = runBackgroundGuardHook($payload);
 
         // Assert
-        expect(data_get($output, 'hookSpecificOutput.permissionDecision'))->toBe('deny')
-            ->and(data_get($output, 'hookSpecificOutput.permissionDecisionReason'))->toContain('GREEN gate');
+        expect(data_get($output, 'hookSpecificOutput.updatedInput.run_in_background'))->toBeFalse();
     });
 
-    it('denies a backgrounded tdd-refactorer, naming the REFACTOR gate', function (): void {
+    it('carries every other input field through the rewrite unchanged', function (): void {
+        // Claude Code uses `updatedInput` AS the tool input and schema-validates it
+        // alone, so a rewrite that dropped `prompt` would get the dispatch rejected.
+        // The comparison is key-order-insensitive on purpose: only the set of fields
+        // and their values are observable to Claude Code.
+        // Arrange
+        $toolInput = [
+            'subagent_type' => 'review-fixer',
+            'description' => 'Apply the approved review fixes',
+            'prompt' => 'Fix items 1, 3 and 4 from the disposition list.',
+            'model' => 'sonnet',
+            'isolation' => 'worktree',
+        ];
+
+        // Act
+        $output = runBackgroundGuardHook(agentDispatch($toolInput));
+
+        // Assert
+        expect(data_get($output, 'hookSpecificOutput.updatedInput'))
+            ->toEqual([...$toolInput, 'run_in_background' => false]);
+    });
+
+    it('rewrites without making a permission decision', function (): void {
         // Arrange
         $payload = backgroundedAgentDispatch('tdd-refactorer');
 
@@ -124,40 +179,20 @@ describe('backgrounded guarded subagents', function (): void {
         $output = runBackgroundGuardHook($payload);
 
         // Assert
-        expect(data_get($output, 'hookSpecificOutput.permissionDecision'))->toBe('deny')
-            ->and(data_get($output, 'hookSpecificOutput.permissionDecisionReason'))->toContain('REFACTOR gate');
+        expect(data_get($output, 'hookSpecificOutput'))
+            ->not->toHaveKey('permissionDecision')
+            ->not->toHaveKey('permissionDecisionReason')
+            ->toHaveKey('updatedInput');
     });
 
-    it('denies a backgrounded review-fixer, naming the review-process phase it waits on', function (): void {
+    it('leaves a guarded dispatch already sent in the foreground untouched', function (): void {
+        // An explicit `false` is already the in-turn shape, so there is nothing to
+        // rewrite — this is what keeps "rewrite every guarded dispatch" from passing.
         // Arrange
-        $payload = backgroundedAgentDispatch('review-fixer');
-
-        // Act
-        $output = runBackgroundGuardHook($payload);
-
-        // Assert
-        expect(data_get($output, 'hookSpecificOutput.permissionDecision'))->toBe('deny')
-            ->and(data_get($output, 'hookSpecificOutput.permissionDecisionReason'))->toContain('Phase 3');
-    });
-});
-
-/**
- * Writing nothing IS the allow: Claude Code reads absent output as "this hook has
- * no opinion" and runs the tool call. So every test below asserts emptiness, and
- * the three are kept apart by their INPUT rather than their output — a foreground
- * guarded dispatch, a backgrounded unguarded one, and a payload the hook could not
- * read at all are observationally identical, which is the intended behavior.
- */
-describe('dispatches the guard lets through', function (): void {
-    it('allows a guarded subagent dispatched in the foreground', function (): void {
-        // Claude Code omits the flag entirely on a foreground dispatch rather than
-        // sending false, and "omit it" is what the deny reason tells the caller to
-        // do — so the omitted shape is the one that has to come back clean.
-        // Arrange
-        $payload = [
-            'tool_name' => 'Agent',
-            'tool_input' => ['subagent_type' => 'tdd-implementer'],
-        ];
+        $payload = agentDispatch([
+            'subagent_type' => 'tdd-test-writer',
+            'run_in_background' => false,
+        ]);
 
         // Act
         $output = runBackgroundGuardHook($payload);
@@ -165,7 +200,16 @@ describe('dispatches the guard lets through', function (): void {
         // Assert
         expect($output)->toBe([]);
     });
+});
 
+/**
+ * Writing nothing IS the allow: Claude Code reads absent output as "this hook has
+ * no opinion" and runs the tool call as sent. So both tests below assert
+ * emptiness, and they are kept apart by their INPUT rather than their output — a
+ * backgrounded unguarded dispatch and a payload the hook could not read at all are
+ * observationally identical, which is the intended behavior.
+ */
+describe('dispatches the guard lets through', function (): void {
     it('allows an unguarded subagent dispatched backgrounded', function (): void {
         // `/review:suite` backgrounds this one deliberately — it genuinely overlaps
         // `/review:claude` running concurrently — so the guard must stay keyed on the
@@ -198,12 +242,13 @@ describe('dispatches the guard lets through', function (): void {
 
 /**
  * Everything above proves the script decides correctly when it is run — none of
- * it proves Claude Code ever runs it. An unregistered hook, or one registered at
- * a path that does not resolve, is inert and silent: the tool call goes through
- * and no test in this file notices. So the committed settings file is read off
- * disk as its own seam.
+ * it proves Claude Code ever runs it, or honors the rewrite it returns. An
+ * unregistered hook, one registered at a path that does not resolve, or a
+ * foreground rewrite the fork-subagent gate overrides, is inert and silent: the
+ * tool call goes through backgrounded and no test in this file notices. So the
+ * committed settings file is read off disk as its own seam.
  */
-describe('settings.json registration', function (): void {
+describe('settings.json wiring', function (): void {
     it('registers the guard as a PreToolUse hook on the Agent matcher', function (): void {
         // Arrange
         // the committed settings file is the input; there is no state to set up
@@ -233,5 +278,22 @@ describe('settings.json registration', function (): void {
 
         // Assert
         expect($path)->toBeFile();
+    });
+
+    it('turns off the fork-subagent gate that would force every dispatch into the background', function (): void {
+        // While the gate is on, Claude Code backgrounds every subagent and drops
+        // `run_in_background` from the Agent schema, so the guard's foreground
+        // rewrite can never take effect. This env entry is the only thing that
+        // restores per-call foreground, and nothing else in the suite reads it.
+        // Arrange
+        // the committed settings file is the input; there is no state to set up
+
+        // Act
+        $gate = data_get(committedClaudeSettings(), 'env.CLAUDE_CODE_FORK_SUBAGENT');
+
+        // Claude Code lowercases and trims the value, then treats these as false.
+        // Assert
+        expect($gate)->toBeString('env.CLAUDE_CODE_FORK_SUBAGENT must be set in .claude/settings.json')
+            ->and(Str::lower(Str::trim((string) $gate)))->toBeIn(['0', 'false', 'no', 'off']);
     });
 });
