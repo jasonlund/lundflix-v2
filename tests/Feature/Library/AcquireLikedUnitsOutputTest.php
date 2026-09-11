@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Data\UnitRef;
 use App\Domains\Catalog\Enums\UnitKind;
+use App\Domains\Catalog\Models\Episode;
 use App\Domains\Catalog\Models\Movie;
+use App\Domains\Catalog\Models\Show;
 use App\Domains\Download\Contracts\FindsAcquirableDownloads;
 use App\Domains\Download\Contracts\QueuesDownload;
 use App\Domains\Download\Exceptions\DownloadRequestFailed;
@@ -49,13 +51,14 @@ describe('library:acquire run output', function (): void {
             "Closing acquired units…\n"
             ."  [acquire closed 1]\n"
             ."Queuing liked units…\n"
+            ."  [acquire checked 1]\n"
             ."  [acquire queued 1]\n"
             ."Done.\n",
         )
             ->and($exitCode)->toBe(Command::SUCCESS);
     });
 
-    it('still prints both zero totals and Done. when there is nothing to do', function (): void {
+    it('still prints all three zero totals and Done. when there is nothing to do', function (): void {
         // Arrange
         $this->instance(ReportsPresence::class, new ReportsPresenceFake);
         $this->instance(FindsAcquirableDownloads::class, new FindsAcquirableDownloadsFake);
@@ -67,9 +70,34 @@ describe('library:acquire run output', function (): void {
         // Assert
         expect(Artisan::output())
             ->toContain('  [acquire closed 0]')
+            ->toContain('  [acquire checked 0]')
             ->toContain('  [acquire queued 0]')
             ->toContain('Done.')
             ->not->toContain('failed;');
+    });
+
+    it('beats the checked count every hundred walked units before the queued total', function (): void {
+        // Arrange
+        $show = Show::factory()->create();
+        Episode::factory()->count(250)->for($show)->create();
+        resolve(LikeTitle::class)->handle(User::factory()->create(), $show);
+        $this->instance(ReportsPresence::class, new ReportsPresenceFake);
+        $this->instance(FindsAcquirableDownloads::class, new FindsAcquirableDownloadsFake);
+        $this->instance(QueuesDownload::class, new QueuesDownloadFake);
+
+        // Act
+        Artisan::call('library:acquire');
+
+        // No episode matches a download, so every beat counts walked units that
+        // were then skipped, not units that were queued.
+        // Assert
+        expect(Artisan::output())->toContain(
+            "Queuing liked units…\n"
+            ."  [acquire checked 100]\n"
+            ."  [acquire checked 200]\n"
+            ."  [acquire checked 250]\n"
+            ."  [acquire queued 0]\n",
+        );
     });
 });
 
@@ -146,6 +174,44 @@ describe('library:acquire fetch failures', function (): void {
         'rejected credentials' => [InvalidDownloadCredentials::loginPageReturned()],
         'throttle lock contention' => [RateLimitExceeded::fromLockContention(new RuntimeException('lock'))],
     ]);
+});
+
+describe('library:acquire overlapping runs', function (): void {
+    it('skips a unit another run records mid-fetch and still closes the run', function (): void {
+        // Arrange
+        $raced = Movie::factory()->create();
+        $kept = Movie::factory()->create();
+        $racedUnit = new UnitRef(UnitKind::Movie, $raced->id);
+        $keptUnit = new UnitRef(UnitKind::Movie, $kept->id);
+        $user = User::factory()->create();
+        // Liked first so the sweep meets the raced unit before the surviving one.
+        resolve(LikeTitle::class)->handle($user, $raced);
+        resolve(LikeTitle::class)->handle($user, $kept);
+        $this->instance(ReportsPresence::class, new ReportsPresenceFake);
+        $this->instance(FindsAcquirableDownloads::class, new FindsAcquirableDownloadsFake([$racedUnit, 8501], [$keptUnit, 8502]));
+        // The overlapping run records the unit after this run resolved it as
+        // pending but before this run writes its own record.
+        $this->instance(QueuesDownload::class, new QueuesDownloadFake(sideEffects: [
+            8501 => function () use ($racedUnit): void {
+                Acquisition::factory()->forUnit($racedUnit)->create([
+                    'download_id' => 8501,
+                    'status' => AcquisitionStatus::Queued,
+                ]);
+            },
+        ]));
+
+        // Act
+        $exitCode = Artisan::call('library:acquire');
+
+        // Assert
+        expect($exitCode)->toBe(Command::SUCCESS)
+            ->and(Artisan::output())
+            ->toContain('  [acquire queued 1]')
+            ->toContain('Done.')
+            ->not->toContain('failed;')
+            ->and(Acquisition::query()->forUnit($racedUnit)->count())->toBe(1)
+            ->and(Acquisition::query()->forUnit($keptUnit)->first()?->download_id)->toBe(8502);
+    });
 });
 
 describe('library:acquire registration and schedule', function (): void {

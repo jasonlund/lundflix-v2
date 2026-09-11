@@ -26,7 +26,12 @@ final class AcquireLikedUnits extends Command
         $this->flushTotal('acquire closed', $closeAcquiredUnits->handle());
 
         $this->output->writeln('Queuing liked units…');
-        $counts = $queueAcquisitions->handle();
+        $checked = 0;
+        $counts = $queueAcquisitions->handle(function (int $total) use (&$checked): void {
+            $checked = $total;
+            $this->beat('acquire checked', $total, 100);
+        });
+        $this->flushTotal('acquire checked', $checked);
         $this->flushTotal('acquire queued', $counts->queued);
 
         $this->failureSummary($counts->failed, Str::plural('fetch', $counts->failed), 'not recorded, retried next run');

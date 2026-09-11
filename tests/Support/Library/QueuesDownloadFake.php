@@ -6,6 +6,7 @@ namespace Tests\Support\Library;
 
 use App\Domains\Download\Contracts\QueuesDownload;
 use ArrayObject;
+use Closure;
 use Override;
 use Throwable;
 
@@ -17,6 +18,10 @@ use Throwable;
  *
  * A download id mapped to a Throwable fails with it instead. The id is logged
  * before the throw, so the log reads back every attempt, failed ones included.
+ *
+ * A download id mapped to a side effect runs it while the fetch is in flight,
+ * standing in for what the world does meanwhile — another run recording the
+ * same unit, say.
  */
 final readonly class QueuesDownloadFake implements QueuesDownload
 {
@@ -25,8 +30,9 @@ final readonly class QueuesDownloadFake implements QueuesDownload
 
     /**
      * @param  array<int, Throwable>  $failures
+     * @param  array<int, Closure(): void>  $sideEffects
      */
-    public function __construct(private array $failures = [])
+    public function __construct(private array $failures = [], private array $sideEffects = [])
     {
         $this->queuedIds = new ArrayObject;
     }
@@ -35,6 +41,10 @@ final readonly class QueuesDownloadFake implements QueuesDownload
     public function queue(int $downloadId): void
     {
         $this->queuedIds->append($downloadId);
+
+        if (array_key_exists($downloadId, $this->sideEffects)) {
+            ($this->sideEffects[$downloadId])();
+        }
 
         if (array_key_exists($downloadId, $this->failures)) {
             throw $this->failures[$downloadId];

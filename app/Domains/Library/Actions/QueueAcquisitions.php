@@ -18,8 +18,10 @@ use App\Domains\Library\Models\Acquisition;
 use App\Domains\Library\Models\Like;
 use App\Domains\Library\Services\UnitStateResolver;
 use App\Domains\Library\Support\UnitKey;
+use Closure;
 use Generator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 
 final readonly class QueueAcquisitions
 {
@@ -28,14 +30,27 @@ final readonly class QueueAcquisitions
         private QueuesDownload $downloads,
     ) {}
 
-    public function handle(): AcquisitionCounts
+    /**
+     * $onUnitChecked receives the running count of walked units, skipped ones
+     * included, so the caller can prove liveness without this action writing output.
+     *
+     * @param  (Closure(int): void)|null  $onUnitChecked
+     */
+    public function handle(?Closure $onUnitChecked = null): AcquisitionCounts
     {
+        $checked = 0;
         $queued = 0;
         $failed = 0;
         $halted = false;
 
         foreach ($this->likedUnits() as $unit) {
             $downloadId = $this->pendingDownload($unit);
+
+            $checked++;
+
+            if ($onUnitChecked instanceof Closure) {
+                $onUnitChecked($checked);
+            }
 
             if ($downloadId === null) {
                 continue;
@@ -65,12 +80,19 @@ final readonly class QueueAcquisitions
                 continue;
             }
 
-            Acquisition::query()->create([
-                'unit_kind' => $unit->kind,
-                'unit_id' => $unit->id,
-                'download_id' => $downloadId,
-                'status' => AcquisitionStatus::Queued,
-            ]);
+            // An overlapping run can record the unit between this run's resolve and
+            // here; its record already stands for the fetch, so this unit counts as
+            // neither queued nor failed.
+            try {
+                Acquisition::query()->create([
+                    'unit_kind' => $unit->kind,
+                    'unit_id' => $unit->id,
+                    'download_id' => $downloadId,
+                    'status' => AcquisitionStatus::Queued,
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                continue;
+            }
 
             $queued++;
         }
