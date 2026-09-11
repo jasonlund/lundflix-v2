@@ -11,7 +11,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -272,7 +271,6 @@ describe('catalog:seed-movies export scan', function (): void {
 
     it('advances the movies marker on a clean run', function (): void {
         // Arrange
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         fakeTmdbMovieSeed();
 
@@ -280,7 +278,7 @@ describe('catalog:seed-movies export scan', function (): void {
         $this->artisan('catalog:seed-movies');
 
         // Assert
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
+        expect(syncMarker(SyncFeed::TmdbMovies))->toBe(now()->toIso8601String());
     });
 });
 
@@ -292,7 +290,6 @@ describe('catalog:seed-movies capped marker remedy', function (): void {
         // floors `since` at now − 14d, so the changes pass reports a capped window on
         // every run. --fresh re-hydrates EVERY exported id, so the uncovered span is
         // covered by the full pass and the advance is earned.
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, now()->subDays(30)->toImmutable());
         fakeTmdbMovieSeed();
@@ -303,7 +300,7 @@ describe('catalog:seed-movies capped marker remedy', function (): void {
         // Assert
         // Both halves: the marker moving to now is what actually clears the gap, and
         // the absent alarm line is what tells an operator it cleared.
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe(now()->toIso8601String());
+        expect(syncMarker(SyncFeed::TmdbMovies))->toBe(now()->toIso8601String());
         expect(Artisan::output())->not->toContain('changes-feed window failed');
     });
 
@@ -312,7 +309,6 @@ describe('catalog:seed-movies capped marker remedy', function (): void {
         // The other half of the same condition. A plain seed hydrates only the ids the
         // catalog does NOT hold, so updates to held titles inside the uncovered span
         // are still missing — the alarm has to persist and the marker has to stay put.
-        Cache::flush();
         Date::setTestNow('2026-07-16 12:00:00');
         $stale = now()->subDays(30)->toImmutable();
         resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, $stale);
@@ -325,7 +321,7 @@ describe('catalog:seed-movies capped marker remedy', function (): void {
         // Unchanged, not merely un-advanced-to-now: a capped run that quietly moved the
         // marker forward would erase the evidence of its own gap. 2026-06-16 is the
         // marker less its 6h overlap, 2026-07-02 the floor.
-        expect(Cache::get(SyncFeed::TmdbMovies->cacheKey()))->toBe($stale->toIso8601String());
+        expect(syncMarker(SyncFeed::TmdbMovies))->toBe($stale->toIso8601String());
         expect(Artisan::output())
             ->toContain('1 changes-feed window failed;')
             ->toContain('2026-06-16 to 2026-07-02 uncovered');

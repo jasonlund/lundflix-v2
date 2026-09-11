@@ -39,7 +39,13 @@ return [
 
     'tmdb' => [
         'token' => env('TMDB_TOKEN'),
-        'concurrency' => env('TMDB_CONCURRENCY', 20),
+        'concurrency' => env('TMDB_CONCURRENCY', 32),
+        // Requests per second the pooled transport paces TMDB batches at. Zero
+        // leaves them unpaced — phpunit.xml pins it there for the same reason it
+        // pins HTTP_RETRY_MULTIPLIER below: a Feature test doesn't fake Sleep, so
+        // it really waits the spacing out (SeedTmdbMoviesTest: 2.8 s unpaced,
+        // 116 s paced).
+        'rate' => env('TMDB_RATE', 40),
     ],
 
     'tvdb' => [

@@ -66,6 +66,14 @@ helper classes under `tests/`):
 - **A class with no parent is additionally `readonly`** — `final readonly class`.
   This holds for stateless and static-only helpers too; the point is that the
   shape is predictable, not that each class earns it individually.
+  - **The one exemption: a class whose whole job is to carry mutable state**, named
+    in the arch test's `$statefulParentlessClasses` list and pinned by a staleness
+    guard as still declared, still parentless and still non-readonly. A pacer's
+    cursor, a rolling window's queue and a shared transport's 429 state cannot live
+    in a `readonly class` at all, and burying them in an `ArrayObject` behind a
+    readonly property would satisfy the letter of the rule while making the shape
+    *less* predictable — the opposite of the point. Reach for this only when the
+    mutation IS the class's purpose; a class that merely wants a cache is not it.
 
 The second rule stops at the parent because **PHP forbids a `readonly class` from
 extending a non-readonly one** (a fatal, not a warning). So everything extending a
@@ -617,12 +625,14 @@ round trip** — it returns as `__PHP_Incomplete_Class`. A `Cache::put`/`forever
 an object writes fine and can never be read back: the value is write-only.
 
 - **Cache strings, ints, bools, and arrays of those.** A timestamp goes in as
-  `->toIso8601String()` and is parsed on read (`SyncMarker`); a header goes in
-  verbatim (`ImdbDatasetMarker`).
+  `->toIso8601String()` and is parsed on read; a header goes in verbatim
+  (`ImdbDatasetMarker`).
 - **Type-check the read** whenever a stale key may predate the rule
   (`is_string($marker)`) and degrade to the no-value path. An entry poisoned by an
   older build then self-heals on the next write instead of throwing — no manual
-  `cache:forget` in the deploy.
+  `cache:forget` in the deploy. `SyncMarker::importFromCache()` is the surviving
+  example: it reads the retired `catalog:sync:marker:*` keys, and anything that
+  isn't a parseable string is skipped rather than backfilled.
 - **Never widen `serializable_classes` to rescue a call site** — it weakens a
   security default app-wide for one value that should have been a scalar.
 - **The test `array` store is `'serialize' => true` on purpose**, against the
