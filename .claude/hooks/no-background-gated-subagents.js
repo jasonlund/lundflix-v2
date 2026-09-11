@@ -1,20 +1,27 @@
 #!/usr/bin/env node
-// PreToolUse(Agent) hook: forbid background dispatch of a gate-blocked subagent.
+// PreToolUse(Agent) hook: force a gate-blocked subagent's dispatch into the
+// foreground by rewriting its input to `run_in_background: false`.
 //
-// Each subagent below is spawned by a dispatcher that blocks on the named gate
-// immediately after the spawn, so `run_in_background: true` overlaps nothing —
-// it only makes the harness wake the orchestrator on completion and nudge it to
-// narrate, producing mid-loop status chatter. The skill/command prose can't stop
-// that (a body is advisory), so it is enforced structurally here.
+// Each subagent below is spawned by a dispatcher that blocks on a gate right
+// after the spawn, so backgrounding it overlaps nothing and only makes the
+// harness wake the orchestrator to narrate. Claude Code backgrounds a subagent
+// unless `run_in_background` is explicitly `false` — omitting the key is not
+// foreground — so anything short of an explicit `false` is rewritten.
 //
-// Add a row whenever a new subagent is dispatched in front of a blocking gate;
-// an unlisted subagent_type is allowed through untouched.
-const GATED_SUBAGENTS = {
-  "tdd-test-writer": "the RED gate (`tdd` Step 1)",
-  "tdd-implementer": "the GREEN gate (`tdd` Step 2)",
-  "tdd-refactorer": "the REFACTOR gate (`tdd` Step 3)",
-  "review-fixer": "`/review:process` Phase 3",
-};
+// It rewrites via `updatedInput` rather than denying so a slip costs nothing and
+// it fails soft: if the fork-subagent gate is ever back on, the key is dropped
+// and the call just backgrounds, where a deny would block every tdd phase.
+// `updatedInput` replaces the tool input wholesale, hence the spread below.
+// Long form: .claude/hooks/README.md, "The background-dispatch guard".
+//
+// Add a name whenever a new subagent is dispatched in front of a blocking gate;
+// an unlisted subagent_type is let through untouched.
+const GATED_SUBAGENTS = new Set([
+  "tdd-test-writer",
+  "tdd-implementer",
+  "tdd-refactorer",
+  "review-fixer",
+]);
 
 let raw = "";
 process.stdin.on("data", (chunk) => (raw += chunk)).on("end", () => {
@@ -28,26 +35,18 @@ process.stdin.on("data", (chunk) => (raw += chunk)).on("end", () => {
     process.exit(0);
   }
 
-  // Own properties only: a bare index inherits Object.prototype, so a
-  // subagent_type of "constructor"/"toString"/"valueOf" would resolve truthy and
-  // deny a dispatch that is not in the guarded set at all.
-  const gate = Object.hasOwn(GATED_SUBAGENTS, input.subagent_type)
-    ? GATED_SUBAGENTS[input.subagent_type]
-    : undefined;
-
-  if (gate && input.run_in_background === true) {
+  if (GATED_SUBAGENTS.has(input.subagent_type) && input.run_in_background !== false) {
     console.log(
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
-          permissionDecision: "deny",
-          permissionDecisionReason: `${input.subagent_type} must run FOREGROUND — the dispatcher blocks on ${gate} immediately after the spawn, so backgrounding overlaps nothing and only wakes the orchestrator to narrate. Re-dispatch with run_in_background omitted.`,
+          updatedInput: { ...input, run_in_background: false },
         },
       })
     );
   }
 
-  // Exit 0 on every path, including the deny: Claude Code reads the decision
-  // from the JSON, and a non-zero exit would surface as a hook error instead.
+  // Exit 0 on every path: the rewrite travels in the JSON, and a non-zero exit
+  // would surface as a hook error instead.
   process.exit(0);
 });
