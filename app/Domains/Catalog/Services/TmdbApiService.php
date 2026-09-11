@@ -6,6 +6,7 @@ namespace App\Domains\Catalog\Services;
 
 use App\Domains\Catalog\Exceptions\PooledIdFailed;
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
+use App\Domains\Catalog\Exceptions\TmdbChangesPageCapReached;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Services\Concerns\PoolsIdBatches;
 use Generator;
@@ -24,6 +25,8 @@ final readonly class TmdbApiService
     private const string MOVIE_APPEND = 'release_dates,images';
 
     private const string TV_APPEND = 'images,external_ids,content_ratings';
+
+    private const int CHANGES_PAGE_CAP = 500;
 
     /**
      * @return array<string, mixed>|null
@@ -95,20 +98,20 @@ final readonly class TmdbApiService
     /**
      * @return Generator<int, int>
      */
-    public function changedMovieIds(?string $start = null, ?string $end = null): Generator
+    public function changedMovieIds(string $day): Generator
     {
         // Returned, not `yield from`-ed: changedIds() is itself a generator
         // function, so this call builds the generator without running a line of
         // it — the feed stays untouched until the caller iterates.
-        return $this->changedIds('/movie/changes', $start, $end);
+        return $this->changedIds('/movie/changes', $day);
     }
 
     /**
      * @return Generator<int, int>
      */
-    public function changedTvIds(?string $start = null, ?string $end = null): Generator
+    public function changedTvIds(string $day): Generator
     {
-        return $this->changedIds('/tv/changes', $start, $end);
+        return $this->changedIds('/tv/changes', $day);
     }
 
     /**
@@ -192,26 +195,32 @@ final readonly class TmdbApiService
     }
 
     /**
-     * The next page is fetched only once the current page's ids are consumed, so a
-     * busy window never holds the whole feed in memory.
+     * TMDB's end_date is inclusive, so start = end = $day asks for exactly one
+     * closed UTC day; one day per request keeps a busy span clear of TMDB's
+     * 500-page list cap.
      *
-     * De-duplication is carried in a running $seen set rather than applied to a
-     * finished list: callers were written against a de-duplicated feed, and only a
-     * running set preserves that while streaming. The set holds bare ints, so it
-     * stays far cheaper than the page payloads it replaces.
+     * The next page is fetched only once the current page's ids are consumed, so a
+     * busy day never holds the whole feed in memory.
+     *
+     * De-duplication across the day's pages is carried in a running $seen set
+     * rather than applied to a finished list: callers were written against a
+     * de-duplicated feed, and only a running set preserves that while streaming.
+     * The set holds bare ints, so it stays far cheaper than the page payloads it
+     * replaces.
      *
      * @return Generator<int, int>
      */
-    private function changedIds(string $path, ?string $start, ?string $end): Generator
+    private function changedIds(string $path, string $day): Generator
     {
         $seen = [];
         $page = 1;
-        $totalPages = 1;
+        $lastPage = 1;
+        $capReported = false;
 
         do {
             $response = $this->get($path, [
-                'start_date' => $start,
-                'end_date' => $end,
+                'start_date' => $day,
+                'end_date' => $day,
                 'page' => $page,
             ]);
 
@@ -234,8 +243,17 @@ final readonly class TmdbApiService
             }
 
             $totalPages = (int) ($body['total_pages'] ?? 1);
+
+            // Past page 500 TMDB answers 422, so reading on would fail the day
+            // instead of warning.
+            if ($totalPages >= self::CHANGES_PAGE_CAP && ! $capReported) {
+                report(TmdbChangesPageCapReached::on($path, $day, $totalPages, self::CHANGES_PAGE_CAP));
+                $capReported = true;
+            }
+
+            $lastPage = min($totalPages, self::CHANGES_PAGE_CAP);
             $page++;
-        } while ($page <= $totalPages);
+        } while ($page <= $lastPage);
     }
 
     /**
