@@ -11,13 +11,13 @@ enum SyncFeed
     case TmdbShows;
     case TmdbMovies;
 
-    public function cacheKey(): string
+    public function key(): string
     {
         return match ($this) {
-            self::TvdbShows => 'catalog:sync:marker:tvdb_shows',
-            self::TvdbEpisodes => 'catalog:sync:marker:tvdb_episodes',
-            self::TmdbShows => 'catalog:sync:marker:tmdb_shows',
-            self::TmdbMovies => 'catalog:sync:marker:tmdb_movies',
+            self::TvdbShows => 'tvdb_shows',
+            self::TvdbEpisodes => 'tvdb_episodes',
+            self::TmdbShows => 'tmdb_shows',
+            self::TmdbMovies => 'tmdb_movies',
         };
     }
 }
