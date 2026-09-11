@@ -30,3 +30,8 @@ Schedule::command('catalog:sync-imdb')->dailyAt('06:00')->timezone('America/Los_
 Schedule::command('catalog:refresh-popularity')->dailyAt('03:00')->timezone('America/Los_Angeles')->withoutOverlapping(360);
 
 Schedule::command('plex:sync')->everyMinute()->withoutOverlapping(30);
+
+// Five minutes trails plex:sync's every-minute mirror, so a sweep sees each arrival within a
+// few ticks without re-reading an unchanged mirror every minute.
+// A run takes seconds, so 10m lets a killed run's stale lock cost at most one tick.
+Schedule::command('library:notify')->everyFiveMinutes()->withoutOverlapping(10);

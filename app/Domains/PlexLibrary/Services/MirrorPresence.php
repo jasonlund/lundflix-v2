@@ -8,13 +8,40 @@ use App\Domains\Catalog\Data\UnitRef;
 use App\Domains\Catalog\Enums\UnitKind;
 use App\Domains\Catalog\Models\Episode;
 use App\Domains\Catalog\Models\Movie;
+use App\Domains\PlexLibrary\Contracts\ReportsArrivals;
 use App\Domains\PlexLibrary\Contracts\ReportsPresence;
+use App\Domains\PlexLibrary\Data\UnitArrival;
+use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Override;
 
-final readonly class MirrorPresence implements ReportsPresence
+final readonly class MirrorPresence implements ReportsArrivals, ReportsPresence
 {
+    /**
+     * @param  iterable<UnitRef>  $units
+     * @return Collection<int, UnitArrival>
+     */
+    #[Override]
+    public function arrivals(iterable $units): Collection
+    {
+        return $this->perKind($units, function (UnitKind $kind, Collection $refs, array $ids): Collection {
+            $arrivedAt = match ($kind) {
+                UnitKind::Movie => $this->movieArrivals($ids),
+                UnitKind::Episode => $this->episodeArrivals($ids),
+            };
+
+            return $refs
+                ->filter(fn (UnitRef $unit): bool => $arrivedAt->has($unit->id))
+                // MIN() over a timestamp comes back as a bare string, past any model cast.
+                ->map(fn (UnitRef $unit): UnitArrival => new UnitArrival(
+                    $unit,
+                    CarbonImmutable::parse($arrivedAt->get($unit->id)),
+                ));
+        });
+    }
+
     // Asking the batch about one unit costs a collection pipeline over a
     // single-element list in front of the same single read, and buys one
     // dispatch over UnitKind instead of two that could drift apart.
@@ -31,24 +58,39 @@ final readonly class MirrorPresence implements ReportsPresence
     #[Override]
     public function present(iterable $units): Collection
     {
+        return $this->perKind($units, function (UnitKind $kind, Collection $refs, array $ids): Collection {
+            $mirrored = match ($kind) {
+                UnitKind::Movie => $this->mirroredMovieIds($ids),
+                UnitKind::Episode => $this->mirroredEpisodeIds($ids),
+            };
+
+            $present = $mirrored->flip();
+
+            return $refs->filter(fn (UnitRef $unit): bool => $present->has($unit->id));
+        });
+    }
+
+    /**
+     * The sweeps batch every liked title, so one read per kind is the
+     * difference between one round trip and thousands. Ids only identify a unit
+     * alongside its kind, so each read is matched back to refs inside the
+     * kind's own bucket.
+     *
+     * @template TResult
+     *
+     * @param  iterable<UnitRef>  $units
+     * @param  Closure(UnitKind, Collection<int, UnitRef>, list<int>): Collection<int, TResult>  $read
+     * @return Collection<int, TResult>
+     */
+    private function perKind(iterable $units, Closure $read): Collection
+    {
         return collect($units)
             ->groupBy(fn (UnitRef $unit): string => $unit->kind->value)
-            ->flatMap(function (Collection $refs, string $kind): Collection {
-                $ids = $refs->map(fn (UnitRef $unit): int => $unit->id)->unique()->values()->all();
-
-                // The sweeps batch every liked title, so one read per kind is the
-                // difference between one round trip and thousands.
-                $mirrored = match (UnitKind::from($kind)) {
-                    UnitKind::Movie => $this->mirroredMovieIds($ids),
-                    UnitKind::Episode => $this->mirroredEpisodeIds($ids),
-                };
-
-                // Ids only identify a unit alongside its kind, so the membership set
-                // is built and filtered inside the kind's own bucket.
-                $present = $mirrored->flip();
-
-                return $refs->filter(fn (UnitRef $unit): bool => $present->has($unit->id));
-            })
+            ->flatMap(fn (Collection $refs, string $kind): Collection => $read(
+                UnitKind::from($kind),
+                $refs,
+                $refs->map(fn (UnitRef $unit): int => $unit->id)->unique()->values()->all(),
+            ))
             ->values();
     }
 
@@ -64,24 +106,7 @@ final readonly class MirrorPresence implements ReportsPresence
                 $mirror
                     ->selectRaw('1')
                     ->from('plex_movies')
-                    ->where(function (Builder $crosswalk): void {
-                        // Either crosswalk id is enough: a mirror row carries whichever
-                        // ids the server's own metadata agent resolved, often just one.
-                        // The is-not-null guards spell out that an unresolved catalog
-                        // id is not agreement, rather than leaning on SQL's null
-                        // comparison to imply it.
-                        $crosswalk
-                            ->where(function (Builder $tmdb): void {
-                                $tmdb
-                                    ->whereNotNull('movies._tmdb_id')
-                                    ->whereColumn('plex_movies._tmdb_id', 'movies._tmdb_id');
-                            })
-                            ->orWhere(function (Builder $imdb): void {
-                                $imdb
-                                    ->whereNotNull('movies._imdb_id')
-                                    ->whereColumn('plex_movies._imdb_id', 'movies._imdb_id');
-                            });
-                    });
+                    ->where($this->movieMatches(...));
             })
             ->pluck('movies.id');
     }
@@ -99,13 +124,81 @@ final readonly class MirrorPresence implements ReportsPresence
                 $mirror
                     ->selectRaw('1')
                     ->from('plex_episodes')
-                    ->where(function (Builder $match): void {
-                        $match
-                            ->where($this->episodeMatchesByCrosswalk(...))
-                            ->orWhere($this->episodeMatchesByPosition(...));
-                    });
+                    ->where($this->episodeMatches(...));
             })
             ->pluck('episodes.id');
+    }
+
+    /**
+     * An unmirrored movie and one whose rows all lack an arrival time both
+     * aggregate to null, so dropping nulls leaves exactly the known arrivals.
+     *
+     * @param  list<int>  $ids
+     * @return Collection<int, string>
+     */
+    private function movieArrivals(array $ids): Collection
+    {
+        return Movie::query()
+            ->whereIn('movies.id', $ids)
+            ->select('movies.id')
+            ->selectSub(function (Builder $mirror): void {
+                $mirror
+                    ->selectRaw('MIN(plex_movies._plex_addedAt)')
+                    ->from('plex_movies')
+                    ->where($this->movieMatches(...));
+            }, 'arrived_at')
+            ->toBase()
+            ->pluck('arrived_at', 'id')
+            ->filter();
+    }
+
+    /**
+     * @param  list<int>  $ids
+     * @return Collection<int, string>
+     */
+    private function episodeArrivals(array $ids): Collection
+    {
+        return Episode::query()
+            ->join('shows', 'shows.id', '=', 'episodes.show_id')
+            ->whereIn('episodes.id', $ids)
+            ->select('episodes.id')
+            ->selectSub(function (Builder $mirror): void {
+                $mirror
+                    ->selectRaw('MIN(plex_episodes._plex_addedAt)')
+                    ->from('plex_episodes')
+                    ->where($this->episodeMatches(...));
+            }, 'arrived_at')
+            ->toBase()
+            ->pluck('arrived_at', 'id')
+            ->filter();
+    }
+
+    /**
+     * Either crosswalk id is enough: a mirror row carries whichever ids the
+     * server's own metadata agent resolved, often just one. The is-not-null
+     * guards spell out that an unresolved catalog id is not agreement, rather
+     * than leaning on SQL's null comparison to imply it.
+     */
+    private function movieMatches(Builder $crosswalk): void
+    {
+        $crosswalk
+            ->where(function (Builder $tmdb): void {
+                $tmdb
+                    ->whereNotNull('movies._tmdb_id')
+                    ->whereColumn('plex_movies._tmdb_id', 'movies._tmdb_id');
+            })
+            ->orWhere(function (Builder $imdb): void {
+                $imdb
+                    ->whereNotNull('movies._imdb_id')
+                    ->whereColumn('plex_movies._imdb_id', 'movies._imdb_id');
+            });
+    }
+
+    private function episodeMatches(Builder $match): void
+    {
+        $match
+            ->where($this->episodeMatchesByCrosswalk(...))
+            ->orWhere($this->episodeMatchesByPosition(...));
     }
 
     /**
