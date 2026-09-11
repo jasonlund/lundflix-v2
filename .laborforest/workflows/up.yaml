@@ -72,6 +72,15 @@ steps:
   - name: 'Install npm dependencies'
     type: shell
     run: 'npm ci --ignore-scripts'
+  # ~/Library/Caches/ms-playwright is shared by every project on the machine, and
+  # each `playwright install` deletes any browser build no registered install still
+  # uses — a worktree that never installs its own can lose it to another project's,
+  # and the Browser suite then fails "Playwright is outdated" (FLIX-332). Must follow
+  # `npm ci`, or `npx` fetches the latest Playwright and installs that version's
+  # build. Pinned by LaborForestWorkflowTest.
+  - name: 'Install the Playwright browser'
+    type: shell
+    run: 'npx playwright install chromium'
   - name: 'Build front-end assets'
     type: shell
     run: 'npm run build'
