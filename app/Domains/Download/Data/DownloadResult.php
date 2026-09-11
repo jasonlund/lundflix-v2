@@ -36,5 +36,6 @@ final class DownloadResult extends Data
         public ?int $tmdbId = null,
         public ?Collection $files = null,
         public ?DownloadDescription $description = null,
+        public ?EpisodeIdentity $episodeIdentity = null,
     ) {}
 }
