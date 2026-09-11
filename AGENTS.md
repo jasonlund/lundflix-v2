@@ -319,6 +319,15 @@ they are far faster and browser coverage that duplicates them is pure drag.
 - **Requires built assets.** `npm run build` must have run, or Inertia 500s on
   the Vite manifest. CI builds before Pest and installs Chromium with
   `npx playwright install --with-deps chromium`.
+- **"Playwright is outdated" usually means the browser build is missing, not
+  the version.** The plugin raises that message for any launch error that says
+  "just installed or updated". Playwright sends it when the Chromium build this
+  checkout's `playwright-core` pins is gone from the shared
+  `~/Library/Caches/ms-playwright`, where another project's `playwright install`
+  deletes every build no recorded install still uses (FLIX-332). `up` installs
+  the build for each new worktree. A checkout created before that step, or the
+  primary, needs `npx playwright install chromium` run once. Never bump the
+  version to fix it.
 - Registered as its own `Browser` testsuite in `phpunit.xml` and bound in
   `tests/Pest.php` (`->in('Feature', 'Browser')`). Screenshots are gitignored.
 

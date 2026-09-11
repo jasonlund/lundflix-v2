@@ -457,3 +457,46 @@ describe('up.yaml env derivation', function () use ($workflow, $runsOf): void {
         ]);
     });
 });
+
+describe('up.yaml browser install', function () use ($workflow, $runsOf): void {
+    // Why the step exists is on the step itself in up.yaml (FLIX-332). Its order
+    // is the half that breaks silently: before `npm ci` resolves playwright-core,
+    // `npx` fetches the latest published release and installs that version's
+    // build instead of the one we pin — a step that exits 0 on the wrong browser.
+    it('installs the Playwright browser after the npm dependencies it resolves from', function () use ($workflow, $runsOf): void {
+        // Arrange
+        $runs = $runsOf($workflow('up'));
+
+        // Act
+        $position = [
+            'npm ci' => $runs->search(fn (string $run): bool => Str::contains($run, 'npm ci')),
+            'playwright install' => $runs->search(fn (string $run): bool => Str::contains($run, 'playwright install')),
+        ];
+
+        // Assert
+        expect($position['npm ci'])->toBeInt()
+            ->and($position['playwright install'])->toBeInt()
+            ->and($position['npm ci'])->toBeLessThan($position['playwright install']);
+    });
+
+    // The Browser suite drives Chromium alone, as CI's install already does. Every
+    // non-flag argument after `playwright install` is a browser name, so a bare
+    // `playwright install` (every browser) reports `[]` and fails like a missing step.
+    it('installs only the Chromium browser the Browser suite drives', function () use ($workflow, $runsOf): void {
+        // Arrange
+        $runs = $runsOf($workflow('up'));
+
+        // Act
+        $browsersPerInstall = $runs
+            ->filter(fn (string $run): bool => Str::contains($run, 'playwright install'))
+            ->map(fn (string $run): array => collect(preg_split('/\s+/', Str::after($run, 'playwright install')))
+                ->reject(fn (string $argument): bool => $argument === '' || Str::startsWith($argument, '-'))
+                ->values()
+                ->all())
+            ->values()
+            ->all();
+
+        // Assert
+        expect($browsersPerInstall)->toBe([['chromium']]);
+    });
+});
