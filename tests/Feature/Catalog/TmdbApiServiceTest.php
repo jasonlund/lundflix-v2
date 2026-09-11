@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use App\Domains\Catalog\Exceptions\TmdbAuthenticationFailed;
+use App\Domains\Catalog\Exceptions\TmdbChangesPageCapReached;
 use App\Domains\Catalog\Exceptions\TmdbRequestFailed;
 use App\Domains\Catalog\Services\TmdbApiService;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
@@ -19,6 +21,13 @@ use Illuminate\Support\Str;
 | (The Matrix), in the API's native JSON wire format. Loaded into Http::fake()
 | as the response body; never hand-fabricated.
 */
+
+function requestedPage(Request $request): int
+{
+    parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+    return (int) ($query['page'] ?? 0);
+}
 
 describe('movie() detail fetch', function (): void {
     it('sends a Bearer-authed GET to /movie/{id}', function (): void {
@@ -599,17 +608,21 @@ describe('configuration() fetch', function (): void {
 */
 
 describe('changedMovieIds() paged change feed', function (): void {
-    it('sends a Bearer-authed GET to /movie/changes with start_date/end_date/page params', function (): void {
+    it('sends a Bearer-authed GET to /movie/changes with the one given day as both start_date and end_date', function (): void {
+        // Arrange
         config(['services.tmdb.token' => 'test-token']);
         Http::fake(['*api.themoviedb.org*' => Http::sequence()
             ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
             ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-        iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+        // Act
+        iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
 
+        // Assert
+        // TMDB's end_date is inclusive, so start=end=D is exactly one closed UTC day.
         Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/movie/changes')
             && Str::contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
-            && Str::contains(urldecode((string) $request->url()), 'end_date=2026-06-14')
+            && Str::contains(urldecode((string) $request->url()), 'end_date=2026-06-13')
             && Str::contains(urldecode((string) $request->url()), 'page=1')
             && $request->hasHeader('Authorization', 'Bearer test-token'));
     });
@@ -620,7 +633,7 @@ describe('changedMovieIds() paged change feed', function (): void {
             ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
             ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-        iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+        iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
 
         Http::assertSentCount(2);
         Http::assertSent(fn ($request): bool => Str::contains(urldecode((string) $request->url()), 'page=2'));
@@ -632,7 +645,7 @@ describe('changedMovieIds() paged change feed', function (): void {
             ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
             ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-        resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+        resolve(TmdbApiService::class)->changedMovieIds('2026-06-13');
 
         // Deliberately never iterated: the returned generator's body must not have
         // run at all, so not even page 1 is fetched.
@@ -645,7 +658,7 @@ describe('changedMovieIds() paged change feed', function (): void {
             ->push(fixtureBytes('Catalog/tmdb/movie_changes_page1.json'))
             ->push(fixtureBytes('Catalog/tmdb/movie_changes_page2.json'))]);
 
-        $ids = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+        $ids = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13');
         foreach ($ids as $id) {
             break;
         }
@@ -668,7 +681,7 @@ describe('changedMovieIds() paged change feed', function (): void {
         // guaranteed contiguous — drain with preserve_keys: false to get the list
         // the array-only expectations below need. (PHP 8.2+ iterator_to_array also
         // accepts a plain array, so the stream contract needs its own assertion.)
-        $ids = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14');
+        $ids = resolve(TmdbApiService::class)->changedMovieIds('2026-06-13');
         $result = iterator_to_array($ids, false);
 
         expect($ids)->toBeInstanceOf(Generator::class)
@@ -690,7 +703,7 @@ describe('changedMovieIds() paged change feed', function (): void {
             'total_results' => 1,
         ]))]);
 
-        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
 
         expect($result)->toBe([345]);
     });
@@ -704,7 +717,7 @@ describe('changedMovieIds() paged change feed', function (): void {
             'total_results' => 2,
         ]))]);
 
-        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
 
         // An absent flag is not a set one: a feed row that omits the keys is
         // ordinary, so nothing may be dropped for lacking them.
@@ -723,7 +736,7 @@ describe('changedMovieIds() paged change feed', function (): void {
             'total_results' => 2,
         ]))]);
 
-        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
 
         // A refused id dropped here never reaches the upsert, so it gets no row and
         // no tmdb_synced_at, and the membership probe re-fetches it forever
@@ -743,7 +756,7 @@ describe('changedMovieIds() paged change feed', function (): void {
             'total_results' => 2,
         ]))]);
 
-        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
 
         expect($result)->toBe([345, 999998]);
     });
@@ -754,7 +767,7 @@ describe('changedMovieIds() paged change feed', function (): void {
 
         // The drain sits inside the closure: a lazy generator raises nothing at
         // call time, so the failure can only surface once it is iterated.
-        $call = fn (): array => iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+        $call = fn (): array => iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
 
         expect($call)->toThrow(TmdbRequestFailed::class);
     });
@@ -764,9 +777,64 @@ describe('changedMovieIds() paged change feed', function (): void {
         Sleep::fake();
         Http::fake(['*api.themoviedb.org*' => fn () => throw new ConnectionException('Connection timed out')]);
 
-        $call = fn (): array => iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13', '2026-06-14'), false);
+        $call = fn (): array => iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
 
         expect($call)->toThrow(TmdbRequestFailed::class);
+    });
+});
+
+describe('changedMovieIds() page cap', function (): void {
+    it('reports TmdbChangesPageCapReached for a day whose changes reach 500 pages', function (): void {
+        // Arrange
+        config(['services.tmdb.token' => 'test-token']);
+        Exceptions::fake();
+        // Synthetic pages: a day at TMDB's 500-page list cap is a volume no committed
+        // capture holds. One id on page 1 and empty pages after it keep the walk cheap.
+        Http::fake(['*api.themoviedb.org*' => function (Request $request) {
+            $page = requestedPage($request);
+
+            return Http::response(json_encode([
+                'results' => $page === 1 ? [['id' => 345]] : [],
+                'page' => $page,
+                'total_pages' => 500,
+                'total_results' => 10000,
+            ]));
+        }]);
+
+        // Act
+        iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
+
+        // Assert
+        Exceptions::assertReported(TmdbChangesPageCapReached::class);
+    });
+
+    it('yields a capped day\'s changes and requests no page past 500', function (): void {
+        // Arrange
+        config(['services.tmdb.token' => 'test-token']);
+        Exceptions::fake();
+        // A day reporting more pages than TMDB will serve: pages past 500 answer with
+        // TMDB's own 422 refusal, so a walk that asks for page 501 throws in the Act.
+        Http::fake(['*api.themoviedb.org*' => function (Request $request) {
+            $page = requestedPage($request);
+
+            if ($page > 500) {
+                return Http::response('{"success":false,"status_code":22,"status_message":"Invalid page: Pages start at 1 and max at 500. They are expected to be an integer."}', 422);
+            }
+
+            return Http::response(json_encode([
+                'results' => $page === 1 ? [['id' => 345], ['id' => 1648226]] : [],
+                'page' => $page,
+                'total_pages' => 612,
+                'total_results' => 12240,
+            ]));
+        }]);
+
+        // Act
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedMovieIds('2026-06-13'), false);
+
+        // Assert
+        expect($result)->toBe([345, 1648226]);
+        Http::assertNotSent(fn (Request $request): bool => requestedPage($request) > 500);
     });
 });
 
@@ -784,17 +852,20 @@ describe('changedMovieIds() paged change feed', function (): void {
 */
 
 describe('changedTvIds() paged change feed', function (): void {
-    it('GETs /tv/changes with date/page params and follows total_pages', function (): void {
+    it('GETs /tv/changes with the one given day as both start_date and end_date and follows total_pages', function (): void {
+        // Arrange
         config(['services.tmdb.token' => 'test-token']);
         Http::fake(['*api.themoviedb.org*' => Http::sequence()
             ->push(fixtureBytes('Catalog/tmdb/tv_changes_page1.json'))
             ->push(fixtureBytes('Catalog/tmdb/tv_changes_page2.json'))]);
 
-        iterator_to_array(resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14'), false);
+        // Act
+        iterator_to_array(resolve(TmdbApiService::class)->changedTvIds('2026-06-13'), false);
 
+        // Assert
         Http::assertSent(fn ($request): bool => Str::contains((string) $request->url(), '/tv/changes')
             && Str::contains(urldecode((string) $request->url()), 'start_date=2026-06-13')
-            && Str::contains(urldecode((string) $request->url()), 'end_date=2026-06-14')
+            && Str::contains(urldecode((string) $request->url()), 'end_date=2026-06-13')
             && Str::contains(urldecode((string) $request->url()), 'page=1')
             && $request->hasHeader('Authorization', 'Bearer test-token'));
         Http::assertSentCount(2);
@@ -811,7 +882,7 @@ describe('changedTvIds() paged change feed', function (): void {
         // guaranteed contiguous — drain with preserve_keys: false to get the list
         // the array-only expectations below need. (PHP 8.2+ iterator_to_array also
         // accepts a plain array, so the stream contract needs its own assertion.)
-        $ids = resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14');
+        $ids = resolve(TmdbApiService::class)->changedTvIds('2026-06-13');
         $result = iterator_to_array($ids, false);
 
         expect($ids)->toBeInstanceOf(Generator::class)
@@ -835,7 +906,7 @@ describe('changedTvIds() paged change feed', function (): void {
             'total_results' => 2,
         ]))]);
 
-        $result = iterator_to_array(resolve(TmdbApiService::class)->changedTvIds('2026-06-13', '2026-06-14'), false);
+        $result = iterator_to_array(resolve(TmdbApiService::class)->changedTvIds('2026-06-13'), false);
 
         expect($result)->toBe([23310, 999997]);
     });

@@ -6,7 +6,6 @@ namespace App\Domains\Catalog\Console\Commands;
 
 use App\Domains\Catalog\Actions\StampGoneMovies;
 use App\Domains\Catalog\Actions\UpsertTmdbMovies;
-use App\Domains\Catalog\Data\SyncWindow;
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Movie;
 use Illuminate\Database\Eloquent\Builder;
@@ -53,9 +52,9 @@ abstract class TmdbMoviesCommand extends TmdbSyncCommand
     /**
      * @return iterable<int, int>
      */
-    protected function changedIds(SyncWindow $window): iterable
+    protected function changedIds(string $day): iterable
     {
-        return $this->api->changedMovieIds($window->startDate(), $window->endDate());
+        return $this->api->changedMovieIds($day);
     }
 
     /**

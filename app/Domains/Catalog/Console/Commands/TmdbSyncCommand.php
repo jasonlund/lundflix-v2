@@ -18,6 +18,7 @@ use App\Domains\Common\Console\Concerns\EmitsHeartbeat;
 use Carbon\CarbonImmutable;
 use Closure;
 use DateTimeInterface;
+use Generator;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -135,12 +136,12 @@ abstract class TmdbSyncCommand extends Command
     protected function recordGoneIds(array $goneIds, array $presentIds): void {}
 
     /**
-     * The changes feed for the window. A generator, so nothing is requested
-     * until updateChanged() iterates it.
+     * One UTC day (`Y-m-d`) of the changes feed. Lazy: nothing is requested until
+     * it is iterated.
      *
      * @return iterable<int, int>
      */
-    abstract protected function changedIds(SyncWindow $window): iterable;
+    abstract protected function changedIds(string $day): iterable;
 
     /**
      * @param  array<int, int>  $ids
@@ -332,12 +333,12 @@ abstract class TmdbSyncCommand extends Command
 
             $failed = $capped;
 
-            // The whole loop sits inside the try, not just the call: the feed is a
-            // generator, so it defers its first request to the first iteration.
+            // The whole loop sits inside the try, not just the call: the walk is lazy,
+            // so every day's feed request fires mid-iteration.
             try {
                 // The feed is unbounded, so probe per slice; one whereIn over a busy
                 // window risks the placeholder limit.
-                foreach (Batches::of($this->changedIds($window), self::PROBE_SIZE) as $slice) {
+                foreach (Batches::of($this->changedIdsAcross($window), self::PROBE_SIZE) as $slice) {
                     $this->beatEvery('probe', self::PROBE_BEAT, count($slice));
 
                     $held = $this->syncedIdsAmong($slice);
@@ -369,6 +370,32 @@ abstract class TmdbSyncCommand extends Command
 
             return $failed;
         });
+    }
+
+    /**
+     * Every UTC day of the window's changes feed, as one stream of distinct ids.
+     *
+     * @return Generator<int, int>
+     */
+    private function changedIdsAcross(SyncWindow $window): Generator
+    {
+        // $seen spans the window, not one day: an id listed on two days costs one
+        // fetch, not two. Skipping it on the later day still leaves that day fully
+        // covered — this run already fetched it — so a per-day marker advance
+        // (FLIX-324) stays sound; don't "fix" either one into fighting the other.
+        $seen = [];
+
+        foreach ($window->days() as $day) {
+            foreach ($this->changedIds($day) as $id) {
+                if (isset($seen[$id])) {
+                    continue;
+                }
+
+                $seen[$id] = true;
+
+                yield $id;
+            }
+        }
     }
 
     /**

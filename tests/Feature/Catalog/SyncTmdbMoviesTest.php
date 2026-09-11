@@ -48,6 +48,9 @@ uses(RefreshDatabase::class);
 | — the single-id `/movie/changes` page and minimal `{"id":N,"title":"Movie N"}`
 |   detail built by fakeTmdbGoneThenRestored() — a detail that 404s once and then
 |   succeeds is a timeline, not a payload, so no capture can supply it.
+| — the per-day `/movie/changes` pages and minimal detail bodies built by
+|   fakeTmdbMovieIdListedOnTwoDays() — a listing keyed on the requested
+|   start_date, with one id shared across two days, which no capture provides.
 */
 
 /**
@@ -206,21 +209,45 @@ function narrowMovieSelects(): Collection
     return narrowSelects('movies', fn (string $sql): bool => ! isSyncedProbe($sql));
 }
 
-/*
-| Shared by the marker-derived window tests: asserts the /movie/changes request
-| carried the given start/end dates, ignoring every non-changes request.
-*/
-function assertRequestedChangesWindow(string $start, string $end): void
+/**
+ * Fakes a two-day changes window whose days share one id, 700. /movie/changes is
+ * keyed on the requested start_date, so each day serves its own listing — a fake
+ * keyed on the page alone serves every day the same body and proves nothing. Any
+ * other day lists nothing, and every detail resolves to a minimal body.
+ *
+ * $firstDay lists exactly 1000 ids, the command's PROBE_SIZE: the shared 700 plus
+ * 20000–20998. It fills one probe slice on its own, so $secondDay's listing of 700
+ * (beside 701) lands in a LATER slice however the walk slices. Any narrower and
+ * both listings could share a slice, where the hydrate pool's own per-batch dedupe
+ * absorbs the repeat and hides a missing cross-day seen-set.
+ */
+function fakeTmdbMovieIdListedOnTwoDays(string $firstDay, string $secondDay): void
 {
-    Http::assertSent(function (Request $request) use ($start, $end): bool {
-        if (! Str::contains($request->url(), '/movie/changes')) {
-            return false;
-        }
-        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+    $idsByDay = [
+        $firstDay => [700, ...range(20000, 20998)],
+        $secondDay => [700, 701],
+    ];
 
-        return ($query['start_date'] ?? null) === $start
-            && ($query['end_date'] ?? null) === $end;
-    });
+    Http::fake([
+        '*movie_ids*' => Http::response(gzencode('')),
+        '*/movie/changes*' => function (Request $request) use ($idsByDay) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            $ids = $idsByDay[$query['start_date'] ?? ''] ?? [];
+
+            return Http::response(json_encode([
+                'results' => array_map(static fn (int $id): array => ['id' => $id], $ids),
+                'page' => 1,
+                'total_pages' => 1,
+                'total_results' => count($ids),
+            ]));
+        },
+        '*api.themoviedb.org*' => function (Request $request) {
+            preg_match('#/movie/(\d+)#', (string) $request->url(), $matches);
+            $id = (int) ($matches[1] ?? 0);
+
+            return Http::response(json_encode(['id' => $id, 'title' => "Movie {$id}"]));
+        },
+    ]);
 }
 
 describe('catalog:sync-movies feed-driven ingest', function (): void {
@@ -595,7 +622,7 @@ describe('catalog:sync-movies changes-feed window and batching', function (): vo
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        assertRequestedChangesWindow('2026-07-13', '2026-07-16');
+        assertRequestedChangesDays('/movie/changes', '2026-07-13', '2026-07-16');
     });
 
     it('falls back to a 24h changes window when the feed has no marker', function (): void {
@@ -608,7 +635,44 @@ describe('catalog:sync-movies changes-feed window and batching', function (): vo
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        assertRequestedChangesWindow('2026-07-15', '2026-07-16');
+        assertRequestedChangesDays('/movie/changes', '2026-07-15', '2026-07-16');
+    });
+});
+
+describe('catalog:sync-movies per-day changes walk', function (): void {
+    it('sends one changes request per day of a three-day window', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        // Marker at 2026-07-14 13:00: its 6h overlap starts the window at 07:00 that
+        // same day, so the window owes 2026-07-14 through 2026-07-16.
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbMovies, Date::parse('2026-07-14 13:00:00')->toImmutable());
+        fakeTmdbChangedIds([]);
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        $changes = recordedChangesQueries('/movie/changes');
+        expect($changes)->toHaveCount(3);
+        expect($changes->pluck('start_date')->all())->toBe(['2026-07-14', '2026-07-15', '2026-07-16']);
+        expect($changes->pluck('end_date')->all())->toBe(['2026-07-14', '2026-07-15', '2026-07-16']);
+    });
+
+    it('hydrates an id listed on two days of the changes window once', function (): void {
+        // Arrange
+        // No marker, so the 24h fallback owes exactly 2026-07-15 and 2026-07-16.
+        Date::setTestNow('2026-07-16 12:00:00');
+        fakeTmdbMovieIdListedOnTwoDays('2026-07-15', '2026-07-16');
+
+        // Act
+        $this->artisan('catalog:sync-movies');
+
+        // Assert
+        // 701 is listed on the second day alone, so its fetch proves that day was read:
+        // a single /movie/700 request would otherwise pass on a walk that never left
+        // the first day.
+        Http::assertSent(fn (Request $request): bool => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/701'));
+        expect(Http::recorded(fn (Request $request): bool => Str::endsWith((string) parse_url($request->url(), PHP_URL_PATH), '/movie/700')))->toHaveCount(1);
     });
 });
 
@@ -1021,7 +1085,7 @@ describe('catalog:sync-movies capped changes window', function (): void {
         $this->artisan('catalog:sync-movies');
 
         // Assert
-        assertRequestedChangesWindow('2026-07-02', '2026-07-16');
+        assertRequestedChangesDays('/movie/changes', '2026-07-02', '2026-07-16');
         expect(Movie::where('_tmdb_id', 9500)->exists())->toBeTrue();
     });
 

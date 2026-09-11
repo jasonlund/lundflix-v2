@@ -147,23 +147,6 @@ function fakeTmdbShowInsertPhaseThrow(): void
     ]);
 }
 
-/*
-| Shared by the marker-derived window tests: asserts the /tv/changes request
-| carried the given start/end dates, ignoring every non-changes request.
-*/
-function assertRequestedShowChangesWindow(string $start, string $end): void
-{
-    Http::assertSent(function (Request $request) use ($start, $end): bool {
-        if (! Str::contains($request->url(), '/tv/changes')) {
-            return false;
-        }
-        parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
-
-        return ($query['start_date'] ?? null) === $start
-            && ($query['end_date'] ?? null) === $end;
-    });
-}
-
 /**
  * Fakes the two endpoints a volume run touches: a single-page /tv/changes body
  * listing exactly the given ids (empty by default, so the changes phase is a
@@ -455,7 +438,7 @@ describe('catalog:sync-shows-tmdb changes-feed update phase', function (): void 
         $this->artisan('catalog:sync-shows-tmdb');
 
         // Assert
-        assertRequestedShowChangesWindow('2026-07-13', '2026-07-16');
+        assertRequestedChangesDays('/tv/changes', '2026-07-13', '2026-07-16');
     });
 
     it('falls back to a 24h changes window when the feed has no marker', function (): void {
@@ -468,7 +451,7 @@ describe('catalog:sync-shows-tmdb changes-feed update phase', function (): void 
         $this->artisan('catalog:sync-shows-tmdb');
 
         // Assert
-        assertRequestedShowChangesWindow('2026-07-15', '2026-07-16');
+        assertRequestedChangesDays('/tv/changes', '2026-07-15', '2026-07-16');
     });
 
     it('skips the update phase with --fresh', function (): void {
@@ -481,6 +464,27 @@ describe('catalog:sync-shows-tmdb changes-feed update phase', function (): void 
 
         // Assert
         Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/tv/changes'));
+    });
+});
+
+describe('catalog:sync-shows-tmdb per-day changes walk', function (): void {
+    it('sends one tv changes request per day of a three-day window', function (): void {
+        // Arrange
+        Date::setTestNow('2026-07-16 12:00:00');
+        // Marker at 2026-07-14 13:00: its 6h overlap starts the window at 07:00 that
+        // same day, so the window owes 2026-07-14 through 2026-07-16. Shows refresh
+        // held rows only, so an empty changes page is all the walk needs to read.
+        resolve(SyncMarker::class)->advance(SyncFeed::TmdbShows, Date::parse('2026-07-14 13:00:00')->toImmutable());
+        fakeTmdbShowVolumeSync();
+
+        // Act
+        $this->artisan('catalog:sync-shows-tmdb');
+
+        // Assert
+        $changes = recordedChangesQueries('/tv/changes');
+        expect($changes)->toHaveCount(3);
+        expect($changes->pluck('start_date')->all())->toBe(['2026-07-14', '2026-07-15', '2026-07-16']);
+        expect($changes->pluck('end_date')->all())->toBe(['2026-07-14', '2026-07-15', '2026-07-16']);
     });
 });
 

@@ -8,9 +8,12 @@ use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -352,6 +355,41 @@ function narrowSelects(string $table, Closure $alsoNarrow): Collection
         && Str::contains($sql, '_tmdb_id')
         && ! Str::contains($sql, '*')
         && $alsoNarrow($sql));
+}
+
+/**
+ * The parsed query string of every recorded request to one TMDB changes endpoint
+ * (`/movie/changes`, `/tv/changes`), in the order the leg sent them. Every other
+ * request is dropped, so a detail fetch never reads as a feed day.
+ *
+ * @return Collection<int, array<string, mixed>>
+ */
+function recordedChangesQueries(string $path): Collection
+{
+    return Http::recorded(fn (Request $request): bool => Str::contains($request->url(), $path))
+        ->map(function (array $pair): array {
+            parse_str((string) parse_url((string) $pair[0]->url(), PHP_URL_QUERY), $query);
+
+            return $query;
+        })
+        ->values();
+}
+
+/**
+ * Asserts the changes requests to $path covered exactly every UTC day from $start
+ * to $end inclusive, one day per request (end_date equal to start_date). A day
+ * that pages is requested more than once, so the unique start dates are compared,
+ * in ascending order.
+ */
+function assertRequestedChangesDays(string $path, string $start, string $end): void
+{
+    $queries = recordedChangesQueries($path);
+    $owedDays = collect(CarbonPeriod::create($start, $end))
+        ->map(fn (CarbonInterface $day): string => $day->format('Y-m-d'))
+        ->all();
+
+    expect($queries->pluck('start_date')->unique()->sort()->values()->all())->toBe($owedDays);
+    expect($queries->every(fn (array $query): bool => ($query['end_date'] ?? null) === ($query['start_date'] ?? null)))->toBeTrue();
 }
 
 /**
