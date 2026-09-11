@@ -17,6 +17,7 @@ use App\Domains\Download\Exceptions\DownloadDetailPageIncomplete;
 use App\Domains\Download\Exceptions\DownloadRequestFailed;
 use App\Domains\Download\Exceptions\InvalidDownloadCredentials;
 use App\Domains\Download\Settings\DownloadSettings;
+use App\Domains\Download\Support\EpisodeIdentityParser;
 use App\Domains\Download\Support\RequestThrottle;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
@@ -157,6 +158,7 @@ final readonly class DownloadService
             tmdbId: ($tmdb = $this->crossRefId($crawler, 'a[href*="themoviedb.org/"]', '#/(?:movie|tv)/(\d+)#')) !== null ? (int) $tmdb : null,
             files: $withFiles ? $this->parseFiles($id) : null,
             description: $this->descriptionFrom($crawler),
+            episodeIdentity: EpisodeIdentityParser::fromName($name),
         );
     }
 
@@ -500,9 +502,9 @@ final readonly class DownloadService
 
     /**
      * Build a DownloadResult from a release name, deriving quality/codec/source/
-     * releaseTag and the isRar flag from the name itself. Shared by the RSS and
-     * HTML-listing parsers, which differ only in how they source the id, size,
-     * availability, and publish time.
+     * releaseTag, the isRar flag, and the episode identity from the name itself.
+     * Shared by the RSS and HTML-listing parsers, which differ only in how they
+     * source the id, size, availability, and publish time.
      */
     private function resultFromName(
         string $name,
@@ -530,6 +532,7 @@ final readonly class DownloadService
             subcategory: $subcategory,
             uploader: $uploader,
             publishedAt: $publishedAt,
+            episodeIdentity: EpisodeIdentityParser::fromName($name),
         );
     }
 

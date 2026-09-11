@@ -35,3 +35,7 @@ Schedule::command('plex:sync')->everyMinute()->withoutOverlapping(30);
 // few ticks without re-reading an unchanged mirror every minute.
 // A run takes seconds, so 10m lets a killed run's stale lock cost at most one tick.
 Schedule::command('library:notify')->everyFiveMinutes()->withoutOverlapping(10);
+
+// A run takes seconds to a minute, so a 4-minute lock outlives it yet still expires
+// before the next five-minute tick — a killed run can't cost the one after it.
+Schedule::command('library:acquire')->everyFiveMinutes()->withoutOverlapping(4);

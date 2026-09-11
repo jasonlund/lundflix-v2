@@ -372,9 +372,11 @@ closes the same way: the item stands as filed unless the next reply overrides it
 
 ## Phase 3: Dispatch — parallel, foreground
 
-Every fixer is a foreground `Agent` call. A `PreToolUse` hook
-(`.claude/hooks/no-background-gated-subagents.js`) denies a backgrounded `review-fixer`, so each
-result returns inside the dispatching turn and the harness never wakes you mid-flow.
+Every fixer is a foreground `Agent` call: pass `run_in_background: false`, because leaving the
+flag out still backgrounds it. A `PreToolUse` hook
+(`.claude/hooks/no-background-gated-subagents.js`) rewrites a `review-fixer` dispatch that leaves
+it out, so each result returns inside the dispatching turn and the harness never wakes you
+mid-flow.
 
 Group the dispatched items into **waves where no two items share a target file** — the
 files a comment points at, plus the obvious siblings a fix will touch. Two fixers editing

@@ -1,5 +1,8 @@
 {
   "claudeMdExcludes": ["**/.claude/commands/**"],
+  "env": {
+    "CLAUDE_CODE_FORK_SUBAGENT": "0"
+  },
   "hooks": {
     "PreToolUse": [
       {
