@@ -6,6 +6,7 @@ namespace App\Domains\Download\Actions;
 
 use App\Domains\Catalog\Data\UnitRef;
 use App\Domains\Catalog\Enums\UnitKind;
+use App\Domains\Catalog\Models\Episode;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Download\Contracts\FindsAcquirableDownloads;
 use App\Domains\Download\Enums\Category;
@@ -21,9 +22,7 @@ final readonly class FindAcquirableDownloads implements FindsAcquirableDownloads
     {
         return match ($unit->kind) {
             UnitKind::Movie => $this->forMovie($unit->id),
-            // Episode identity is not mirrored onto a row yet, so there is nothing to
-            // match an episode on. FLIX-313 lands that identity and replaces this arm.
-            UnitKind::Episode => null,
+            UnitKind::Episode => $this->forEpisode($unit->id),
         };
     }
 
@@ -41,8 +40,51 @@ final readonly class FindAcquirableDownloads implements FindsAcquirableDownloads
             return null;
         }
 
-        $id = Download::query()
-            ->where($this->attributedTo($movie->_imdb_id, $movie->_tmdb_id))
+        return $this->mostAvailable(
+            Download::query()->where($this->attributedTo($movie->_imdb_id, $movie->_tmdb_id, Category::Movies)),
+        );
+    }
+
+    private function forEpisode(int $episodeId): ?int
+    {
+        $episode = Episode::query()->find($episodeId);
+        $show = $episode?->show;
+
+        if ($episode === null || $show === null) {
+            return null;
+        }
+
+        // Same reason as forMovie(): an empty match group leaves the whole table in play.
+        if ($show->_imdb_id === null && $show->_tmdb_id === null) {
+            return null;
+        }
+
+        // `where($column, null)` is `whereNull`, which would pair this episode with
+        // every unparsed row of the show.
+        if ($episode->_tvdb_seasonNumber === null || $episode->_tvdb_number === null) {
+            return null;
+        }
+
+        // An episode file and a season pack both deliver the episode, so they match as
+        // one pool and neither kind is preferred: availability alone decides.
+        return $this->mostAvailable(
+            Download::query()
+                ->where($this->attributedTo($show->_imdb_id, $show->_tmdb_id, Category::Tv))
+                ->where('season', $episode->_tvdb_seasonNumber)
+                ->where(
+                    fn (Builder $query): Builder => $query
+                        ->where('episode', $episode->_tvdb_number)
+                        ->orWhere('is_season_pack', true),
+                ),
+        );
+    }
+
+    /**
+     * @param  Builder<Download>  $matches
+     */
+    private function mostAvailable(Builder $matches): ?int
+    {
+        $id = $matches
             ->orderByDesc('_provider_availability')
             // `, id DESC` is the same tie-break the committed dumps use for their
             // best-first prefixes: without it, equal availability leaves the winner to
@@ -64,29 +106,30 @@ final readonly class FindAcquirableDownloads implements FindsAcquirableDownloads
      *
      * @return Closure(Builder): void
      */
-    private function attributedTo(?string $imdbId, ?int $tmdbId): Closure
+    private function attributedTo(?string $imdbId, ?int $tmdbId, Category $tmdbCategory): Closure
     {
         // A mirrored row links to a title by either crosswalk id and frequently carries
         // only one of them, so each clause stays conditional — `where($column, null)` is
         // Laravel's spelling of `whereNull`, which would match every unlinked row.
-        return function (Builder $query) use ($imdbId, $tmdbId): void {
+        return function (Builder $query) use ($imdbId, $tmdbId, $tmdbCategory): void {
             if ($imdbId !== null) {
                 $query->orWhere('_imdb_id', $imdbId);
             }
 
             if ($tmdbId !== null) {
                 // TMDB numbers movies and series in separate sequences, so one number
-                // names two unrelated works and `_tmdb_id` is not a movie-only
+                // names two unrelated works and `_tmdb_id` is not a single-type
                 // namespace — the column is filled from a pattern spanning both types.
                 // `_provider_category` is the only record of which type a row was
-                // mirrored from, so without it a series row would be attributed by a
-                // movie's tmdb id. The imdb clause needs no such guard: imdb ids are
-                // one global namespace.
+                // mirrored from, so the caller names the category its title belongs to;
+                // without it a series row would be attributed by a movie's tmdb id, and
+                // the reverse. The imdb clause needs no such guard: imdb ids are one
+                // global namespace.
                 $query->orWhere(
                     fn (Builder $group): Builder => $group
                         ->whereNull('_imdb_id')
                         ->where('_tmdb_id', $tmdbId)
-                        ->where('_provider_category', Category::Movies),
+                        ->where('_provider_category', $tmdbCategory),
                 );
             }
         };

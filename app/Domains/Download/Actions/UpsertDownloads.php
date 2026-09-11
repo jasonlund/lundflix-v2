@@ -32,6 +32,9 @@ final readonly class UpsertDownloads
             'source' => $result->source,
             'release_tag' => $result->releaseTag,
             'is_rar' => $result->isRar,
+            'season' => $result->episodeIdentity?->season,
+            'episode' => $result->episodeIdentity?->episode,
+            'is_season_pack' => $result->episodeIdentity?->isSeasonPack,
             '_provider_description' => $result->description instanceof DownloadDescription
                 ? ['text' => $result->description->html, 'screenshots' => $result->description->screenshots]
                 : null,

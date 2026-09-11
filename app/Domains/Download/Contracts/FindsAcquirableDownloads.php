@@ -19,9 +19,8 @@ interface FindsAcquirableDownloads
      * id at all, or nothing mirrored may match the ones it carries. This reads only
      * rows already mirrored locally; it never queries the download source.
      *
-     * Provisionally, a {@see UnitKind::Episode} unit ALWAYS resolves to null:
-     * episode identity is not mirrored onto a row yet, so a show acquires nothing
-     * today. FLIX-313 lands that identity and makes episodes resolve for real.
+     * A {@see UnitKind::Episode} unit resolves to a row matching its show, season
+     * and number, or to a pack for its season.
      */
     public function for(UnitRef $unit): ?int;
 }

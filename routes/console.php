@@ -30,3 +30,7 @@ Schedule::command('catalog:sync-imdb')->dailyAt('06:00')->timezone('America/Los_
 Schedule::command('catalog:refresh-popularity')->dailyAt('03:00')->timezone('America/Los_Angeles')->withoutOverlapping(360);
 
 Schedule::command('plex:sync')->everyMinute()->withoutOverlapping(30);
+
+// A run takes seconds to a minute, so a 4-minute lock outlives it yet still expires
+// before the next five-minute tick — a killed run can't cost the one after it.
+Schedule::command('library:acquire')->everyFiveMinutes()->withoutOverlapping(4);

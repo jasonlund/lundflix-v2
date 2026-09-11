@@ -6,12 +6,15 @@ namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Casts\NullableDate;
 use App\Domains\Catalog\Contracts\Title;
+use App\Domains\Catalog\Data\UnitRef;
 use App\Domains\Catalog\Database\Factories\MovieFactory;
+use App\Domains\Catalog\Enums\UnitKind;
 use App\Domains\Catalog\Models\Concerns\Refusable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Collection;
 use Laravel\Scout\Searchable;
 
 final class Movie extends Model implements Title
@@ -39,6 +42,14 @@ final class Movie extends Model implements Title
     public function tmdbId(): ?int
     {
         return $this->_tmdb_id;
+    }
+
+    /**
+     * @return Collection<int, UnitRef>
+     */
+    public function units(): Collection
+    {
+        return collect([new UnitRef(UnitKind::Movie, $this->id)]);
     }
 
     /**
