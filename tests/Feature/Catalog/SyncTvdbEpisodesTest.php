@@ -138,7 +138,7 @@ describe('catalog:sync-episodes-tvdb feed hydration and marker window', function
         Http::assertNotSent(fn (Request $request): bool => Str::contains($request->url(), '/series/'));
     });
 
-    it('queries /updates with type=episodes and since = now minus 24h when no marker is cached', function (): void {
+    it('queries /updates with type=episodes and since = now minus 24h when the feed has no marker', function (): void {
         // Arrange
         Date::setTestNow('2026-07-16 12:00:00');
         fakeTvdbEpisodes();
@@ -151,7 +151,7 @@ describe('catalog:sync-episodes-tvdb feed hydration and marker window', function
             && Str::contains($request->url(), 'type=episodes'));
     });
 
-    it('queries /updates with since = the cached marker minus a 6h overlap', function (): void {
+    it('queries /updates with since = the stored marker minus a 6h overlap', function (): void {
         // Arrange
         Date::setTestNow('2026-07-16 12:00:00');
         $marker = now()->subHours(10)->toImmutable();
@@ -175,7 +175,7 @@ describe('catalog:sync-episodes-tvdb feed hydration and marker window', function
         $this->artisan('catalog:sync-episodes-tvdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBe(now()->toIso8601String());
+        expect(syncMarker(SyncFeed::TvdbEpisodes))->toBe(now()->toIso8601String());
     });
 
     it('does not advance the marker when a changed episode fetch fails', function (): void {
@@ -191,7 +191,7 @@ describe('catalog:sync-episodes-tvdb feed hydration and marker window', function
         $this->artisan('catalog:sync-episodes-tvdb');
 
         // Assert
-        expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TvdbEpisodes))->toBeNull();
     });
 });
 
@@ -623,7 +623,7 @@ describe('catalog:sync-episodes-tvdb failed-episode run outcome', function (): v
 
         // Assert
         // The consequence the line claims, proven alongside the line itself.
-        expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TvdbEpisodes))->toBeNull();
     });
 
     it('treats a 404 episode as a miss rather than a failure', function (): void {
@@ -645,7 +645,7 @@ describe('catalog:sync-episodes-tvdb failed-episode run outcome', function (): v
         $this->artisan('catalog:sync-episodes-tvdb')->assertExitCode(0)->run();
 
         // Assert
-        expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBe(now()->toIso8601String());
+        expect(syncMarker(SyncFeed::TvdbEpisodes))->toBe(now()->toIso8601String());
         $this->assertDatabaseCount('episodes', 1);
     });
 });
@@ -662,6 +662,6 @@ describe('catalog:sync-episodes-tvdb feed page failure', function (): void {
         // The feed is drained lazily, so its failure surfaces mid-drain — it must
         // still escape handle() rather than being swallowed by the drain loop.
         expect(fn () => $this->artisan('catalog:sync-episodes-tvdb')->run())->toThrow(TvdbRequestFailed::class);
-        expect(Cache::get(SyncFeed::TvdbEpisodes->cacheKey()))->toBeNull();
+        expect(syncMarker(SyncFeed::TvdbEpisodes))->toBeNull();
     });
 });

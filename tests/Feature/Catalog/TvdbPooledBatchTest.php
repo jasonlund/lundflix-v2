@@ -15,17 +15,17 @@ use Illuminate\Support\Str;
 |--------------------------------------------------------------------------
 | TheTVDB v4 service — pooled batch fetches (seriesMany, episodesMany)
 |--------------------------------------------------------------------------
-| seriesMany(array $ids) fires one request per id via Http::pool() and returns
-| a PooledResult { results, failedIds }: results is the [tvdb id => array|null]
-| map keyed by the input id, preserving input order; failedIds lists the ids
-| whose requests failed past retries. A per-id 404 yields null for that id
-| without sinking its siblings; repeated ids de-dupe to one request per unique
-| id; ids fan out at most `services.tvdb.concurrency` requests per chunk in
-| input order. Request failures past retries are collected on failedIds and
-| report()ed together as a single TvdbRequestFailed naming every failed id,
-| while the succeeding ids are still RETURNED on results (a transient per-id
-| failure never drops the batch's good rows); a 401 is fatal for the whole
-| batch and throws TvdbAuthenticationFailed.
+| seriesMany(array $ids) fires one request per id through the shared pooled
+| transport and returns a PooledResult { results, failedIds }: results is the
+| [tvdb id => array|null] map keyed by the input id, preserving input order;
+| failedIds lists the ids whose requests failed past retries. A per-id 404
+| yields null for that id without sinking its siblings; repeated ids de-dupe to
+| one request per unique id; ids fan out in input order through one rolling
+| window at most `services.tvdb.concurrency` wide. Request failures past
+| retries are collected on failedIds and report()ed together as a single
+| TvdbRequestFailed naming every failed id, while the succeeding ids are still
+| RETURNED on results (a transient per-id failure never drops the batch's good
+| rows); a 401 is fatal for the whole batch and throws TvdbAuthenticationFailed.
 |
 | episodesMany(array $ids) is the same pooling over the episode-id endpoint:
 | GET /episodes/{id} — the BASE path, NOT /extended and NOT the show-wide
@@ -35,8 +35,8 @@ use Illuminate\Support\Str;
 |
 | Fixtures (byte-exact real captures; never hand-fabricated):
 |   series_extended.json — real /series/{id}/extended body. Reused as the
-|       response body for every faked id (Http::fake() matches by URL, not pool
-|       key), so each id gets a distinct per-id url pattern returning this body.
+|       response body for every faked id (Http::fake() matches by URL), so each
+|       id gets a distinct per-id url pattern returning this body.
 |   episode_{id}.json — real /episodes/{id} bodies for 9786562, 9786563
 |       (seriesId 434847), 11846050, 11846051 (469484) and 9256455, 9256456
 |       (371082). Each id has its own capture (unlike seriesMany's single reused
@@ -108,7 +108,7 @@ describe('seriesMany()', function (): void {
             ->and($result->failedIds)->toBe([]);
     });
 
-    it('fires one request per id and preserves input order across multiple concurrency-sized chunks', function (): void {
+    it('fires one request per id and preserves input order for a batch wider than the window', function (): void {
         config(['services.tvdb.concurrency' => 3]);
         Http::fake([
             '*api4.thetvdb.com/v4/login*' => Http::response(fixtureBytes('Catalog/tvdb/login.json')),
