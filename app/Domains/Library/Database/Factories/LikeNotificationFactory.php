@@ -25,7 +25,6 @@ final class LikeNotificationFactory extends Factory
             'user_id' => User::factory(),
             'unit_kind' => UnitKind::Movie,
             'unit_id' => fake()->unique()->numberBetween(1, 1_000_000),
-            'notified_at' => now(),
         ];
     }
 }

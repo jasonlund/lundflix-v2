@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Models\Movie;
+use App\Domains\Identity\Models\User;
+use App\Domains\Library\Notifications\LikedUnitsArrived;
 use App\Domains\PlexLibrary\Actions\ReconcilePlexShows;
 use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
@@ -375,5 +378,68 @@ describe('plex:sync announcements', function (): void {
 
         // Assert
         Notification::assertSentOnDemandTimes(RecentlyAddedToPlex::class, 1);
+    });
+
+    // End to end through the real dispatcher — no Event or Notification fake — so the
+    // notification proves the publication reached the Library listener. No channel is
+    // configured, so the liker's in-app notification is the only delivery. Ripeness is
+    // arranged by ageing created_at, as in the digest test above.
+    it('tells the liker of a movie that became ready in one in-app notification naming it', function (): void {
+        // Arrange
+        config()->set('services.slack.notifications.channel');
+        $user = User::factory()->create();
+        $movie = Movie::factory()->create(['_tmdb_id' => 1182047, '_tmdb_title' => 'The Apprentice']);
+        notifyingLikeOf($user, $movie);
+        fakePlexSeedCrawl();
+        $this->artisan('plex:sync')->run();
+        PlexMovie::query()->update(['created_at' => now()->subSeconds(1000)]);
+        PlexEpisode::query()->update(['created_at' => now()->subSeconds(1000)]);
+        freshPlexHttpFactory();
+        fakePlexSeedCrawl();
+
+        // Act
+        $this->artisan('plex:sync')->run();
+
+        // Assert
+        $notifications = $user->unreadNotifications()->get();
+        expect($notifications)->toHaveCount(1)
+            ->and($notifications->first()?->type)->toBe(LikedUnitsArrived::class)
+            ->and($notifications->first()?->data)->toBe(['lines' => ['The Apprentice']]);
+    });
+});
+
+describe('plex:sync arrivals count', function (): void {
+    // Two of the fixture's three movies are catalogued (by their TMDB crosswalk ids),
+    // so the third movie and all 24 episode rows ripen unmatched: 27 ripe mirror rows
+    // publish as 2 catalog units, and only the unit count reads as 2.
+    it('reports the number of catalog units it published', function (): void {
+        // Arrange
+        config()->set('services.slack.notifications.channel');
+        Movie::factory()->create(['_tmdb_id' => 1182047, '_tmdb_title' => 'The Apprentice']);
+        Movie::factory()->create(['_tmdb_id' => 1083381, '_tmdb_title' => 'Backrooms']);
+        fakePlexSeedCrawl();
+        $this->artisan('plex:sync')->run();
+        PlexMovie::query()->update(['created_at' => now()->subSeconds(1000)]);
+        PlexEpisode::query()->update(['created_at' => now()->subSeconds(1000)]);
+        freshPlexHttpFactory();
+        fakePlexSeedCrawl();
+
+        // Act & Assert
+        $this->artisan('plex:sync')
+            ->expectsOutputToContain('  [plex arrivals 2]')
+            ->run();
+    });
+
+    // The catalogued movie is matched but only seconds old, still inside its debounce
+    // window, so a count of matches rather than of publications would read 1 here.
+    it('reports zero when it published nothing', function (): void {
+        // Arrange
+        Movie::factory()->create(['_tmdb_id' => 1182047, '_tmdb_title' => 'The Apprentice']);
+        fakePlexSeedCrawl();
+
+        // Act & Assert
+        $this->artisan('plex:sync')
+            ->expectsOutputToContain('  [plex arrivals 0]')
+            ->run();
     });
 });

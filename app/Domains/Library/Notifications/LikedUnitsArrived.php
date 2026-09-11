@@ -4,16 +4,14 @@ declare(strict_types=1);
 
 namespace App\Domains\Library\Notifications;
 
-use App\Domains\Catalog\Data\UnitRef;
 use Illuminate\Notifications\Notification;
 
 final class LikedUnitsArrived extends Notification
 {
     /**
-     * @param  list<UnitRef>  $units
      * @param  list<string>  $lines
      */
-    public function __construct(public array $units, public array $lines) {}
+    public function __construct(public array $lines) {}
 
     /**
      * @return list<string>

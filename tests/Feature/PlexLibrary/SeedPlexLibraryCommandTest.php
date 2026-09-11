@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Models\Movie;
 use App\Domains\Common\Exceptions\PlexRequestFailed;
+use App\Domains\Identity\Models\User;
 use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
@@ -331,6 +333,40 @@ describe('plex:seed announcement suppression', function (): void {
 
         // Assert
         expect($movie->refresh()->announced_at)->not->toBeNull();
+    });
+
+    // The liked movie's mirror row predates the run past the 900s hard deadline, so a
+    // seed that published would find the movie bucket ripe and tell the liker: the
+    // silence is the seed's own policy, not an arrival still inside its window.
+    it('reports no arrivals and tells no liker even when a liked arrival is ripe', function (): void {
+        // Arrange
+        config()->set('services.slack.notifications.channel');
+        $server = PlexServer::factory()->create(['_plex_clientIdentifier' => 'servermachineidentifier000000000']);
+        $library = PlexLibrary::factory()->create([
+            'plex_server_id' => $server->id,
+            '_plex_key' => '1',
+            '_plex_type' => 'movie',
+        ]);
+        PlexMovie::factory()->create([
+            'plex_server_id' => $server->id,
+            'plex_library_id' => $library->id,
+            '_plex_ratingKey' => '26278',
+            '_tmdb_id' => 1182047,
+            'announced_at' => null,
+            'created_at' => now()->subSeconds(1000),
+        ]);
+        $user = User::factory()->create();
+        $movie = Movie::factory()->create(['_tmdb_id' => 1182047, '_tmdb_title' => 'The Apprentice']);
+        notifyingLikeOf($user, $movie);
+        $console = new BufferedOutput;
+        fakePlexSeedCrawl();
+
+        // Act
+        Artisan::call('plex:seed', [], $console);
+
+        // Assert
+        expect($console->fetch())->not->toContain('[plex arrivals');
+        expect($user->notifications()->count())->toBe(0);
     });
 });
 

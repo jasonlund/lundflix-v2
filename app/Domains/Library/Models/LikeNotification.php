@@ -39,7 +39,6 @@ final class LikeNotification extends Model
     {
         return [
             'unit_kind' => UnitKind::class,
-            'notified_at' => 'datetime',
         ];
     }
 }

@@ -3,12 +3,17 @@
 declare(strict_types=1);
 
 use App\Domains\Catalog\Enums\SyncFeed;
+use App\Domains\Identity\Models\User;
+use App\Domains\Library\Enums\Behavior;
+use App\Domains\Library\Models\Like;
+use App\Domains\Library\Models\LikeBehavior;
 use App\Domains\PlexLibrary\Models\PlexLibrary;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexServer;
 use App\Domains\PlexLibrary\Models\PlexShow;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
@@ -384,4 +389,15 @@ function staleMovie(PlexServer $server, PlexLibrary $library, string $ratingKey,
         '_plex_ratingKey' => $ratingKey,
         'synced_at' => $syncedAt ?? now()->subMinute(),
     ]);
+}
+
+/**
+ * A like of the title whose Notify behavior is on.
+ */
+function notifyingLikeOf(User $user, Model $title): Like
+{
+    $like = Like::factory()->for($user)->for($title, 'likeable')->create();
+    LikeBehavior::factory()->for($like)->create(['behavior' => Behavior::Notify]);
+
+    return $like;
 }

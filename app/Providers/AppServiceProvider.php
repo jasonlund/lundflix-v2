@@ -12,9 +12,10 @@ use App\Domains\Download\Actions\QueueDownload;
 use App\Domains\Download\Contracts\FindsAcquirableDownloads;
 use App\Domains\Download\Contracts\QueuesDownload;
 use App\Domains\Identity\Models\User;
+use App\Domains\Library\Listeners\NotifyLikersOfArrivals;
 use App\Domains\Notifications\Listeners\StoreSlackMessage;
-use App\Domains\PlexLibrary\Contracts\ReportsArrivals;
 use App\Domains\PlexLibrary\Contracts\ReportsPresence;
+use App\Domains\PlexLibrary\Events\UnitsArrived;
 use App\Domains\PlexLibrary\Services\MirrorPresence;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -33,7 +34,6 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->bind(FindsAcquirableDownloads::class, FindAcquirableDownloads::class);
         $this->app->bind(QueuesDownload::class, QueueDownload::class);
         $this->app->bind(ReportsPresence::class, MirrorPresence::class);
-        $this->app->bind(ReportsArrivals::class, MirrorPresence::class);
     }
 
     /**
@@ -56,5 +56,6 @@ final class AppServiceProvider extends ServiceProvider
         ]);
 
         Event::listen(NotificationSent::class, StoreSlackMessage::class);
+        Event::listen(UnitsArrived::class, NotifyLikersOfArrivals::class);
     }
 }

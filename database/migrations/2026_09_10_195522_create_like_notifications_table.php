@@ -18,10 +18,10 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('unit_kind');
             $table->unsignedBigInteger('unit_id');
-            $table->timestamp('notified_at');
             $table->timestamps();
 
-            // A user is told about a unit once; a later sweep finding it again is no news.
+            // Keyed on the user, not the like: re-liking a title, a re-added file or a second
+            // library's copy of the same unit can never tell them about it twice.
             $table->unique(['user_id', 'unit_kind', 'unit_id']);
         });
     }
