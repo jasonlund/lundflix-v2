@@ -9,7 +9,6 @@ use App\Domains\Catalog\Actions\ReconcileImdbOnlyShows;
 use App\Domains\Catalog\Actions\ReindexTouchedRows;
 use App\Domains\Catalog\Actions\UpsertTmdbImages;
 use App\Domains\Catalog\Actions\UpsertTmdbShows;
-use App\Domains\Catalog\Data\SyncWindow;
 use App\Domains\Catalog\Enums\SyncFeed;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\Catalog\Services\TmdbApiService;
@@ -109,9 +108,9 @@ final class SyncTmdbShows extends TmdbSyncCommand
     /**
      * @return iterable<int, int>
      */
-    protected function changedIds(SyncWindow $window): iterable
+    protected function changedIds(string $day): iterable
     {
-        return $this->api->changedTvIds($window->startDate(), $window->endDate());
+        return $this->api->changedTvIds($day);
     }
 
     /**

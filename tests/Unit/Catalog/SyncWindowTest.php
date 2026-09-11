@@ -105,3 +105,45 @@ describe('SyncWindow cap reporting', function (): void {
         expect($actual)->toBeNull();
     });
 });
+
+describe('SyncWindow day enumeration', function (): void {
+    it('yields every date from since to until, both ends inclusive', function (): void {
+        // until's time-of-day sits before since's, so stepping the raw instant a day at a time would drop the last date
+        // Arrange
+        $since = CarbonImmutable::parse('2026-07-01 22:15:00');
+        $until = CarbonImmutable::parse('2026-07-04 03:45:00');
+        $window = new SyncWindow($since, $until);
+
+        // Act
+        $actual = iterator_to_array($window->days(), false);
+
+        // Assert
+        expect($actual)->toBe(['2026-07-01', '2026-07-02', '2026-07-03', '2026-07-04']);
+    });
+
+    it('yields exactly one date for a window inside a single day', function (): void {
+        // Arrange
+        $since = CarbonImmutable::parse('2026-07-01 06:00:00');
+        $until = CarbonImmutable::parse('2026-07-01 18:30:00');
+        $window = new SyncWindow($since, $until);
+
+        // Act
+        $actual = iterator_to_array($window->days(), false);
+
+        // Assert
+        expect($actual)->toBe(['2026-07-01']);
+    });
+
+    it('yields ascending dates with no gap across a month boundary', function (): void {
+        // Arrange
+        $since = CarbonImmutable::parse('2026-06-29 20:00:00');
+        $until = CarbonImmutable::parse('2026-07-02 04:00:00');
+        $window = new SyncWindow($since, $until);
+
+        // Act
+        $actual = iterator_to_array($window->days(), false);
+
+        // Assert
+        expect($actual)->toBe(['2026-06-29', '2026-06-30', '2026-07-01', '2026-07-02']);
+    });
+});
