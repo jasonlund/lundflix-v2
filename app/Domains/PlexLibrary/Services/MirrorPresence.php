@@ -9,6 +9,7 @@ use App\Domains\Catalog\Enums\UnitKind;
 use App\Domains\Catalog\Models\Episode;
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\PlexLibrary\Contracts\ReportsPresence;
+use App\Domains\PlexLibrary\Support\MirrorMatch;
 use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Override;
@@ -36,8 +37,8 @@ final readonly class MirrorPresence implements ReportsPresence
             ->flatMap(function (Collection $refs, string $kind): Collection {
                 $ids = $refs->map(fn (UnitRef $unit): int => $unit->id)->unique()->values()->all();
 
-                // The sweeps batch every liked title, so one read per kind is the
-                // difference between one round trip and thousands.
+                // The acquire sweep batches every queued acquisition, so one read per
+                // kind is the difference between one round trip and thousands.
                 $mirrored = match (UnitKind::from($kind)) {
                     UnitKind::Movie => $this->mirroredMovieIds($ids),
                     UnitKind::Episode => $this->mirroredEpisodeIds($ids),
@@ -64,24 +65,7 @@ final readonly class MirrorPresence implements ReportsPresence
                 $mirror
                     ->selectRaw('1')
                     ->from('plex_movies')
-                    ->where(function (Builder $crosswalk): void {
-                        // Either crosswalk id is enough: a mirror row carries whichever
-                        // ids the server's own metadata agent resolved, often just one.
-                        // The is-not-null guards spell out that an unresolved catalog
-                        // id is not agreement, rather than leaning on SQL's null
-                        // comparison to imply it.
-                        $crosswalk
-                            ->where(function (Builder $tmdb): void {
-                                $tmdb
-                                    ->whereNotNull('movies._tmdb_id')
-                                    ->whereColumn('plex_movies._tmdb_id', 'movies._tmdb_id');
-                            })
-                            ->orWhere(function (Builder $imdb): void {
-                                $imdb
-                                    ->whereNotNull('movies._imdb_id')
-                                    ->whereColumn('plex_movies._imdb_id', 'movies._imdb_id');
-                            });
-                    });
+                    ->where(MirrorMatch::movie(...));
             })
             ->pluck('movies.id');
     }
@@ -99,46 +83,8 @@ final readonly class MirrorPresence implements ReportsPresence
                 $mirror
                     ->selectRaw('1')
                     ->from('plex_episodes')
-                    ->where(function (Builder $match): void {
-                        $match
-                            ->where($this->episodeMatchesByCrosswalk(...))
-                            ->orWhere($this->episodeMatchesByPosition(...));
-                    });
+                    ->where(MirrorMatch::episode(...));
             })
             ->pluck('episodes.id');
-    }
-
-    /**
-     * The is-not-null guard spells out that an unresolved catalog id is not
-     * agreement, rather than leaning on SQL's null comparison to imply it.
-     */
-    private function episodeMatchesByCrosswalk(Builder $crosswalk): void
-    {
-        $crosswalk
-            ->whereNotNull('episodes._tvdb_id')
-            ->whereColumn('plex_episodes._tvdb_id', 'episodes._tvdb_id');
-    }
-
-    /**
-     * A mirror row whose metadata agent resolved no guid can only be matched by
-     * its place in the show, and reading it as absent would refetch an episode
-     * we already hold.
-     */
-    private function episodeMatchesByPosition(Builder $positional): void
-    {
-        $positional
-            ->whereNull('plex_episodes._tvdb_id')
-            ->whereNotNull('episodes._tvdb_seasonNumber')
-            ->whereNotNull('episodes._tvdb_number')
-            ->whereColumn('plex_episodes._plex_parentIndex', 'episodes._tvdb_seasonNumber')
-            ->whereColumn('plex_episodes._plex_index', 'episodes._tvdb_number')
-            ->whereExists(function (Builder $mirroredShow): void {
-                $mirroredShow
-                    ->selectRaw('1')
-                    ->from('plex_shows')
-                    ->whereColumn('plex_shows.id', 'plex_episodes.plex_show_id')
-                    ->whereNotNull('shows._tvdb_id')
-                    ->whereColumn('plex_shows._tvdb_id', 'shows._tvdb_id');
-            });
     }
 }

@@ -34,6 +34,17 @@ final readonly class RecentlyAddedDigest
         return $movieLines->concat($showLines)->all();
     }
 
+    /**
+     * Returned unescaped: escaping belongs to the Slack line, and a title named
+     * anywhere else must not carry Slack's entities.
+     */
+    public static function displayName(?string $catalogName, string $plexTitle): string
+    {
+        // The catalog match is the curated record; Plex's own values come from
+        // the release filename, so they only stand in when nothing matched.
+        return $catalogName ?? $plexTitle;
+    }
+
     private static function movieLine(PlexMovie $plexMovie): string
     {
         // Escaped only here, never in rawMovieLine(), because lines() sorts on that raw
@@ -48,17 +59,10 @@ final readonly class RecentlyAddedDigest
      */
     private static function rawMovieLine(PlexMovie $plexMovie): string
     {
-        $title = self::movieTitle($plexMovie);
+        $title = self::displayName($plexMovie->movie?->_tmdb_title, $plexMovie->_plex_title);
         $year = $plexMovie->movie?->_tmdb_release_date?->year ?? $plexMovie->_plex_year;
 
         return $year === null ? $title : "{$title} ({$year})";
-    }
-
-    private static function movieTitle(PlexMovie $plexMovie): string
-    {
-        // The catalog match is the curated record; Plex's own values come from
-        // the release filename, so they only stand in when nothing matched.
-        return $plexMovie->movie?->_tmdb_title ?? $plexMovie->_plex_title;
     }
 
     /**
@@ -87,8 +91,7 @@ final readonly class RecentlyAddedDigest
     {
         $plexShow = $episodes->first()->plexShow;
 
-        // Same catalog-over-Plex precedence as the movie line.
-        return $plexShow->show?->_tvdb_name ?? $plexShow->_plex_title;
+        return self::displayName($plexShow->show?->_tvdb_name, $plexShow->_plex_title);
     }
 
     /**
