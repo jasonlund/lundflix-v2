@@ -2771,16 +2771,16 @@
         },
         {
             "name": "laravel/nightwatch",
-            "version": "v1.30.0",
+            "version": "v1.30.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/nightwatch.git",
-                "reference": "f20bc54ac22347d393882de6b9f6948a27d1f41a"
+                "reference": "541caaf38640c1007a9202721b23d3baa4041cb2"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/nightwatch/zipball/f20bc54ac22347d393882de6b9f6948a27d1f41a",
-                "reference": "f20bc54ac22347d393882de6b9f6948a27d1f41a",
+                "url": "https://api.github.com/repos/laravel/nightwatch/zipball/541caaf38640c1007a9202721b23d3baa4041cb2",
+                "reference": "541caaf38640c1007a9202721b23d3baa4041cb2",
                 "shasum": ""
             },
             "require": {
@@ -2861,7 +2861,7 @@
                 "issues": "https://github.com/laravel/nightwatch/issues",
                 "source": "https://github.com/laravel/nightwatch"
             },
-            "time": "2026-08-26T00:31:27+00:00"
+            "time": "2026-09-16T02:00:04+00:00"
         },
         {
             "name": "laravel/passkeys",
