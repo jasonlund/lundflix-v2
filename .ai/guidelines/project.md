@@ -191,7 +191,13 @@ keeps the knowledge on the type.
 ### Cross-domain rules
 
 - A domain never imports another domain's `Models` or internals — only its
-  `Contracts/` (interfaces) or published `Services`.
+  `Contracts/` (interfaces), published `Services`, or `Events/` (with the `Data/`
+  types those events carry).
+- **An event points the dependency at the publisher.** The subscriber imports the
+  publisher's event and registers its own listener in `AppServiceProvider`
+  (`Library\Listeners\NotifyLikersOfArrivals` on `PlexLibrary\Events\UnitsArrived`);
+  the publisher never names who hears it, so a later subscriber attaches without
+  touching it.
 - `Common` is the shared kernel: only *incredibly stable* shared concepts (value
   objects, enums, contracts, DTOs). Keep it small — bloat couples every domain.
   `Common` depends on nothing domain-specific.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Domains\Catalog\Models\Movie;
 use App\Domains\Catalog\Models\Show;
 use App\Domains\PlexLibrary\Actions\NotifyRecentlyAdded;
+use App\Domains\PlexLibrary\Events\UnitsArrived;
 use App\Domains\PlexLibrary\Models\PlexEpisode;
 use App\Domains\PlexLibrary\Models\PlexMovie;
 use App\Domains\PlexLibrary\Models\PlexSeason;
@@ -14,6 +15,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -148,6 +150,34 @@ describe('handle() stamp atomicity', function (): void {
         expect(fn () => resolve(NotifyRecentlyAdded::class)->handle())->toThrow(RuntimeException::class);
         expect($plexMovie->fresh()->announced_at)->toBeNull();
     });
+
+    // Listeners run synchronously inside the stamp transaction, so a failing one must undo
+    // both stamps, surface out of handle() so the sync fails loudly, and keep Slack silent
+    // about arrivals the next run will publish again. The real dispatcher runs here, not a
+    // fake, because only a listener that actually executes can throw.
+    it('leaves every ready row unstamped and posts nothing to Slack when a UnitsArrived listener throws', function (): void {
+        // Arrange
+        Notification::fake();
+        config()->set('services.slack.notifications.channel', '#lundflix');
+        config()->set('services.plex.announce.movie_debounce_seconds', 120);
+        config()->set('services.plex.announce.episode_debounce_seconds', 300);
+        config()->set('services.plex.announce.hard_deadline_seconds', 900);
+        $plexMovie = movieAddedToPlex(secondsAgo: 300);
+        $plexEpisode = episodeAddedToPlex(secondsAgo: 600);
+        $listenerFailure = new RuntimeException('the arrival listener failed');
+        Event::listen(UnitsArrived::class, function () use ($listenerFailure): never {
+            throw $listenerFailure;
+        });
+
+        // Act
+        $thrown = rescue(fn () => resolve(NotifyRecentlyAdded::class)->handle(), fn (Throwable $e): Throwable => $e, report: false);
+
+        // Assert
+        expect($thrown)->toBe($listenerFailure);
+        expect($plexMovie->fresh()->announced_at)->toBeNull();
+        expect($plexEpisode->fresh()->announced_at)->toBeNull();
+        Notification::assertNothingSent();
+    });
 });
 
 describe('handle() unripe rows', function (): void {
@@ -192,11 +222,13 @@ describe('handle() unripe rows', function (): void {
     });
 });
 
-describe('handle() unconfigured Slack channel', function (): void {
-    // An unconfigured channel must not burn the pending state: stamping a row nobody
-    // was told about would silently drop it the moment Slack is configured.
-    it('sends nothing and stamps nothing when no Slack channel is configured', function (): void {
+describe('handle() with no Slack channel configured', function (): void {
+    // Publishing and the Slack digest are separate outputs: announced_at records that an
+    // arrival was published, so a workspace with no channel still publishes and stamps,
+    // and only the digest is skipped.
+    it('still publishes and stamps ready arrivals', function (): void {
         // Arrange
+        Event::fake([UnitsArrived::class]);
         Notification::fake();
         config()->set('services.slack.notifications.channel');
         config()->set('services.plex.announce.movie_debounce_seconds', 120);
@@ -207,30 +239,25 @@ describe('handle() unconfigured Slack channel', function (): void {
         resolve(NotifyRecentlyAdded::class)->handle();
 
         // Assert
-        Notification::assertNothingSent();
-        expect($plexMovie->fresh()->announced_at)->toBeNull();
+        Event::assertDispatched(UnitsArrived::class);
+        expect($plexMovie->fresh()->announced_at)->not->toBeNull();
     });
 
-    // The channel is an optional tunable that is unset by default, and the sync runs every
-    // minute: a run that can send nothing must also read nothing, or a fresh workspace pays
-    // for a full scan of both pending tables ~1,440 times a day for no effect.
-    it('reads nothing when no Slack channel is configured', function (): void {
+    it('posts nothing to Slack', function (): void {
         // Arrange
+        // UnitsArrived is faked so a listener's own notifications can't count as a Slack post.
+        Event::fake([UnitsArrived::class]);
         Notification::fake();
         config()->set('services.slack.notifications.channel');
         config()->set('services.plex.announce.movie_debounce_seconds', 120);
         config()->set('services.plex.announce.hard_deadline_seconds', 900);
         movieAddedToPlex(secondsAgo: 300);
-        $queries = [];
-        DB::listen(function (QueryExecuted $query) use (&$queries): void {
-            $queries[] = $query->sql;
-        });
 
         // Act
         resolve(NotifyRecentlyAdded::class)->handle();
 
         // Assert
-        expect($queries)->toBeEmpty();
+        Notification::assertNothingSent();
     });
 });
 

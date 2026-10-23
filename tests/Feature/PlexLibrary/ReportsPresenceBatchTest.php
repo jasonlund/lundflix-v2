@@ -119,7 +119,7 @@ describe('present() batched presence', function (): void {
         // Act
         $present = resolve(ReportsPresence::class)->present($refs);
 
-        // The acquire and notify sweeps walk every liked title on every scheduled
+        // The acquire sweep checks every queued acquisition on every scheduled
         // run, so a per-unit query is the difference between one round trip and
         // thousands — this is the one place these tests reach past the interface,
         // and the bound is deliberately loose rather than exact so a refactor may

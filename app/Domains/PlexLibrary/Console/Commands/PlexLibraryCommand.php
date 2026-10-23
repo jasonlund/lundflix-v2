@@ -90,7 +90,7 @@ abstract class PlexLibraryCommand extends Command
         $this->flushTotal('plex episodes', $episodeTotal);
 
         if ($this->notifiesRecentlyAdded()) {
-            $this->notifyRecentlyAdded->handle();
+            $this->mark('plex arrivals', $this->notifyRecentlyAdded->handle());
         } else {
             // This server's backlog is backfill, not news, and the server scope is
             // the whole guard: handle() reconciles one server, so a sibling's
@@ -195,10 +195,9 @@ abstract class PlexLibraryCommand extends Command
     /**
      * Whether this command announces the arrivals still awaiting announcement.
      * Only a run that discovers arrivals may say yes: the incremental sync inserts
-     * what just landed, while a
-     * full seed inserts the entire existing library — announcing there would blast
-     * the whole mirror into Slack, and against an empty database that is every
-     * title Plex holds.
+     * what just landed, while a full seed inserts the entire existing library —
+     * announcing there would tell every liker, and Slack, of the whole mirror, and
+     * against an empty database that is every title Plex holds.
      *
      * Answering no is not passive silence: the run stamps every still-pending row
      * as announced, so the backlog it wrote can never surface as a later sync's
